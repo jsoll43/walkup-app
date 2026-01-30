@@ -25,8 +25,33 @@ function extForMime(mime) {
   return "webm";
 }
 
+async function uploadVoice({ playerId, blob, filename }) {
+  // For now we prompt for the shared parent key.
+  // Later we’ll remove this and use kid-specific QR tokens so parents never type anything.
+  const key = window.prompt("Enter the Team Upload Key:");
+  if (!key) throw new Error("Upload key is required.");
+
+  const form = new FormData();
+  form.append("playerId", playerId);
+  form.append("file", blob, filename);
+
+  const res = await fetch("/api/voice-upload", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}` },
+    body: form,
+  });
+
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(txt || `Upload failed (${res.status})`);
+  }
+  return res.json();
+}
+
 export default function ParentRecord() {
   const { playerId } = useParams();
+  const [uploading, setUploading] = useState(false);
+const [uploadedKey, setUploadedKey] = useState("");
   const player = useMemo(
     () => roster.find((p) => p.id === playerId),
     [playerId]
@@ -157,6 +182,37 @@ export default function ParentRecord() {
             ⬇️ Download
           </button>
         )}
+		{audioBlob && (
+  <button
+    disabled={uploading}
+    onClick={async () => {
+      try {
+        setError("");
+        setUploading(true);
+        setUploadedKey("");
+
+        const ext = extForMime(mimeType || audioBlob.type);
+        const filename = `${player.number}_${player.first}_${player.last}_voice.${ext}`.replaceAll(" ", "_");
+
+        const result = await uploadVoice({
+          playerId: player.id,
+          blob: audioBlob,
+          filename,
+        });
+
+        setUploadedKey(result.key || "");
+      } catch (e) {
+        setError(e?.message || String(e));
+      } finally {
+        setUploading(false);
+      }
+    }}
+    style={{ padding: "12px 16px", borderRadius: 12, fontWeight: 700 }}
+  >
+    {uploading ? "⏫ Uploading..." : "✅ Submit to Coach"}
+  </button>
+)}
+
       </div>
 
       {audioUrl && (
@@ -165,6 +221,14 @@ export default function ParentRecord() {
           <audio controls src={audioUrl} style={{ width: "100%" }} />
         </div>
       )}
+{uploadedKey && (
+  <div style={{ marginTop: 14, padding: 12, border: "1px solid #cfe9cf", borderRadius: 12 }}>
+    <strong>Submitted!</strong>
+    <div style={{ fontSize: 12, opacity: 0.8, marginTop: 6 }}>
+      Your coach/admin can download it from the Admin Inbox.
+    </div>
+  </div>
+)}
 
       {error && (
         <div style={{ marginTop: 14, color: "crimson" }}>
