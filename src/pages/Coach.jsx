@@ -1,6 +1,6 @@
-// src/pages/coach.jsx
+// src/pages/Coach.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { roster } from "../data/roster";
+import { roster as defaultRoster } from "../data/roster";
 
 function getSavedCoachKey() {
   return sessionStorage.getItem("COACH_KEY") || "";
@@ -19,11 +19,42 @@ function formatTimestamp(ts) {
   return d.toLocaleString();
 }
 
+async function safeJson(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
+
+function normalizeRoster(data) {
+  // Accept either an array of players, or { roster: [...] }
+  const arr = Array.isArray(data) ? data : Array.isArray(data?.roster) ? data.roster : null;
+  if (!arr) return null;
+
+  // Minimal normalization / filtering
+  const cleaned = arr
+    .map((p) => ({
+      id: String(p?.id || "").trim(),
+      number: p?.number ?? "",
+      first: p?.first ?? "",
+      last: p?.last ?? "",
+    }))
+    .filter((p) => p.id);
+
+  return cleaned.length ? cleaned : [];
+}
+
 export default function Coach() {
   const [loginKey, setLoginKey] = useState("");
   const [coachKey, setCoachKey] = useState(getSavedCoachKey());
   const [isAuthed, setIsAuthed] = useState(false);
 
+  // Roster source (defaults to compiled roster.js; can optionally be overridden by /roster.json)
+  const [rosterList, setRosterList] = useState(defaultRoster);
+
+  // Coach state (persisted in D1 via /api/coach/state)
   const [lineupIds, setLineupIds] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [updatedAt, setUpdatedAt] = useState("");
@@ -33,11 +64,15 @@ export default function Coach() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Add/search UI
+  const [search, setSearch] = useState("");
+
+  // Audio
   const audioRef = useRef(null);
   const [playingPlayerId, setPlayingPlayerId] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const rosterById = useMemo(() => new Map(roster.map((p) => [p.id, p])), []);
+  const rosterById = useMemo(() => new Map(rosterList.map((p) => [p.id, p])), [rosterList]);
 
   const lineupDisplay = useMemo(() => {
     return lineupIds.map((id) => {
@@ -79,7 +114,7 @@ export default function Coach() {
     setErr("");
     try {
       const res = await fetch("/api/coach/state", {
-        headers: { Authorization: `Bearer ${key}` }
+        headers: { Authorization: `Bearer ${key}` },
       });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
@@ -108,16 +143,15 @@ export default function Coach() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${key}`
+          Authorization: `Bearer ${key}`,
         },
         body: JSON.stringify({
           lineupIds: nextLineupIds,
           currentIndex: nextCurrentIndex,
-          clientVersion: version
-        })
+          clientVersion: version,
+        }),
       });
 
-      // Optimistic lock conflict
       if (res.status === 409) {
         const json = await res.json();
         if (json?.server) {
@@ -148,7 +182,7 @@ export default function Coach() {
     setLoading(true);
     try {
       const res = await fetch("/api/coach/state", {
-        headers: { Authorization: `Bearer ${key}` }
+        headers: { Authorization: `Bearer ${key}` },
       });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
@@ -180,7 +214,7 @@ export default function Coach() {
 
     try {
       const res = await fetch(`/api/coach/final-file?playerId=${encodeURIComponent(playerId)}`, {
-        headers: { Authorization: `Bearer ${coachKey}` }
+        headers: { Authorization: `Bearer ${coachKey}` },
       });
 
       if (res.status === 404) throw new Error(`No final clip uploaded for ${playerId} yet.`);
@@ -211,6 +245,7 @@ export default function Coach() {
     if (lineupIds.length === 0) return;
     const clamped = Math.max(0, Math.min(index, lineupIds.length - 1));
     setCurrentIndex(clamped);
+    // Persist current index (and lineup) so multiple coaches stay in sync
     await saveState(coachKey, lineupIds, clamped);
     if (shouldPlay) await playForPlayerId(lineupIds[clamped]);
   }
@@ -224,6 +259,91 @@ export default function Coach() {
     return copy;
   }
 
+  function addToLineup(playerId) {
+    if (!playerId) return;
+    if (lineupIds.includes(playerId)) return;
+    setLineupIds((prev) => [...prev, playerId]);
+  }
+
+  function removeFromLineup(indexToRemove) {
+    setLineupIds((prev) => {
+      if (indexToRemove < 0 || indexToRemove >= prev.length) return prev;
+      const copy = [...prev];
+      copy.splice(indexToRemove, 1);
+
+      // Adjust currentIndex so it remains valid/consistent
+      setCurrentIndex((ci) => {
+        if (copy.length === 0) return 0;
+        if (indexToRemove < ci) return Math.max(0, ci - 1);
+        if (indexToRemove === ci) return Math.min(ci, copy.length - 1);
+        return Math.min(ci, copy.length - 1);
+      });
+
+      return copy;
+    });
+  }
+
+  async function loadLineupFromFile() {
+    setErr("");
+    try {
+      const res = await fetch("/lineup.json", { cache: "no-store" });
+      if (!res.ok) throw new Error(`Could not load /lineup.json (HTTP ${res.status})`);
+      const data = await res.json();
+
+      let ids = [];
+      let idx = 0;
+
+      if (Array.isArray(data)) {
+        ids = data;
+      } else if (Array.isArray(data?.lineupIds)) {
+        ids = data.lineupIds;
+        idx = Number.isFinite(data.currentIndex) ? data.currentIndex : 0;
+      } else {
+        throw new Error("Invalid lineup.json format. Use an array of ids OR { lineupIds: [...], currentIndex: 0 }");
+      }
+
+      ids = ids.map((x) => String(x)).filter(Boolean);
+
+      setLineupIds(ids);
+      setCurrentIndex(Math.max(0, Math.min(idx, Math.max(0, ids.length - 1))));
+    } catch (e) {
+      setErr(e?.message || String(e));
+    }
+  }
+
+  function downloadCurrentLineupFile() {
+    const payload = {
+      lineupIds,
+      currentIndex,
+      note: "Edit lineupIds and currentIndex, then save as public/lineup.json and push to Cloudflare Pages.",
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "lineup.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  async function tryLoadRosterFromFile() {
+    // Optional: if you create public/roster.json, we’ll use it automatically.
+    try {
+      const res = await fetch("/roster.json", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      const normalized = normalizeRoster(data);
+      if (normalized) setRosterList(normalized);
+    } catch {
+      // ignore; fallback stays as defaultRoster
+    }
+  }
+
   useEffect(() => {
     const saved = getSavedCoachKey();
     if (saved) tryLogin(saved);
@@ -232,10 +352,45 @@ export default function Coach() {
 
   useEffect(() => {
     if (!isAuthed || !coachKey) return;
+    tryLoadRosterFromFile();
     const id = setInterval(() => fetchState(coachKey, true), 10000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthed, coachKey]);
+
+  // Derived: available players list (not currently in lineup)
+  const availablePlayers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const inLineup = new Set(lineupIds);
+
+    const list = rosterList
+      .filter((p) => !inLineup.has(p.id))
+      .filter((p) => {
+        if (!q) return true;
+        const name = `${p.first || ""} ${p.last || ""}`.toLowerCase();
+        const num = String(p.number || "").toLowerCase();
+        const id = String(p.id || "").toLowerCase();
+        return name.includes(q) || num.includes(q) || id.includes(q);
+      });
+
+    // Sort: numeric-ish number first, then last, first
+    list.sort((a, b) => {
+      const an = parseInt(a.number, 10);
+      const bn = parseInt(b.number, 10);
+      const aHas = Number.isFinite(an);
+      const bHas = Number.isFinite(bn);
+      if (aHas && bHas && an !== bn) return an - bn;
+      if (aHas !== bHas) return aHas ? -1 : 1;
+      const al = String(a.last || "");
+      const bl = String(b.last || "");
+      if (al !== bl) return al.localeCompare(bl);
+      const af = String(a.first || "");
+      const bf = String(b.first || "");
+      return af.localeCompare(bf);
+    });
+
+    return list;
+  }, [rosterList, lineupIds, search]);
 
   if (!isAuthed) {
     return (
@@ -275,10 +430,11 @@ export default function Coach() {
   const lastSavedDisplay = updatedAt ? formatTimestamp(updatedAt) : "";
 
   return (
-    <div style={{ padding: 18, maxWidth: 980, margin: "0 auto" }}>
+    <div style={{ padding: 18, maxWidth: 1100, margin: "0 auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>Coach</h1>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
           <div style={{ fontSize: 12, opacity: 0.75 }}>
             {lastSavedDisplay ? (
               <>
@@ -288,6 +444,7 @@ export default function Coach() {
               ""
             )}
           </div>
+
           <button
             onClick={() => fetchState(coachKey)}
             disabled={loading || saving}
@@ -295,6 +452,7 @@ export default function Coach() {
           >
             Refresh
           </button>
+
           <button
             onClick={() => {
               stopAudio();
@@ -317,12 +475,31 @@ export default function Coach() {
         </div>
       )}
 
+      {/* LINEUP FILE TOOLS */}
+      <div style={{ marginTop: 14, border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontWeight: 1000 }}>Lineup file</div>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>
+              Optional: load a starting lineup from <code>/public/lineup.json</code>.
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button onClick={loadLineupFromFile} style={{ padding: "10px 14px", borderRadius: 10, fontWeight: 900 }}>
+              Load from lineup.json
+            </button>
+            <button onClick={downloadCurrentLineupFile} style={{ padding: "10px 14px", borderRadius: 10, fontWeight: 900 }}>
+              Download current lineup.json
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* GAME MODE */}
       <div style={{ marginTop: 14, border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
         <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>LAST UP</div>
-        <div style={{ fontSize: 18, opacity: lastP ? 1 : 0.4, marginBottom: 10 }}>
-          {lastP ? formatPlayer(lastP) : "—"}
-        </div>
+        <div style={{ fontSize: 18, opacity: lastP ? 1 : 0.4, marginBottom: 10 }}>{lastP ? formatPlayer(lastP) : "—"}</div>
 
         <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>NOW BATTING</div>
         <div
@@ -332,7 +509,7 @@ export default function Coach() {
             padding: 14,
             borderRadius: 16,
             border: "3px solid #111",
-            background: "#d6d6d6"
+            background: "#d6d6d6",
           }}
         >
           <div style={{ fontSize: 44, fontWeight: 1100, lineHeight: 1.05, color: "#111" }}>
@@ -351,9 +528,11 @@ export default function Coach() {
           >
             ▶️ Play Now
           </button>
+
           <button onClick={stopAudio} style={{ padding: "12px 16px", borderRadius: 12, fontWeight: 1000 }}>
             ⏸ Pause/Stop
           </button>
+
           <button
             onClick={() => setCurrentAndMaybePlay(currentIndex + 1, true)}
             disabled={currentIndex >= lineupIds.length - 1}
@@ -368,11 +547,72 @@ export default function Coach() {
         </div>
       </div>
 
+      {/* BUILD LINEUP: ADD PLAYERS */}
+      <div style={{ marginTop: 14, border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <h2 style={{ margin: 0 }}>Build lineup (add players who showed up)</h2>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search roster…"
+              style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #ddd", minWidth: 220 }}
+            />
+
+            <button
+              onClick={() => {
+                setLineupIds([]);
+                setCurrentIndex(0);
+              }}
+              style={{ padding: "10px 14px", borderRadius: 10, fontWeight: 900 }}
+            >
+              Clear lineup
+            </button>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+          {availablePlayers.length === 0 ? (
+            <div style={{ opacity: 0.75 }}>No available players (or all are already in the lineup).</div>
+          ) : (
+            availablePlayers.map((p) => (
+              <div
+                key={p.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: 10,
+                  borderRadius: 12,
+                  border: "1px solid #eee",
+                }}
+              >
+                <div style={{ width: 70, fontWeight: 900, textAlign: "right" }}>{p.number ? `#${p.number}` : ""}</div>
+                <div style={{ flex: 1, fontWeight: 900 }}>{`${p.first || ""} ${p.last || ""}`.trim() || p.id}</div>
+                <div style={{ fontSize: 12, opacity: 0.65 }}>{p.id}</div>
+                <button
+                  onClick={() => addToLineup(p.id)}
+                  style={{ padding: "10px 12px", borderRadius: 12, fontWeight: 900 }}
+                >
+                  Add →
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+          Tip: Create today’s lineup by adding only the players who are present, then reorder below and click “Save lineup”.
+        </div>
+      </div>
+
       {/* LINEUP EDITOR */}
       <div style={{ marginTop: 14, border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <h2 style={{ margin: 0 }}>Lineup</h2>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             {lastSavedDisplay ? (
               <div style={{ fontSize: 12, opacity: 0.8 }}>
                 Last saved: <strong>{lastSavedDisplay}</strong>
@@ -391,7 +631,7 @@ export default function Coach() {
 
         <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
           {lineupDisplay.length === 0 ? (
-            <div style={{ opacity: 0.75 }}>No lineup set yet. (If another coach set it, tap Refresh.)</div>
+            <div style={{ opacity: 0.75 }}>Lineup is empty. Add players above.</div>
           ) : (
             lineupDisplay.map((p, idx) => {
               const isCurrent = idx === currentIndex;
@@ -402,11 +642,12 @@ export default function Coach() {
                     alignItems: "center",
                     gap: 10,
                     padding: 10,
+                    paddingLeft: 18,
                     borderRadius: 12,
                     border: "2px solid #111",
                     background: "#2f2f2f",
                     color: "#fff",
-                    position: "relative"
+                    position: "relative",
                   }
                 : {
                     display: "flex",
@@ -416,7 +657,7 @@ export default function Coach() {
                     borderRadius: 12,
                     border: "1px solid #eee",
                     background: "transparent",
-                    color: "inherit"
+                    color: "inherit",
                   };
 
               const leftBarStyle = isCurrent
@@ -428,7 +669,7 @@ export default function Coach() {
                     width: 8,
                     borderTopLeftRadius: 12,
                     borderBottomLeftRadius: 12,
-                    background: "#111"
+                    background: "#111",
                   }
                 : null;
 
@@ -440,7 +681,7 @@ export default function Coach() {
                     borderRadius: 999,
                     border: "1px solid rgba(255,255,255,0.22)",
                     background: "rgba(255,255,255,0.10)",
-                    letterSpacing: 0.4
+                    letterSpacing: 0.4,
                   }
                 : null;
 
@@ -453,14 +694,14 @@ export default function Coach() {
                     fontWeight: 1000,
                     color: "inherit",
                     background: "rgba(255,255,255,0.10)",
-                    border: "1px solid rgba(255,255,255,0.20)"
+                    border: "1px solid rgba(255,255,255,0.20)",
                   }
                 : {
                     flex: 1,
                     textAlign: "left",
                     padding: "10px 12px",
                     borderRadius: 12,
-                    fontWeight: 1000
+                    fontWeight: 1000,
                   };
 
               const smallButtonStyle = isCurrent
@@ -469,7 +710,7 @@ export default function Coach() {
                     borderRadius: 12,
                     color: "inherit",
                     background: "rgba(255,255,255,0.08)",
-                    border: "1px solid rgba(255,255,255,0.18)"
+                    border: "1px solid rgba(255,255,255,0.18)",
                   }
                 : { padding: "10px 12px", borderRadius: 12 };
 
@@ -477,16 +718,14 @@ export default function Coach() {
                 <div key={`${p.id}-${idx}`} style={rowStyle}>
                   {leftBarStyle ? <div style={leftBarStyle} /> : null}
 
-                  <div style={{ width: 36, textAlign: "right", fontWeight: 900 }}>
-                    {idx + 1}.
-                  </div>
+                  <div style={{ width: 36, textAlign: "right", fontWeight: 900 }}>{idx + 1}.</div>
 
                   {isCurrent ? <div style={badgeStyle}>CURRENT</div> : null}
 
                   <button
                     onClick={() => setCurrentAndMaybePlay(idx, true)}
                     style={primaryButtonStyle}
-                    title={p._missing ? `Not found in roster.js. ID: ${p.id}` : p.id}
+                    title={p._missing ? `Not found in roster. ID: ${p.id}` : p.id}
                   >
                     {formatPlayer(p)} {p._missing ? " (ID only)" : ""}
                   </button>
@@ -506,11 +745,12 @@ export default function Coach() {
                     ↓
                   </button>
 
-                  <button
-                    onClick={() => setCurrentAndMaybePlay(idx, false)}
-                    style={smallButtonStyle}
-                  >
+                  <button onClick={() => setCurrentAndMaybePlay(idx, false)} style={smallButtonStyle}>
                     Set current
+                  </button>
+
+                  <button onClick={() => removeFromLineup(idx)} style={smallButtonStyle}>
+                    Remove
                   </button>
                 </div>
               );
