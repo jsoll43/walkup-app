@@ -4,11 +4,9 @@ import { roster } from "../data/roster";
 function getSavedAdminKey() {
   return sessionStorage.getItem("ADMIN_KEY") || "";
 }
-
 function saveAdminKey(k) {
   sessionStorage.setItem("ADMIN_KEY", k);
 }
-
 function clearAdminKey() {
   sessionStorage.removeItem("ADMIN_KEY");
 }
@@ -74,7 +72,6 @@ export default function Admin() {
       const msg = e?.message || String(e);
       setErr(msg);
       setVoiceObjects([]);
-      // If unauthorized, force re-login
       if (msg.toLowerCase().includes("unauthorized")) setIsAuthed(false);
     } finally {
       setLoadingInbox(false);
@@ -110,22 +107,18 @@ export default function Admin() {
     setLoadingFinalStatus(true);
     setLoadingInbox(true);
     try {
-      // "final-status" is a cheap auth check + useful data
       const res = await fetch("/api/admin/final-status", {
         headers: { Authorization: `Bearer ${key}` },
       });
       if (!res.ok) throw new Error(await res.text());
-
       const json = await res.json();
       setFinalRows(json.rows || []);
 
-      // logged in
       setIsAuthed(true);
       setAdminKey(key);
       saveAdminKey(key);
       setLoginKey("");
 
-      // load the rest
       await fetchVoiceInbox(key);
     } catch (e) {
       setIsAuthed(false);
@@ -180,6 +173,31 @@ export default function Admin() {
     }
   }
 
+  async function deleteVoice(key, objectKey) {
+    setErr("");
+    if (!objectKey) return;
+
+    const ok = confirm(`Delete this recording?\n\n${objectKey}\n\nThis cannot be undone.`);
+    if (!ok) return;
+
+    try {
+      // If previewing the same file, close preview first
+      if (previewKey === objectKey) clearPreview();
+
+      const res = await fetch(`/api/admin/voice-delete?key=${encodeURIComponent(objectKey)}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      if (!res.ok) throw new Error(await res.text());
+
+      await fetchVoiceInbox(key);
+    } catch (e) {
+      const msg = e?.message || String(e);
+      setErr(msg);
+      if (msg.toLowerCase().includes("unauthorized")) setIsAuthed(false);
+    }
+  }
+
   async function uploadFinalClip(key) {
     setErr("");
     if (!selectedPlayerId) return setErr("Select a player first.");
@@ -199,10 +217,7 @@ export default function Admin() {
 
       if (!res.ok) throw new Error(await res.text());
 
-      // Refresh status after upload
       await fetchFinalStatus(key);
-
-      // clear file picker state
       setFinalFile(null);
       alert("Final clip uploaded!");
     } catch (e) {
@@ -214,31 +229,21 @@ export default function Admin() {
     }
   }
 
-  // Auto-login if a key exists in sessionStorage
   useEffect(() => {
     const saved = getSavedAdminKey();
-    if (saved) {
-      tryLogin(saved);
-    }
+    if (saved) tryLogin(saved);
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // If auth gets flipped off (e.g., key rotated), clear saved key
   useEffect(() => {
-    if (!isAuthed) {
-      // Don't spam-clearing while user is typing a key before logging in
-      // Only clear if we previously had an adminKey saved.
-      if (adminKey) clearAdminKey();
-    }
+    if (!isAuthed && adminKey) clearAdminKey();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthed]);
 
-  // -------------------------
-  // LOGIN VIEW
-  // -------------------------
+  // ---------------- LOGIN ----------------
   if (!isAuthed) {
     return (
       <div style={{ padding: 24, maxWidth: 520, margin: "0 auto" }}>
@@ -276,17 +281,11 @@ export default function Admin() {
             <strong>Error:</strong> {err}
           </div>
         )}
-
-        <div style={{ marginTop: 14, fontSize: 12, opacity: 0.7 }}>
-          Tip: Once you log in, you won’t see the key field again until you log out.
-        </div>
       </div>
     );
   }
 
-  // -------------------------
-  // DASHBOARD VIEW
-  // -------------------------
+  // ---------------- DASHBOARD ----------------
   return (
     <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
@@ -316,7 +315,6 @@ export default function Admin() {
 
       <hr style={{ margin: "18px 0" }} />
 
-      {/* Upload Final Clip */}
       <h2 style={{ margin: "0 0 10px 0" }}>Upload Final Clip</h2>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <select
@@ -347,13 +345,8 @@ export default function Admin() {
         </button>
       </div>
 
-      <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
-        Upload the merged “final” walk-up clip to R2 and store it in the DB so coaches can play it.
-      </div>
-
       <hr style={{ margin: "18px 0" }} />
 
-      {/* Final clip status */}
       <h2 style={{ margin: "0 0 10px 0" }}>Final Clip Status</h2>
       {loadingFinalStatus ? (
         <p>Loading final status…</p>
@@ -384,10 +377,7 @@ export default function Admin() {
                     {ready ? `Ready • ${row.uploaded_at}` : "Missing"}
                   </div>
                 </div>
-
-                <div style={{ fontWeight: 900 }}>
-                  {ready ? "✅ READY" : "⏳ MISSING"}
-                </div>
+                <div style={{ fontWeight: 900 }}>{ready ? "✅ READY" : "⏳ MISSING"}</div>
               </div>
             );
           })}
@@ -396,9 +386,7 @@ export default function Admin() {
 
       <hr style={{ margin: "18px 0" }} />
 
-      {/* Voice Inbox */}
       <h2 style={{ margin: "0 0 10px 0" }}>Voice Inbox (Parent recordings)</h2>
-
       {loadingInbox ? <p>Loading inbox…</p> : null}
 
       {previewUrl && (
@@ -468,9 +456,19 @@ export default function Admin() {
                         >
                           Download
                         </button>
+                        <button
+                          onClick={() => deleteVoice(adminKey, o.key)}
+                          style={{ padding: "8px 10px", borderRadius: 10, fontWeight: 900 }}
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
                   ))}
+                </div>
+
+                <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
+                  Tip: Download → merge → upload Final → then Delete here to mark it handled.
                 </div>
               </div>
             );

@@ -8,10 +8,9 @@ export async function onRequestGet(context) {
       return new Response("Unauthorized", { status: 401 });
     }
 
-    // List objects in the bucket
     const listed = await env.WALKUP_VOICE.list({ limit: 1000 });
 
-    // Only show parent voice uploads (exclude final merged clips)
+    // Only show parent uploads (exclude finals)
     const objects = (listed.objects || [])
       .filter((o) => o && o.key && !o.key.startsWith("final/"))
       .map((o) => ({
