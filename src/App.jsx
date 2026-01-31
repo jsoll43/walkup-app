@@ -1,9 +1,7 @@
 import { BrowserRouter, Routes, Route, Link, Navigate } from "react-router-dom";
 
 import ParentHome from "./pages/ParentHome";
-import ParentRecord from "./pages/ParentRecord";
 import ParentLogin from "./pages/ParentLogin";
-
 import Coach from "./pages/Coach";
 import Admin from "./pages/Admin";
 
@@ -17,19 +15,18 @@ export default function App() {
       </div>
 
       <Routes>
-        {/* Default: send / to /parent */}
+        {/* Default route */}
         <Route path="/" element={<Navigate to="/parent" replace />} />
 
-        {/* Parent privacy gate */}
+        {/* Parent (no roster; single submission page) */}
         <Route path="/parent-login" element={<ParentLogin />} />
         <Route path="/parent" element={<ParentHome />} />
-        <Route path="/parent/:playerId" element={<ParentRecord />} />
 
         {/* Coach/Admin */}
         <Route path="/coach" element={<Coach />} />
         <Route path="/admin" element={<Admin />} />
 
-        {/* Fallback */}
+        {/* Catch-all */}
         <Route path="*" element={<Navigate to="/parent" replace />} />
       </Routes>
     </BrowserRouter>
