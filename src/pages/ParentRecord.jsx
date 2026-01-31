@@ -1,244 +1,232 @@
 import { useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { roster } from "../data/roster";
 
-function pickMimeType() {
-  const candidates = [
-    "audio/webm;codecs=opus",
-    "audio/webm",
-    "audio/mp4",
-    "audio/aac",
-    "audio/ogg;codecs=opus",
-    "audio/ogg",
-  ];
-  for (const t of candidates) {
-    if (window.MediaRecorder && MediaRecorder.isTypeSupported?.(t)) return t;
-  }
-  return ""; // let browser choose
-}
-
-function extForMime(mime) {
-  if (!mime) return "webm";
-  if (mime.includes("mp4")) return "m4a";
-  if (mime.includes("aac")) return "aac";
-  if (mime.includes("ogg")) return "ogg";
-  return "webm";
-}
-
-async function uploadVoice({ playerId, blob, filename }) {
-  // For now we prompt for the shared parent key.
-  // Later we’ll remove this and use kid-specific QR tokens so parents never type anything.
-  const key = window.prompt("Enter the Team Upload Key:");
-  if (!key) throw new Error("Upload key is required.");
-
-  const form = new FormData();
-  form.append("playerId", playerId);
-  form.append("file", blob, filename);
-
-  const res = await fetch("/api/voice-upload", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}` },
-    body: form,
-  });
-
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(txt || `Upload failed (${res.status})`);
-  }
-  return res.json();
-}
-
 export default function ParentRecord() {
+  const nav = useNavigate();
   const { playerId } = useParams();
-  const [uploading, setUploading] = useState(false);
-const [uploadedKey, setUploadedKey] = useState("");
-  const player = useMemo(
-    () => roster.find((p) => p.id === playerId),
-    [playerId]
-  );
 
-  const [status, setStatus] = useState("idle"); // idle | recording | recorded | error
-  const [error, setError] = useState("");
-  const [audioUrl, setAudioUrl] = useState("");
-  const [audioBlob, setAudioBlob] = useState(null);
-  const [mimeType, setMimeType] = useState("");
+  const player = useMemo(() => roster.find((p) => p.id === playerId), [playerId]);
+
+  const [status, setStatus] = useState("idle"); // idle | recording | recorded | uploading | submitted
+  const [err, setErr] = useState("");
+
+  const [blob, setBlob] = useState(null);
+  const [blobUrl, setBlobUrl] = useState("");
 
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
+  const streamRef = useRef(null);
 
-  if (!player) {
-    return (
-      <div style={{ padding: 24 }}>
-        <p>Player not found.</p>
-        <Link to="/">Back</Link>
-      </div>
-    );
+  const promptText = useMemo(() => {
+    if (!player) return "";
+    return `Now batting, number ${player.number}, ${player.first} ${player.last}.`;
+  }, [player]);
+
+  function cleanupBlobUrl() {
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
+    setBlobUrl("");
   }
 
-  const script = `Now batting, number ${player.number}, ${player.first} ${player.last}.`;
-
   async function startRecording() {
-    setError("");
-    setStatus("idle");
-    setAudioUrl("");
-    setAudioBlob(null);
-    chunksRef.current = [];
+    setErr("");
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const chosen = pickMimeType();
-      setMimeType(chosen);
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("Recording not supported in this browser.");
+      }
 
-      const mr = new MediaRecorder(stream, chosen ? { mimeType: chosen } : undefined);
+      cleanupBlobUrl();
+      setBlob(null);
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      const mr = new MediaRecorder(stream);
       mediaRecorderRef.current = mr;
+      chunksRef.current = [];
 
       mr.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
       };
 
       mr.onstop = () => {
-        // stop mic tracks
-        stream.getTracks().forEach((t) => t.stop());
-
-        const blob = new Blob(chunksRef.current, { type: chosen || "audio/webm" });
-        const url = URL.createObjectURL(blob);
-
-        setAudioBlob(blob);
-        setAudioUrl(url);
+        const b = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+        setBlob(b);
+        const url = URL.createObjectURL(b);
+        setBlobUrl(url);
         setStatus("recorded");
+
+        // stop tracks
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
+        }
       };
 
       mr.start();
       setStatus("recording");
     } catch (e) {
-      setStatus("error");
-      setError(
-        e?.name === "NotAllowedError"
-          ? "Microphone permission denied. Please allow mic access and try again."
-          : `Could not start recording: ${e?.message || e}`
-      );
+      setStatus("idle");
+      setErr(e?.message || String(e));
     }
   }
 
   function stopRecording() {
     try {
-      mediaRecorderRef.current?.stop();
-      setStatus("idle");
+      const mr = mediaRecorderRef.current;
+      if (mr && mr.state !== "inactive") mr.stop();
     } catch (e) {
-      setStatus("error");
-      setError(`Could not stop recording: ${e?.message || e}`);
+      setErr(e?.message || String(e));
+    } finally {
+      setStatus("idle");
     }
   }
 
-  function downloadRecording() {
-    if (!audioBlob) return;
-    const ext = extForMime(mimeType || audioBlob.type);
-    const filename = `${player.number}_${player.first}_${player.last}_voice.${ext}`.replaceAll(" ", "_");
+  async function submit() {
+    setErr("");
+    if (!player) return setErr("Unknown player.");
+    if (!blob) return setErr("Record something first.");
 
-    const a = document.createElement("a");
-    a.href = audioUrl;
-    a.download = filename;
-    a.click();
+    try {
+      setStatus("uploading");
+
+      const form = new FormData();
+      form.append("playerId", player.id);
+      form.append("file", blob, `${player.id}_voice.webm`);
+
+      const res = await fetch("/api/voice-upload", {
+        method: "POST",
+        body: form,
+      });
+
+      if (!res.ok) throw new Error(await res.text());
+
+      // LOCK the screen after success
+      cleanupBlobUrl();
+      setBlob(null);
+      setStatus("submitted");
+    } catch (e) {
+      setStatus("recorded");
+      setErr(e?.message || String(e));
+    }
   }
 
-  return (
-    <div style={{ padding: 24, maxWidth: 720, margin: "0 auto" }}>
-      <Link to="/" style={{ textDecoration: "none" }}>← Back to roster</Link>
+  // ---------- Submitted Screen ----------
+  if (status === "submitted") {
+    return (
+      <div style={{ padding: 24, maxWidth: 820, margin: "0 auto" }}>
+        <h1 style={{ marginTop: 0 }}>✅ Successfully submitted</h1>
+        <div style={{ fontSize: 18, marginTop: 10 }}>
+          Your recording has been submitted to the coaching staff.
+        </div>
+        <div style={{ marginTop: 14, opacity: 0.75 }}>
+          You’re all set — no further action is needed.
+        </div>
 
-      <h1 style={{ marginBottom: 6, marginTop: 12 }}>
+        <div style={{ marginTop: 18 }}>
+          <button
+            onClick={() => nav("/parent")}
+            style={{ padding: "12px 14px", borderRadius: 12, fontWeight: 900 }}
+          >
+            Back to roster
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!player) {
+    return (
+      <div style={{ padding: 24, maxWidth: 820, margin: "0 auto" }}>
+        <h1 style={{ marginTop: 0 }}>Player not found</h1>
+        <button onClick={() => nav("/parent")} style={{ padding: "10px 12px", borderRadius: 12 }}>
+          Back to roster
+        </button>
+      </div>
+    );
+  }
+
+  const canRecord = status === "idle" || status === "recorded";
+  const isRecording = status === "recording";
+  const canSubmit = status === "recorded";
+
+  return (
+    <div style={{ padding: 24, maxWidth: 820, margin: "0 auto" }}>
+      <button onClick={() => nav("/parent")} style={{ marginBottom: 12 }}>
+        ← Back to roster
+      </button>
+
+      <h1 style={{ marginTop: 0 }}>
         Record for: #{player.number} {player.first} {player.last}
       </h1>
 
-      <div style={{ padding: 14, border: "1px solid #ddd", borderRadius: 12, marginTop: 14 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Please say this</div>
-        <div style={{ fontSize: 18, lineHeight: 1.4 }}>{script}</div>
+      <div
+        style={{
+          border: "1px solid #ddd",
+          borderRadius: 14,
+          padding: 14,
+          marginTop: 12,
+          background: "#fafafa",
+        }}
+      >
+        <div style={{ fontWeight: 900, marginBottom: 6 }}>Please say this</div>
+        <div style={{ fontSize: 18 }}>{promptText}</div>
         <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
           Tip: Tap Record, hold the phone close, and speak clearly.
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center" }}>
-        {status !== "recording" ? (
+      {err && (
+        <div style={{ marginTop: 12, color: "crimson" }}>
+          <strong>Error:</strong> {err}
+        </div>
+      )}
+
+      <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        {!isRecording ? (
           <button
+            disabled={!canRecord}
             onClick={startRecording}
-            style={{ padding: "12px 16px", borderRadius: 12, fontWeight: 700 }}
+            style={{ padding: "12px 14px", borderRadius: 12, fontWeight: 900 }}
           >
             🎙️ Record
           </button>
         ) : (
           <button
             onClick={stopRecording}
-            style={{ padding: "12px 16px", borderRadius: 12, fontWeight: 700 }}
+            style={{ padding: "12px 14px", borderRadius: 12, fontWeight: 900 }}
           >
-            ⏹️ Stop
+            ⏹ Stop
           </button>
         )}
 
-        {audioUrl && (
+        {canSubmit ? (
           <button
-            onClick={downloadRecording}
-            style={{ padding: "12px 16px", borderRadius: 12, fontWeight: 700 }}
+            onClick={submit}
+            style={{ padding: "12px 14px", borderRadius: 12, fontWeight: 900 }}
           >
-            ⬇️ Download
+            Submit to coaching staff
+          </button>
+        ) : (
+          <button disabled style={{ padding: "12px 14px", borderRadius: 12, opacity: 0.6 }}>
+            Submit to coaching staff
           </button>
         )}
-		{audioBlob && (
-  <button
-    disabled={uploading}
-    onClick={async () => {
-      try {
-        setError("");
-        setUploading(true);
-        setUploadedKey("");
-
-        const ext = extForMime(mimeType || audioBlob.type);
-        const filename = `${player.number}_${player.first}_${player.last}_voice.${ext}`.replaceAll(" ", "_");
-
-        const result = await uploadVoice({
-          playerId: player.id,
-          blob: audioBlob,
-          filename,
-        });
-
-        setUploadedKey(result.key || "");
-      } catch (e) {
-        setError(e?.message || String(e));
-      } finally {
-        setUploading(false);
-      }
-    }}
-    style={{ padding: "12px 16px", borderRadius: 12, fontWeight: 700 }}
-  >
-    {uploading ? "⏫ Uploading..." : "✅ Submit to Coach"}
-  </button>
-)}
-
       </div>
 
-      {audioUrl && (
-        <div style={{ marginTop: 14 }}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Preview</div>
-          <audio controls src={audioUrl} style={{ width: "100%" }} />
-        </div>
-      )}
-{uploadedKey && (
-  <div style={{ marginTop: 14, padding: 12, border: "1px solid #cfe9cf", borderRadius: 12 }}>
-    <strong>Submitted!</strong>
-    <div style={{ fontSize: 12, opacity: 0.8, marginTop: 6 }}>
-      Your coach/admin can download it from the Admin Inbox.
-    </div>
-  </div>
-)}
-
-      {error && (
-        <div style={{ marginTop: 14, color: "crimson" }}>
-          <strong>Error:</strong> {error}
+      {status === "uploading" && (
+        <div style={{ marginTop: 12, fontWeight: 900 }}>
+          Uploading… please keep this page open.
         </div>
       )}
 
-      <div style={{ marginTop: 18, fontSize: 12, opacity: 0.75 }}>
-        Note: “Submit to coach” comes next once we add storage + an Admin inbox.
-      </div>
+      {blobUrl && status === "recorded" && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>Preview</div>
+          <audio controls src={blobUrl} style={{ width: "100%" }} />
+        </div>
+      )}
     </div>
   );
 }
