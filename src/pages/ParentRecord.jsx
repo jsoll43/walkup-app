@@ -1,234 +1,237 @@
+// src/pages/ParentRecord.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { roster } from "../data/roster";
-import { clearParentKey, getParentKey, setParentKey } from "../auth/parentAuth";
 
-export default function ParentRecord() {
-  const nav = useNavigate();
-  const { playerId } = useParams();
+function floatTo16BitPCM(output, offset, input) {
+  for (let i = 0; i < input.length; i++) {
+    let s = Math.max(-1, Math.min(1, input[i]));
+    output.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    offset += 2;
+  }
+}
 
-  // Gate access
-  useEffect(() => {
-    const key = getParentKey();
-    if (!key) {
-      nav("/parent-login", { replace: true, state: { redirectTo: `/parent/${playerId}` } });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playerId]);
+function writeString(view, offset, string) {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
+}
 
-  const player = useMemo(() => roster.find((p) => p.id === playerId), [playerId]);
+function encodeWav({ samples, sampleRate, numChannels = 1 }) {
+  // 16-bit PCM WAV
+  const bytesPerSample = 2;
+  const blockAlign = numChannels * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + samples.length * bytesPerSample);
+  const view = new DataView(buffer);
 
-  const [status, setStatus] = useState("idle"); // idle | recording | recorded | uploading | submitted
+  writeString(view, 0, "RIFF");
+  view.setUint32(4, 36 + samples.length * bytesPerSample, true);
+  writeString(view, 8, "WAVE");
+
+  writeString(view, 12, "fmt ");
+  view.setUint32(16, 16, true); // PCM
+  view.setUint16(20, 1, true); // format = 1 (PCM)
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true); // bits per sample
+
+  writeString(view, 36, "data");
+  view.setUint32(40, samples.length * bytesPerSample, true);
+
+  floatTo16BitPCM(view, 44, samples);
+  return new Blob([view], { type: "audio/wav" });
+}
+
+function mergeFloat32(chunks) {
+  let totalLength = 0;
+  for (const c of chunks) totalLength += c.length;
+  const result = new Float32Array(totalLength);
+  let offset = 0;
+  for (const c of chunks) {
+    result.set(c, offset);
+    offset += c.length;
+  }
+  return result;
+}
+
+/**
+ * Props:
+ * - onBlob(blob): called when a recording is finalized
+ * - disabled: optional boolean
+ */
+export default function ParentRecord({ onBlob, disabled = false }) {
+  const [isRecording, setIsRecording] = useState(false);
+  const [hasRecording, setHasRecording] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState("");
   const [err, setErr] = useState("");
 
-  const [blob, setBlob] = useState(null);
-  const [blobUrl, setBlobUrl] = useState("");
-
-  const mediaRecorderRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const sourceRef = useRef(null);
+  const processorRef = useRef(null);
   const chunksRef = useRef([]);
-  const streamRef = useRef(null);
 
-  const promptText = useMemo(() => {
-    if (!player) return "";
-    return `Now batting, number ${player.number}, ${player.first} ${player.last}.`;
-  }, [player]);
+  const canStart = useMemo(() => !disabled && !isRecording, [disabled, isRecording]);
 
-  function cleanupBlobUrl() {
-    if (blobUrl) URL.revokeObjectURL(blobUrl);
-    setBlobUrl("");
+  useEffect(() => {
+    return () => {
+      try {
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+      } catch {}
+      cleanup();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function cleanup() {
+    try {
+      if (processorRef.current) {
+        processorRef.current.disconnect();
+        processorRef.current.onaudioprocess = null;
+      }
+    } catch {}
+    try {
+      if (sourceRef.current) sourceRef.current.disconnect();
+    } catch {}
+    try {
+      if (audioCtxRef.current) audioCtxRef.current.close();
+    } catch {}
+    try {
+      if (mediaStreamRef.current) {
+        for (const t of mediaStreamRef.current.getTracks()) t.stop();
+      }
+    } catch {}
+
+    processorRef.current = null;
+    sourceRef.current = null;
+    audioCtxRef.current = null;
+    mediaStreamRef.current = null;
   }
 
-  async function startRecording() {
+  async function start() {
     setErr("");
+    setHasRecording(false);
+    chunksRef.current = [];
+
     try {
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error("Recording not supported in this browser.");
-
-      cleanupBlobUrl();
-      setBlob(null);
-
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
+      mediaStreamRef.current = stream;
 
-      const mr = new MediaRecorder(stream);
-      mediaRecorderRef.current = mr;
-      chunksRef.current = [];
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
 
-      mr.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+      const source = ctx.createMediaStreamSource(stream);
+      sourceRef.current = source;
+
+      // ScriptProcessorNode is deprecated but still widely supported; works fine for this use.
+      const processor = ctx.createScriptProcessor(4096, 1, 1);
+      processorRef.current = processor;
+
+      processor.onaudioprocess = (e) => {
+        if (!isRecording) return;
+        const input = e.inputBuffer.getChannelData(0);
+        chunksRef.current.push(new Float32Array(input));
       };
 
-      mr.onstop = () => {
-        const b = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
-        setBlob(b);
-        setBlobUrl(URL.createObjectURL(b));
-        setStatus("recorded");
+      source.connect(processor);
+      processor.connect(ctx.destination);
 
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach((t) => t.stop());
-          streamRef.current = null;
-        }
-      };
-
-      mr.start();
-      setStatus("recording");
+      setIsRecording(true);
     } catch (e) {
-      setStatus("idle");
       setErr(e?.message || String(e));
+      cleanup();
+      setIsRecording(false);
     }
   }
 
-  function stopRecording() {
+  async function stop() {
+    setErr("");
     try {
-      const mr = mediaRecorderRef.current;
-      if (mr && mr.state !== "inactive") mr.stop();
+      setIsRecording(false);
+
+      const ctx = audioCtxRef.current;
+      const sampleRate = ctx?.sampleRate || 48000;
+
+      const merged = mergeFloat32(chunksRef.current);
+      const wavBlob = encodeWav({ samples: merged, sampleRate, numChannels: 1 });
+
+      if (previewUrl) {
+        try {
+          URL.revokeObjectURL(previewUrl);
+        } catch {}
+      }
+      const url = URL.createObjectURL(wavBlob);
+      setPreviewUrl(url);
+      setHasRecording(true);
+
+      if (typeof onBlob === "function") onBlob(wavBlob);
     } catch (e) {
       setErr(e?.message || String(e));
     } finally {
-      setStatus("idle");
+      cleanup();
     }
   }
 
-  function ensureParentKey() {
-    let key = getParentKey();
-    if (!key) {
-      key = prompt("Team Key:");
-      if (!key) return "";
-      setParentKey(key);
-    }
-    return key;
-  }
-
-  async function submit() {
+  function clear() {
     setErr("");
-    if (!player) return setErr("Unknown player.");
-    if (!blob) return setErr("Record something first.");
-
-    setStatus("uploading");
-
-    try {
-      const key = ensureParentKey();
-      if (!key) {
-        setStatus("recorded");
-        return;
-      }
-
-      const form = new FormData();
-      form.append("playerId", player.id);
-      form.append("file", blob, `${player.id}_voice.webm`);
-
-      const res = await fetch("/api/voice-upload", {
-        method: "POST",
-        headers: { Authorization: "Bearer " + key },
-        body: form,
-      });
-
-      if (res.status === 401) {
-        clearParentKey();
-        throw new Error("Unauthorized. The team key may have changed. Please go back and re-enter the key.");
-      }
-
-      if (!res.ok) throw new Error(await res.text());
-
-      cleanupBlobUrl();
-      setBlob(null);
-      setStatus("submitted");
-    } catch (e) {
-      setStatus("recorded");
-      setErr(e?.message || String(e));
+    setHasRecording(false);
+    if (previewUrl) {
+      try {
+        URL.revokeObjectURL(previewUrl);
+      } catch {}
     }
+    setPreviewUrl("");
+    chunksRef.current = [];
+    if (typeof onBlob === "function") onBlob(null);
   }
-
-  if (!getParentKey()) return null; // while redirecting
-
-  // Submitted lock screen
-  if (status === "submitted") {
-    return (
-      <div style={{ padding: 24, maxWidth: 820, margin: "0 auto" }}>
-        <h1 style={{ marginTop: 0 }}>✅ Successfully submitted</h1>
-        <div style={{ fontSize: 18, marginTop: 10 }}>
-          Your recording has been submitted to the coaching staff.
-        </div>
-        <div style={{ marginTop: 18 }}>
-          <button
-            onClick={() => nav("/parent")}
-            style={{ padding: "12px 14px", borderRadius: 12, fontWeight: 900 }}
-          >
-            Back to roster
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!player) {
-    return (
-      <div style={{ padding: 24, maxWidth: 820, margin: "0 auto" }}>
-        <h1 style={{ marginTop: 0 }}>Player not found</h1>
-        <button onClick={() => nav("/parent")} style={{ padding: "10px 12px", borderRadius: 12 }}>
-          Back to roster
-        </button>
-      </div>
-    );
-  }
-
-  const isRecording = status === "recording";
-  const canSubmit = status === "recorded";
 
   return (
-    <div style={{ padding: 24, maxWidth: 820, margin: "0 auto" }}>
-      <button onClick={() => nav("/parent")} style={{ marginBottom: 12 }}>
-        ← Back to roster
-      </button>
+    <div style={{ border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
+      <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>VOICE RECORDING (WAV)</div>
 
-      <h1 style={{ marginTop: 0 }}>
-        Record for: #{player.number} {player.first} {player.last}
-      </h1>
-
-      <div style={{ border: "1px solid #ddd", borderRadius: 14, padding: 14, marginTop: 12, background: "#fafafa" }}>
-        <div style={{ fontWeight: 900, marginBottom: 6 }}>
-          Please say this
-        </div>
-        <div style={{ fontSize: 18 }}>{promptText}</div>
-      </div>
-
-      {err && (
-        <div style={{ marginTop: 12, color: "crimson" }}>
-          <strong>Error:</strong> {err}
-        </div>
-      )}
-
-      <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        {!isRecording ? (
-          <button
-            onClick={startRecording}
-            style={{ padding: "12px 14px", borderRadius: 12, fontWeight: 900 }}
-          >
-            🎙️ Record
-          </button>
-        ) : (
-          <button
-            onClick={stopRecording}
-            style={{ padding: "12px 14px", borderRadius: 12, fontWeight: 900 }}
-          >
-            ⏹ Stop
-          </button>
-        )}
+      <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <button
+          onClick={start}
+          disabled={!canStart}
+          style={{ padding: "10px 14px", borderRadius: 12, fontWeight: 900 }}
+        >
+          {isRecording ? "Recording…" : "Start recording"}
+        </button>
 
         <button
-          disabled={!canSubmit || status === "uploading"}
-          onClick={submit}
-          style={{ padding: "12px 14px", borderRadius: 12, fontWeight: 900 }}
+          onClick={stop}
+          disabled={disabled || !isRecording}
+          style={{ padding: "10px 14px", borderRadius: 12, fontWeight: 900 }}
         >
-          {status === "uploading" ? "Submitting…" : "Submit to coaching staff"}
+          Stop
+        </button>
+
+        <button
+          onClick={clear}
+          disabled={disabled || (!hasRecording && !previewUrl && !chunksRef.current.length)}
+          style={{ padding: "10px 14px", borderRadius: 12, fontWeight: 900 }}
+        >
+          Clear
         </button>
       </div>
 
-      {blobUrl && status === "recorded" && (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>Preview</div>
-          <audio controls src={blobUrl} style={{ width: "100%" }} />
+      <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
+        This records a WAV file so it opens cleanly in Audacity.
+      </div>
+
+      {previewUrl ? (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.75, marginBottom: 6 }}>Preview</div>
+          <audio controls src={previewUrl} style={{ width: "100%" }} />
         </div>
-      )}
+      ) : null}
+
+      {err ? (
+        <div style={{ marginTop: 10, color: "crimson" }}>
+          <strong>Error:</strong> {err}
+        </div>
+      ) : null}
     </div>
   );
 }
