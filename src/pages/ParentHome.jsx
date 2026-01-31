@@ -33,7 +33,7 @@ export default function ParentHome() {
   async function submit() {
     setErr("");
     if (!parentKey) {
-      setErr("Missing parent key. Go to /parent-login and enter the Parent key.");
+      setErr("Missing parent key. Go to Parent Login and enter the Parent key.");
       return;
     }
     if (!playerName.trim()) {
@@ -51,7 +51,6 @@ export default function ParentHome() {
       fd.append("playerName", playerName.trim());
       fd.append("songRequest", songRequest.trim());
 
-      // Ensure filename + type
       const file = new File([wavBlob], "walkup.wav", { type: "audio/wav" });
       fd.append("file", file);
 
@@ -79,60 +78,56 @@ export default function ParentHome() {
 
   if (submitted) {
     return (
-      <div style={{ padding: 24, maxWidth: 720, margin: "0 auto" }}>
-        <h1 style={{ marginTop: 0 }}>Submitted ✅</h1>
-        <div style={{ marginTop: 10, opacity: 0.8 }}>
-          Thanks! Your walk-up request has been submitted.
+      <div className="page">
+        <div className="card">
+          <h1 style={{ marginTop: 0 }}>Submitted ✅</h1>
+          <div style={{ marginTop: 10, opacity: 0.85 }}>
+            Thanks! Your walk-up request has been submitted.
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 720, margin: "0 auto" }}>
-      <h1 style={{ marginTop: 0 }}>Walk-up Song Request</h1>
+    <div className="page">
+      <div className="card">
+        <h1 style={{ marginTop: 0 }}>Parent Submission</h1>
 
-      <div style={{ marginTop: 14 }}>
-        <label style={{ display: "block", fontSize: 12, fontWeight: 900, opacity: 0.75, marginBottom: 6 }}>
-          Player Name (required)
-        </label>
-        <input
-          value={playerName}
-          onChange={(e) => setPlayerName(e.target.value)}
-          placeholder="Type player name…"
-          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
-        />
-      </div>
-
-      <div style={{ marginTop: 14 }}>
-        <label style={{ display: "block", fontSize: 12, fontWeight: 900, opacity: 0.75, marginBottom: 6 }}>
-          Song Request (optional)
-        </label>
-        <input
-          value={songRequest}
-          onChange={(e) => setSongRequest(e.target.value)}
-          placeholder="Type song request…"
-          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
-        />
-      </div>
-
-      <div style={{ marginTop: 14 }}>
-        <ParentRecord onBlob={setWavBlob} disabled={submitting} />
-      </div>
-
-      <button
-        onClick={submit}
-        disabled={submitting}
-        style={{ marginTop: 14, width: "100%", padding: "12px 14px", borderRadius: 12, fontWeight: 1000 }}
-      >
-        {submitting ? "Submitting…" : "Submit"}
-      </button>
-
-      {err ? (
-        <div style={{ marginTop: 12, color: "crimson" }}>
-          <strong>Error:</strong> {err}
+        <div style={{ marginTop: 14 }}>
+          <label className="label">Player Name (required)</label>
+          <input
+            value={playerName}
+            onChange={(e) => setPlayerName(e.target.value)}
+            placeholder="Type player name…"
+            className="input"
+          />
         </div>
-      ) : null}
+
+        <div style={{ marginTop: 14 }}>
+          <label className="label">Song Request (optional)</label>
+          <input
+            value={songRequest}
+            onChange={(e) => setSongRequest(e.target.value)}
+            placeholder="example: Taylor Swift - Shake it Off"
+            className="input"
+          />
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <ParentRecord onBlob={setWavBlob} disabled={submitting} playerName={playerName} />
+        </div>
+
+        <button className="btn" onClick={submit} disabled={submitting} style={{ marginTop: 14, width: "100%" }}>
+          {submitting ? "Submitting…" : "Submit"}
+        </button>
+
+        {err ? (
+          <div style={{ marginTop: 12, color: "crimson" }}>
+            <strong>Error:</strong> {err}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

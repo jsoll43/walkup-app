@@ -1,5 +1,5 @@
 // src/pages/ParentRecord.jsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 function floatTo16BitPCM(output, offset, input) {
   for (let i = 0; i < input.length; i++) {
@@ -16,7 +16,6 @@ function writeString(view, offset, string) {
 }
 
 function encodeWav({ samples, sampleRate, numChannels = 1 }) {
-  // 16-bit PCM WAV
   const bytesPerSample = 2;
   const blockAlign = numChannels * bytesPerSample;
   const buffer = new ArrayBuffer(44 + samples.length * bytesPerSample);
@@ -27,13 +26,13 @@ function encodeWav({ samples, sampleRate, numChannels = 1 }) {
   writeString(view, 8, "WAVE");
 
   writeString(view, 12, "fmt ");
-  view.setUint32(16, 16, true); // PCM
-  view.setUint16(20, 1, true); // format = 1 (PCM)
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
   view.setUint16(22, numChannels, true);
   view.setUint32(24, sampleRate, true);
   view.setUint32(28, sampleRate * blockAlign, true);
   view.setUint16(32, blockAlign, true);
-  view.setUint16(34, 16, true); // bits per sample
+  view.setUint16(34, 16, true);
 
   writeString(view, 36, "data");
   view.setUint32(40, samples.length * bytesPerSample, true);
@@ -54,14 +53,10 @@ function mergeFloat32(chunks) {
   return result;
 }
 
-/**
- * Props:
- * - onBlob(blob): called when a recording is finalized
- * - disabled: optional boolean
- */
-export default function ParentRecord({ onBlob, disabled = false }) {
+export default function ParentRecord({ onBlob, disabled = false, playerName = "" }) {
+  const MAX_SECONDS = 5;
+
   const [isRecording, setIsRecording] = useState(false);
-  const [hasRecording, setHasRecording] = useState(false);
   const [previewUrl, setPreviewUrl] = useState("");
   const [err, setErr] = useState("");
 
@@ -69,9 +64,11 @@ export default function ParentRecord({ onBlob, disabled = false }) {
   const audioCtxRef = useRef(null);
   const sourceRef = useRef(null);
   const processorRef = useRef(null);
-  const chunksRef = useRef([]);
+  const gainRef = useRef(null);
 
-  const canStart = useMemo(() => !disabled && !isRecording, [disabled, isRecording]);
+  const chunksRef = useRef([]);
+  const recordingRef = useRef(false);
+  const stopTimerRef = useRef(null);
 
   useEffect(() => {
     return () => {
@@ -85,6 +82,11 @@ export default function ParentRecord({ onBlob, disabled = false }) {
 
   function cleanup() {
     try {
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+    } catch {}
+    stopTimerRef.current = null;
+
+    try {
       if (processorRef.current) {
         processorRef.current.disconnect();
         processorRef.current.onaudioprocess = null;
@@ -92,6 +94,9 @@ export default function ParentRecord({ onBlob, disabled = false }) {
     } catch {}
     try {
       if (sourceRef.current) sourceRef.current.disconnect();
+    } catch {}
+    try {
+      if (gainRef.current) gainRef.current.disconnect();
     } catch {}
     try {
       if (audioCtxRef.current) audioCtxRef.current.close();
@@ -104,17 +109,22 @@ export default function ParentRecord({ onBlob, disabled = false }) {
 
     processorRef.current = null;
     sourceRef.current = null;
+    gainRef.current = null;
     audioCtxRef.current = null;
     mediaStreamRef.current = null;
+
+    recordingRef.current = false;
+    setIsRecording(false);
   }
 
   async function start() {
     setErr("");
-    setHasRecording(false);
     chunksRef.current = [];
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
       mediaStreamRef.current = stream;
 
       const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -124,31 +134,47 @@ export default function ParentRecord({ onBlob, disabled = false }) {
       const source = ctx.createMediaStreamSource(stream);
       sourceRef.current = source;
 
-      // ScriptProcessorNode is deprecated but still widely supported; works fine for this use.
       const processor = ctx.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
 
+      // mute output (prevents feedback)
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      gainRef.current = gain;
+
+      recordingRef.current = true;
+      setIsRecording(true);
+
       processor.onaudioprocess = (e) => {
-        if (!isRecording) return;
+        if (!recordingRef.current) return;
         const input = e.inputBuffer.getChannelData(0);
         chunksRef.current.push(new Float32Array(input));
       };
 
       source.connect(processor);
-      processor.connect(ctx.destination);
+      processor.connect(gain);
+      gain.connect(ctx.destination);
 
-      setIsRecording(true);
+      // Auto-stop at MAX_SECONDS
+      stopTimerRef.current = setTimeout(() => {
+        stop();
+      }, MAX_SECONDS * 1000);
     } catch (e) {
       setErr(e?.message || String(e));
       cleanup();
-      setIsRecording(false);
     }
   }
 
   async function stop() {
     setErr("");
+    if (!recordingRef.current) return;
+
     try {
+      recordingRef.current = false;
       setIsRecording(false);
+
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+      stopTimerRef.current = null;
 
       const ctx = audioCtxRef.current;
       const sampleRate = ctx?.sampleRate || 48000;
@@ -163,7 +189,6 @@ export default function ParentRecord({ onBlob, disabled = false }) {
       }
       const url = URL.createObjectURL(wavBlob);
       setPreviewUrl(url);
-      setHasRecording(true);
 
       if (typeof onBlob === "function") onBlob(wavBlob);
     } catch (e) {
@@ -175,54 +200,56 @@ export default function ParentRecord({ onBlob, disabled = false }) {
 
   function clear() {
     setErr("");
-    setHasRecording(false);
+    chunksRef.current = [];
+    recordingRef.current = false;
+    setIsRecording(false);
+
+    if (stopTimerRef.current) {
+      try {
+        clearTimeout(stopTimerRef.current);
+      } catch {}
+    }
+    stopTimerRef.current = null;
+
     if (previewUrl) {
       try {
         URL.revokeObjectURL(previewUrl);
       } catch {}
     }
     setPreviewUrl("");
-    chunksRef.current = [];
+
     if (typeof onBlob === "function") onBlob(null);
+    cleanup();
   }
 
+  const namePart = (playerName || "").trim() || "player name";
+  const scriptText = `Please record: “Now batting, (jersey #), ${namePart}” — keep it under ${MAX_SECONDS} seconds.`;
+
   return (
-    <div style={{ border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
-      <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>VOICE RECORDING (WAV)</div>
+    <div className="card">
+      <div className="cardTitle">Voice recording (WAV)</div>
+
+      <div style={{ marginTop: 10, fontSize: 13, opacity: 0.85 }}>
+        {scriptText}
+      </div>
 
       <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <button
-          onClick={start}
-          disabled={!canStart}
-          style={{ padding: "10px 14px", borderRadius: 12, fontWeight: 900 }}
-        >
+        <button className="btn" onClick={start} disabled={disabled || isRecording}>
           {isRecording ? "Recording…" : "Start recording"}
         </button>
 
-        <button
-          onClick={stop}
-          disabled={disabled || !isRecording}
-          style={{ padding: "10px 14px", borderRadius: 12, fontWeight: 900 }}
-        >
+        <button className="btn-secondary" onClick={stop} disabled={disabled || !isRecording}>
           Stop
         </button>
 
-        <button
-          onClick={clear}
-          disabled={disabled || (!hasRecording && !previewUrl && !chunksRef.current.length)}
-          style={{ padding: "10px 14px", borderRadius: 12, fontWeight: 900 }}
-        >
+        <button className="btn-danger" onClick={clear} disabled={disabled}>
           Clear
         </button>
       </div>
 
-      <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
-        This records a WAV file so it opens cleanly in Audacity.
-      </div>
-
       {previewUrl ? (
         <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.75, marginBottom: 6 }}>Preview</div>
+          <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.8, marginBottom: 6 }}>Preview</div>
           <audio controls src={previewUrl} style={{ width: "100%" }} />
         </div>
       ) : null}
