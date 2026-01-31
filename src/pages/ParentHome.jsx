@@ -1,36 +1,67 @@
-import { Link } from "react-router-dom";
+import { useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { roster } from "../data/roster";
 
-export default function ParentHome() {
-  return (
-    <div style={{ padding: 24, maxWidth: 720, margin: "0 auto" }}>
-      <h1 style={{ marginBottom: 6 }}>Walk-Up: Parent</h1>
-      <p style={{ marginTop: 0, opacity: 0.8 }}>
-        Select your player to record the announcer clip.
-      </p>
+function getParentKey() {
+  return sessionStorage.getItem("PARENT_UPLOAD_KEY") || "";
+}
+function clearParentKey() {
+  sessionStorage.removeItem("PARENT_UPLOAD_KEY");
+}
 
-      <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-        {roster.map((p) => (
-          <Link
+export default function ParentHome() {
+  const nav = useNavigate();
+
+  // Gate access: if no key, send them to parent login
+  useEffect(() => {
+    const key = getParentKey();
+    if (!key) {
+      nav("/parent-login", { replace: true, state: { redirectTo: "/parent" } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const sorted = useMemo(() => {
+    return [...roster].sort((a, b) => (a.number > b.number ? 1 : -1));
+  }, []);
+
+  // While redirecting, render nothing
+  if (!getParentKey()) return null;
+
+  return (
+    <div style={{ padding: 24, maxWidth: 820, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+        <h1 style={{ marginTop: 0, marginBottom: 0 }}>Roster</h1>
+        <button
+          onClick={() => {
+            clearParentKey();
+            nav("/parent-login", { replace: true, state: { redirectTo: "/parent" } });
+          }}
+          style={{ padding: "10px 12px", borderRadius: 12, fontWeight: 900 }}
+        >
+          Log out
+        </button>
+      </div>
+
+      <div style={{ marginTop: 12, opacity: 0.75 }}>
+        Tap your player to record the announcement.
+      </div>
+
+      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+        {sorted.map((p) => (
+          <button
             key={p.id}
-            to={`/record/${p.id}`}
+            onClick={() => nav(`/parent/${p.id}`)}
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: 14,
+              textAlign: "left",
+              padding: "14px 14px",
+              borderRadius: 14,
               border: "1px solid #ddd",
-              borderRadius: 12,
-              textDecoration: "none",
-              color: "inherit",
+              fontWeight: 900,
             }}
           >
-            <div>
-              <div style={{ fontWeight: 700 }}>#{p.number} {p.first} {p.last}</div>
-              <div style={{ fontSize: 12, opacity: 0.7 }}>Tap to record</div>
-            </div>
-            <div style={{ fontWeight: 700 }}>Record →</div>
-          </Link>
+            #{p.number} {p.first} {p.last}
+          </button>
         ))}
       </div>
     </div>

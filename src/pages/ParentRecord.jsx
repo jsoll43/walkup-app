@@ -1,20 +1,20 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { roster } from "../data/roster";
-
-function getSavedParentKey() {
-  return sessionStorage.getItem("PARENT_UPLOAD_KEY") || "";
-}
-function saveParentKey(k) {
-  sessionStorage.setItem("PARENT_UPLOAD_KEY", k);
-}
-function clearParentKey() {
-  sessionStorage.removeItem("PARENT_UPLOAD_KEY");
-}
+import { clearParentKey, getParentKey, setParentKey } from "../auth/parentAuth";
 
 export default function ParentRecord() {
   const nav = useNavigate();
   const { playerId } = useParams();
+
+  // Gate access
+  useEffect(() => {
+    const key = getParentKey();
+    if (!key) {
+      nav("/parent-login", { replace: true, state: { redirectTo: `/parent/${playerId}` } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerId]);
 
   const player = useMemo(() => roster.find((p) => p.id === playerId), [playerId]);
 
@@ -41,9 +41,7 @@ export default function ParentRecord() {
   async function startRecording() {
     setErr("");
     try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error("Recording not supported in this browser.");
-      }
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("Recording not supported in this browser.");
 
       cleanupBlobUrl();
       setBlob(null);
@@ -91,14 +89,12 @@ export default function ParentRecord() {
   }
 
   function ensureParentKey() {
-    let key = getSavedParentKey();
-
+    let key = getParentKey();
     if (!key) {
-      key = prompt("Parent Upload Key:");
-      if (!key) return ""; // cancelled
-      saveParentKey(key);
+      key = prompt("Team Key:");
+      if (!key) return "";
+      setParentKey(key);
     }
-
     return key;
   }
 
@@ -109,7 +105,7 @@ export default function ParentRecord() {
 
     setStatus("uploading");
 
-    const doUpload = async () => {
+    try {
       const key = ensureParentKey();
       if (!key) {
         setStatus("recorded");
@@ -127,22 +123,12 @@ export default function ParentRecord() {
       });
 
       if (res.status === 401) {
-        // Key is wrong or was rotated. Clear and retry once.
         clearParentKey();
-        throw new Error("Unauthorized. The Parent Upload Key may have changed. Please try again.");
+        throw new Error("Unauthorized. The team key may have changed. Please go back and re-enter the key.");
       }
 
-      if (!res.ok) {
-        throw new Error(await res.text());
-      }
+      if (!res.ok) throw new Error(await res.text());
 
-      return true;
-    };
-
-    try {
-      await doUpload();
-
-      // success → lock screen
       cleanupBlobUrl();
       setBlob(null);
       setStatus("submitted");
@@ -152,7 +138,9 @@ export default function ParentRecord() {
     }
   }
 
-  // ---------- Submitted Screen ----------
+  if (!getParentKey()) return null; // while redirecting
+
+  // Submitted lock screen
   if (status === "submitted") {
     return (
       <div style={{ padding: 24, maxWidth: 820, margin: "0 auto" }}>
@@ -160,10 +148,6 @@ export default function ParentRecord() {
         <div style={{ fontSize: 18, marginTop: 10 }}>
           Your recording has been submitted to the coaching staff.
         </div>
-        <div style={{ marginTop: 14, opacity: 0.75 }}>
-          You’re all set — no further action is needed.
-        </div>
-
         <div style={{ marginTop: 18 }}>
           <button
             onClick={() => nav("/parent")}
@@ -187,7 +171,6 @@ export default function ParentRecord() {
     );
   }
 
-  const canRecord = status === "idle" || status === "recorded";
   const isRecording = status === "recording";
   const canSubmit = status === "recorded";
 
@@ -201,20 +184,11 @@ export default function ParentRecord() {
         Record for: #{player.number} {player.first} {player.last}
       </h1>
 
-      <div
-        style={{
-          border: "1px solid #ddd",
-          borderRadius: 14,
-          padding: 14,
-          marginTop: 12,
-          background: "#fafafa",
-        }}
-      >
-        <div style={{ fontWeight: 900, marginBottom: 6 }}>Please say this</div>
-        <div style={{ fontSize: 18 }}>{promptText}</div>
-        <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-          Tip: Tap Record, hold the phone close, and speak clearly.
+      <div style={{ border: "1px solid #ddd", borderRadius: 14, padding: 14, marginTop: 12, background: "#fafafa" }}>
+        <div style={{ fontWeight: 900, marginBottom: 6 }}>
+          Please say this
         </div>
+        <div style={{ fontSize: 18 }}>{promptText}</div>
       </div>
 
       {err && (
@@ -226,7 +200,6 @@ export default function ParentRecord() {
       <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         {!isRecording ? (
           <button
-            disabled={!canRecord}
             onClick={startRecording}
             style={{ padding: "12px 14px", borderRadius: 12, fontWeight: 900 }}
           >
