@@ -1,6 +1,6 @@
-// src/pages/ParentHome.jsx
+// src/pages/Parent_Home.jsx
 import { useMemo, useState } from "react";
-import ParentRecord from "./ParentRecord";
+import ParentRecord from "./ParentRecord.jsx";
 
 function getParentKey() {
   return (
@@ -32,6 +32,7 @@ export default function ParentHome() {
 
   async function submit() {
     setErr("");
+
     if (!parentKey) {
       setErr("Missing parent key. Go to Parent Login and enter the Parent key.");
       return;
