@@ -1,19 +1,32 @@
-export async function onRequestGet({ request, env }) {
-  const auth = request.headers.get("Authorization") || "";
-  if (auth !== `Bearer ${env.ADMIN_KEY}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+export async function onRequestGet(context) {
+  try {
+    const request = context.request;
+    const env = context.env;
 
-  const listed = await env.WALKUP_VOICE.list({ limit: 1000 });
+    const auth = request.headers.get("Authorization") || "";
+    if (auth !== "Bearer " + env.ADMIN_KEY) {
+      return new Response("Unauthorized", { status: 401 });
+    }
 
-  return Response.json({
-    ok: true,
-    objects: listed.objects
-      .sort((a, b) => (a.uploaded < b.uploaded ? 1 : -1))
+    // List objects in the bucket
+    const listed = await env.WALKUP_VOICE.list({ limit: 1000 });
+
+    // Only show parent voice uploads (exclude final merged clips)
+    const objects = (listed.objects || [])
+      .filter((o) => o && o.key && !o.key.startsWith("final/"))
       .map((o) => ({
         key: o.key,
         size: o.size,
-        uploaded: o.uploaded,
-      })),
-  });
+        uploaded: o.uploaded ? o.uploaded.toISOString() : null,
+      }))
+      .sort((a, b) => (a.uploaded < b.uploaded ? 1 : -1));
+
+    return new Response(JSON.stringify({ ok: true, objects }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    const msg = e && (e.stack || e.message) ? (e.stack || e.message) : String(e);
+    return new Response("voice-inbox exception: " + msg, { status: 500 });
+  }
 }
