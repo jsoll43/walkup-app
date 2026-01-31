@@ -1,24 +1,17 @@
 // src/pages/Admin.jsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 function getSavedAdminKey() {
-  return (sessionStorage.getItem("ADMIN_KEY") || "").trim();
+  return sessionStorage.getItem("ADMIN_KEY") || "";
 }
 function saveAdminKey(k) {
-  sessionStorage.setItem("ADMIN_KEY", (k || "").trim());
+  sessionStorage.setItem("ADMIN_KEY", k);
 }
 function clearAdminKey() {
   sessionStorage.removeItem("ADMIN_KEY");
 }
 
-function formatTs(ts) {
-  if (!ts) return "";
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return ts;
-  return d.toLocaleString();
-}
-
-async function readJsonOrText(res) {
+async function safeJsonOrText(res) {
   const text = await res.text();
   try {
     return JSON.parse(text);
@@ -27,423 +20,257 @@ async function readJsonOrText(res) {
   }
 }
 
-function extractErr(data, fallback) {
-  return data?.error || data?.message || data?.raw || fallback;
+function formatPlayer(p) {
+  const name = `${p.first || ""} ${p.last || ""}`.trim();
+  return p.number ? `#${p.number} ${name}`.trim() : name || p.id;
 }
 
 export default function Admin() {
   const [loginKey, setLoginKey] = useState("");
   const [adminKey, setAdminKey] = useState(getSavedAdminKey());
-  const [isAuthed, setIsAuthed] = useState(!!getSavedAdminKey());
+  const [isAuthed, setIsAuthed] = useState(false);
 
   const [err, setErr] = useState("");
-  const [loadingLogin, setLoadingLogin] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // Master roster
-  const [rosterLoading, setRosterLoading] = useState(false);
+  // roster
   const [roster, setRoster] = useState([]);
-  const [newNumber, setNewNumber] = useState("");
-  const [newFirst, setNewFirst] = useState("");
-  const [newLast, setNewLast] = useState("");
-  const [newId, setNewId] = useState("");
-  const [rosterBusyId, setRosterBusyId] = useState("");
 
-  // Parent inbox
-  const [inboxLoading, setInboxLoading] = useState(false);
+  // parent inbox
   const [inbox, setInbox] = useState([]);
-  const [inboxBusyId, setInboxBusyId] = useState("");
-  const inboxAudioRef = useRef(null);
 
-  // Final uploads
-  const [finalLoading, setFinalLoading] = useState(false);
-  const [finalMap, setFinalMap] = useState(new Map()); // playerId -> meta
-  const [finalUploadingId, setFinalUploadingId] = useState("");
-  const [finalFiles, setFinalFiles] = useState({}); // playerId -> File
+  // final statuses: { [playerId]: true/false }
+  const [finalStatus, setFinalStatus] = useState({});
+  const [finalUploading, setFinalUploading] = useState({}); // { [playerId]: boolean }
+  const [finalFile, setFinalFile] = useState({}); // { [playerId]: File }
+  const [finalRowError, setFinalRowError] = useState({}); // { [playerId]: string }
 
-  const rosterById = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
-
-  const authHeaders = useMemo(() => {
-    const k = (adminKey || "").trim();
-    return k
-      ? {
-          "x-admin-key": k,
-          Authorization: `Bearer ${k}`,
-        }
-      : {};
+  const authedHeaders = useMemo(() => {
+    return {
+      "x-admin-key": adminKey,
+      Authorization: `Bearer ${adminKey}`,
+    };
   }, [adminKey]);
-
-  function hardLogout() {
-    try {
-      if (inboxAudioRef.current) {
-        inboxAudioRef.current.pause();
-        inboxAudioRef.current.currentTime = 0;
-      }
-    } catch {}
-    inboxAudioRef.current = null;
-
-    clearAdminKey();
-    setAdminKey("");
-    setIsAuthed(false);
-    setLoginKey("");
-    setErr("");
-
-    setRoster([]);
-    setInbox([]);
-    setFinalMap(new Map());
-    setFinalFiles({});
-  }
 
   async function tryLogin(key) {
     setErr("");
-    setLoadingLogin(true);
+    setLoading(true);
     try {
-      const k = (key || "").trim();
-      if (!k) throw new Error("Admin key required.");
-
-      // auth check: call roster
-      const res = await fetch("/api/roster", {
-        headers: { "x-admin-key": k, Authorization: `Bearer ${k}` },
-        cache: "no-store",
+      // validate by calling a known admin endpoint
+      const res = await fetch("/api/admin/parent-inbox", {
+        headers: {
+          "x-admin-key": key,
+          Authorization: `Bearer ${key}`,
+        },
       });
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || "Unauthorized");
 
-      const data = await readJsonOrText(res);
-      if (!res.ok || data?.ok === false) {
-        throw new Error(extractErr(data, `Login failed (HTTP ${res.status}).`));
-      }
-
-      saveAdminKey(k);
-      setAdminKey(k);
       setIsAuthed(true);
+      setAdminKey(key);
+      saveAdminKey(key);
       setLoginKey("");
+
+      await refreshAll(key);
     } catch (e) {
-      hardLogout();
+      setIsAuthed(false);
       setErr(e?.message || String(e));
     } finally {
-      setLoadingLogin(false);
+      setLoading(false);
     }
   }
 
-  async function loadRoster() {
-    setErr("");
-    setRosterLoading(true);
-    try {
-      const res = await fetch("/api/roster", { headers: authHeaders, cache: "no-store" });
-      const data = await readJsonOrText(res);
+  async function fetchRoster() {
+    const res = await fetch("/api/roster", { headers: authedHeaders });
+    const data = await safeJsonOrText(res);
+    if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Roster failed (HTTP ${res.status})`);
+    setRoster(Array.isArray(data.roster) ? data.roster : []);
+  }
 
-      if (!res.ok || data?.ok === false) {
-        if (res.status === 401) hardLogout();
-        throw new Error(extractErr(data, `Failed to load roster (HTTP ${res.status}).`));
+  async function fetchInbox() {
+    const res = await fetch("/api/admin/parent-inbox", { headers: authedHeaders });
+    const data = await safeJsonOrText(res);
+    if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Inbox failed (HTTP ${res.status})`);
+    setInbox(Array.isArray(data.items) ? data.items : Array.isArray(data.results) ? data.results : []);
+  }
+
+  async function fetchFinalStatus() {
+    const res = await fetch("/api/admin/final-status", { headers: authedHeaders });
+    const data = await safeJsonOrText(res);
+    if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Final status failed (HTTP ${res.status})`);
+
+    // Accept a few possible shapes
+    // 1) { ok:true, status: {playerId:true}}
+    // 2) { ok:true, items:[{playerId, exists}]}
+    // 3) { ok:true, results:[...]}
+    let map = {};
+    if (data?.status && typeof data.status === "object") {
+      map = data.status;
+    } else if (Array.isArray(data?.items)) {
+      for (const it of data.items) map[it.playerId] = !!it.exists;
+    } else if (Array.isArray(data?.results)) {
+      for (const it of data.results) map[it.playerId] = !!it.exists;
+    }
+    setFinalStatus(map);
+  }
+
+  async function refreshAll(keyOverride) {
+    setErr("");
+    setLoading(true);
+    try {
+      if (keyOverride) {
+        const headers = { "x-admin-key": keyOverride, Authorization: `Bearer ${keyOverride}` };
+        const [r1, r2, r3] = await Promise.all([
+          fetch("/api/roster", { headers }),
+          fetch("/api/admin/parent-inbox", { headers }),
+          fetch("/api/admin/final-status", { headers }),
+        ]);
+
+        const rosterData = await safeJsonOrText(r1);
+        if (!r1.ok || rosterData?.ok === false) throw new Error(rosterData?.error || rosterData?.raw || `Roster failed (HTTP ${r1.status})`);
+        setRoster(Array.isArray(rosterData.roster) ? rosterData.roster : []);
+
+        const inboxData = await safeJsonOrText(r2);
+        if (!r2.ok || inboxData?.ok === false) throw new Error(inboxData?.error || inboxData?.raw || `Inbox failed (HTTP ${r2.status})`);
+        setInbox(Array.isArray(inboxData.items) ? inboxData.items : Array.isArray(inboxData.results) ? inboxData.results : []);
+
+        const statusData = await safeJsonOrText(r3);
+        if (!r3.ok || statusData?.ok === false) throw new Error(statusData?.error || statusData?.raw || `Final status failed (HTTP ${r3.status})`);
+        let map = {};
+        if (statusData?.status && typeof statusData.status === "object") map = statusData.status;
+        else if (Array.isArray(statusData?.items)) for (const it of statusData.items) map[it.playerId] = !!it.exists;
+        else if (Array.isArray(statusData?.results)) for (const it of statusData.results) map[it.playerId] = !!it.exists;
+        setFinalStatus(map);
+
+        return;
       }
 
-      setRoster(Array.isArray(data?.roster) ? data.roster : []);
+      await Promise.all([fetchRoster(), fetchInbox(), fetchFinalStatus()]);
     } catch (e) {
       setErr(e?.message || String(e));
     } finally {
-      setRosterLoading(false);
+      setLoading(false);
     }
   }
 
-  async function upsertRosterPlayer() {
+  async function previewSubmission(id) {
     setErr("");
-    setRosterBusyId("new");
     try {
-      const payload = {
-        id: newId.trim() || undefined,
-        number: newNumber.trim(),
-        first: newFirst.trim(),
-        last: newLast.trim(),
-      };
-
-      const res = await fetch("/api/admin/roster-upsert", {
-        method: "POST",
-        headers: { ...authHeaders, "content-type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await readJsonOrText(res);
-      if (!res.ok || data?.ok === false) {
-        throw new Error(extractErr(data, `Roster save failed (HTTP ${res.status}).`));
-      }
-
-      setNewId("");
-      setNewNumber("");
-      setNewFirst("");
-      setNewLast("");
-
-      await loadRoster();
+      // open in new tab (streams audio)
+      const url = `/api/admin/parent-audio?id=${encodeURIComponent(id)}`;
+      const w = window.open(url, "_blank");
+      if (!w) throw new Error("Popup blocked. Please allow popups or use Download.");
     } catch (e) {
       setErr(e?.message || String(e));
-    } finally {
-      setRosterBusyId("");
     }
   }
 
-  async function deleteRosterPlayer(id) {
-    if (!id) return;
+  async function downloadSubmission(id, playerName = "parent-recording") {
     setErr("");
-    setRosterBusyId(id);
     try {
-      const res = await fetch("/api/admin/roster-delete", {
-        method: "POST",
-        headers: { ...authHeaders, "content-type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-
-      const data = await readJsonOrText(res);
-      if (!res.ok || data?.ok === false) {
-        throw new Error(extractErr(data, `Roster delete failed (HTTP ${res.status}).`));
-      }
-
-      await loadRoster();
-    } catch (e) {
-      setErr(e?.message || String(e));
-    } finally {
-      setRosterBusyId("");
-    }
-  }
-
-  async function loadInbox() {
-    setErr("");
-    setInboxLoading(true);
-    try {
-      const res = await fetch("/api/admin/parent-inbox", { headers: authHeaders });
-      const data = await readJsonOrText(res);
-
-      if (!res.ok || data?.ok === false) {
-        if (res.status === 401) hardLogout();
-        throw new Error(extractErr(data, `Failed to load inbox (HTTP ${res.status}).`));
-      }
-
-      const items = Array.isArray(data?.submissions)
-        ? data.submissions
-        : Array.isArray(data?.items)
-        ? data.items
-        : Array.isArray(data)
-        ? data
-        : [];
-
-      setInbox(items);
-    } catch (e) {
-      setErr(e?.message || String(e));
-    } finally {
-      setInboxLoading(false);
-    }
-  }
-
-  async function loadFinalStatus() {
-    setErr("");
-    setFinalLoading(true);
-    try {
-      const res = await fetch("/api/admin/final-status", { headers: authHeaders });
-      const data = await readJsonOrText(res);
-
-      if (!res.ok || data?.ok === false) {
-        if (res.status === 401) hardLogout();
-        throw new Error(extractErr(data, `Failed to load final status (HTTP ${res.status}).`));
-      }
-
-      const items = Array.isArray(data?.items) ? data.items : Array.isArray(data?.finals) ? data.finals : Array.isArray(data) ? data : [];
-
-      const map = new Map();
-      for (const it of items) {
-        const pid = it?.playerId || it?.player_id || it?.id;
-        if (pid) map.set(pid, it);
-      }
-      setFinalMap(map);
-    } catch (e) {
-      setErr(e?.message || String(e));
-    } finally {
-      setFinalLoading(false);
-    }
-  }
-
-  async function previewInbox(id) {
-    if (!id) return;
-    setErr("");
-    setInboxBusyId(id);
-
-    try {
-      try {
-        if (inboxAudioRef.current) {
-          inboxAudioRef.current.pause();
-          inboxAudioRef.current.currentTime = 0;
-        }
-      } catch {}
-      inboxAudioRef.current = null;
-
-      const res = await fetch(`/api/admin/parent-audio?id=${encodeURIComponent(id)}`, {
-        headers: authHeaders,
-      });
-
-      if (!res.ok) {
-        const data = await readJsonOrText(res);
-        throw new Error(extractErr(data, `Preview failed (HTTP ${res.status}).`));
-      }
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-
-      const a = new Audio(url);
-      inboxAudioRef.current = a;
-
-      a.onended = () => {
-        try {
-          URL.revokeObjectURL(url);
-        } catch {}
-        inboxAudioRef.current = null;
-      };
-
-      await a.play();
-    } catch (e) {
-      setErr(e?.message || String(e));
-    } finally {
-      setInboxBusyId("");
-    }
-  }
-
-  async function downloadInbox(id, nameHint) {
-    if (!id) return;
-    setErr("");
-    setInboxBusyId(id);
-
-    try {
-      const res = await fetch(`/api/admin/parent-audio?id=${encodeURIComponent(id)}`, {
-        headers: authHeaders,
-      });
-
-      if (!res.ok) {
-        const data = await readJsonOrText(res);
-        throw new Error(extractErr(data, `Download failed (HTTP ${res.status}).`));
-      }
-
+      const res = await fetch(`/api/admin/parent-audio?id=${encodeURIComponent(id)}`, { headers: authedHeaders });
+      if (!res.ok) throw new Error(await res.text());
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
 
       const a = document.createElement("a");
       a.href = url;
-      a.download = nameHint || `parent-submission-${id}`;
+      a.download = `${playerName || "parent-recording"}.wav`; // even if it’s webm, this is just filename
       document.body.appendChild(a);
       a.click();
       a.remove();
-
-      setTimeout(() => URL.revokeObjectURL(url), 3000);
+      URL.revokeObjectURL(url);
     } catch (e) {
       setErr(e?.message || String(e));
-    } finally {
-      setInboxBusyId("");
     }
   }
 
-  async function deleteInbox(id) {
-    if (!id) return;
+  async function deleteSubmission(id) {
     setErr("");
-    setInboxBusyId(id);
-
+    setLoading(true);
     try {
       const res = await fetch("/api/admin/parent-delete", {
         method: "POST",
-        headers: {
-          ...authHeaders,
-          "content-type": "application/json",
-        },
+        headers: { "Content-Type": "application/json", ...authedHeaders },
         body: JSON.stringify({ id }),
       });
-
-      const data = await readJsonOrText(res);
-      if (!res.ok || data?.ok === false) {
-        throw new Error(extractErr(data, `Delete failed (HTTP ${res.status}).`));
-      }
-
-      setInbox((prev) => prev.filter((x) => x.id !== id));
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Delete failed (HTTP ${res.status})`);
+      await fetchInbox();
     } catch (e) {
       setErr(e?.message || String(e));
     } finally {
-      setInboxBusyId("");
+      setLoading(false);
     }
   }
 
   async function uploadFinal(playerId) {
-    const file = finalFiles[playerId];
-    if (!playerId || !file) return;
+    setFinalRowError((prev) => ({ ...prev, [playerId]: "" }));
+    const file = finalFile[playerId];
+    if (!file) {
+      setFinalRowError((prev) => ({ ...prev, [playerId]: "Choose a file first." }));
+      return;
+    }
 
-    setErr("");
-    setFinalUploadingId(playerId);
-
+    setFinalUploading((prev) => ({ ...prev, [playerId]: true }));
     try {
       const fd = new FormData();
-      fd.append("file", file);
       fd.append("playerId", playerId);
+      fd.append("file", file);
 
-      const res = await fetch(`/api/admin/final-upload?playerId=${encodeURIComponent(playerId)}`, {
+      const res = await fetch("/api/admin/final-upload", {
         method: "POST",
-        headers: authHeaders,
+        headers: authedHeaders, // NOTE: do NOT set Content-Type for FormData
         body: fd,
       });
 
-      const data = await readJsonOrText(res);
+      const data = await safeJsonOrText(res);
       if (!res.ok || data?.ok === false) {
-        throw new Error(extractErr(data, `Final upload failed (HTTP ${res.status}).`));
+        throw new Error(data?.error || data?.message || data?.raw || `Final upload failed (HTTP ${res.status}).`);
       }
 
-      await loadFinalStatus();
-      setFinalFiles((prev) => {
-        const copy = { ...prev };
-        delete copy[playerId];
-        return copy;
-      });
+      // refresh status so download enables
+      await fetchFinalStatus();
     } catch (e) {
-      setErr(e?.message || String(e));
+      setFinalRowError((prev) => ({ ...prev, [playerId]: e?.message || String(e) }));
     } finally {
-      setFinalUploadingId("");
+      setFinalUploading((prev) => ({ ...prev, [playerId]: false }));
     }
   }
 
   async function downloadFinal(playerId) {
-    if (!playerId) return;
     setErr("");
-
     try {
-      const res = await fetch(`/api/admin/final-file?playerId=${encodeURIComponent(playerId)}`, {
-        headers: authHeaders,
-      });
-
-      const dataMaybe = res.ok ? null : await readJsonOrText(res);
-      if (!res.ok) throw new Error(extractErr(dataMaybe, `Final download failed (HTTP ${res.status}).`));
-
+      const res = await fetch(`/api/admin/voice-file?playerId=${encodeURIComponent(playerId)}`, { headers: authedHeaders });
+      if (!res.ok) throw new Error(await res.text());
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
 
-      const p = rosterById.get(playerId);
-      const niceName = p ? `${(p.first || "").trim()}_${(p.last || "").trim()}`.trim().replace(/\s+/g, "_") : playerId;
-
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${niceName || playerId}-final`;
+      a.download = `${playerId}-final.wav`;
       document.body.appendChild(a);
       a.click();
       a.remove();
-
-      setTimeout(() => URL.revokeObjectURL(url), 3000);
+      URL.revokeObjectURL(url);
     } catch (e) {
       setErr(e?.message || String(e));
     }
   }
 
   useEffect(() => {
-    if (!isAuthed || !adminKey) return;
-    loadRoster();
-    loadInbox();
-    loadFinalStatus();
+    const saved = getSavedAdminKey();
+    if (saved) tryLogin(saved);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthed, adminKey]);
+  }, []);
 
   if (!isAuthed) {
     return (
-      <div style={{ padding: 24, maxWidth: 560, margin: "0 auto" }}>
-        <h1 style={{ marginTop: 0 }}>Admin Login</h1>
+      <div className="page">
+        <div className="card">
+          <h1 style={{ marginTop: 0 }}>Admin Login</h1>
 
-        <div style={{ marginTop: 14 }}>
-          <label style={{ display: "block", fontSize: 12, fontWeight: 900, opacity: 0.75, marginBottom: 6 }}>
+          <label className="label" style={{ marginTop: 12 }}>
             Admin Key
           </label>
           <input
@@ -451,278 +278,151 @@ export default function Admin() {
             value={loginKey}
             onChange={(e) => setLoginKey(e.target.value)}
             placeholder="Enter admin key…"
-            style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
+            className="input"
           />
+
+          <button className="btn" onClick={() => tryLogin(loginKey)} disabled={!loginKey || loading} style={{ marginTop: 12, width: "100%" }}>
+            {loading ? "Logging in…" : "Log in"}
+          </button>
+
+          {err ? (
+            <div style={{ marginTop: 12, color: "crimson" }}>
+              <strong>Error:</strong> {err}
+            </div>
+          ) : null}
         </div>
-
-        <button
-          onClick={() => tryLogin(loginKey)}
-          disabled={!loginKey || loadingLogin}
-          style={{ marginTop: 12, width: "100%", padding: "12px 14px", borderRadius: 12, fontWeight: 900 }}
-        >
-          {loadingLogin ? "Logging in…" : "Log in"}
-        </button>
-
-        {err && (
-          <div style={{ marginTop: 12, color: "crimson" }}>
-            <strong>Error:</strong> {err}
-          </div>
-        )}
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 18, maxWidth: 1100, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-        <h1 style={{ margin: 0 }}>Admin</h1>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button
-            onClick={() => {
-              loadRoster();
-              loadInbox();
-              loadFinalStatus();
-            }}
-            disabled={inboxLoading || finalLoading || rosterLoading}
-            style={{ padding: "10px 14px", borderRadius: 10 }}
-          >
-            Refresh
+    <div style={{ maxWidth: 980, margin: "0 auto" }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", marginBottom: 12 }}>
+        <h1 style={{ margin: 0, color: "white" }}>Admin</h1>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button className="btn-secondary" onClick={() => refreshAll()} disabled={loading}>
+            Refresh all
           </button>
-          <button onClick={hardLogout} style={{ padding: "10px 14px", borderRadius: 10, fontWeight: 900 }}>
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              clearAdminKey();
+              setIsAuthed(false);
+              setAdminKey("");
+              setLoginKey("");
+              setErr("");
+            }}
+          >
             Log out
           </button>
         </div>
       </div>
 
-      {err && (
-        <div style={{ marginTop: 10, color: "crimson" }}>
-          <strong>Error:</strong> {err}
-        </div>
-      )}
-
-      {/* MASTER ROSTER */}
-      <div style={{ marginTop: 14, border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <h2 style={{ margin: 0 }}>Master Roster (Admin only)</h2>
-          <button onClick={loadRoster} disabled={rosterLoading} style={{ padding: "10px 14px", borderRadius: 10 }}>
-            {rosterLoading ? "Loading…" : "Reload"}
-          </button>
-        </div>
-
-        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 1fr 1fr auto", gap: 10 }}>
-            <input
-              value={newNumber}
-              onChange={(e) => setNewNumber(e.target.value)}
-              placeholder="Jersey #"
-              style={{ padding: 10, borderRadius: 12, border: "1px solid #ddd" }}
-            />
-            <input
-              value={newFirst}
-              onChange={(e) => setNewFirst(e.target.value)}
-              placeholder="First name (required)"
-              style={{ padding: 10, borderRadius: 12, border: "1px solid #ddd" }}
-            />
-            <input
-              value={newLast}
-              onChange={(e) => setNewLast(e.target.value)}
-              placeholder="Last name (required)"
-              style={{ padding: 10, borderRadius: 12, border: "1px solid #ddd" }}
-            />
-            <input
-              value={newId}
-              onChange={(e) => setNewId(e.target.value)}
-              placeholder="Optional ID (leave blank to auto-generate)"
-              style={{ padding: 10, borderRadius: 12, border: "1px solid #ddd" }}
-            />
-            <button
-              onClick={upsertRosterPlayer}
-              disabled={rosterBusyId === "new"}
-              style={{ padding: "10px 14px", borderRadius: 12, fontWeight: 900 }}
-            >
-              {rosterBusyId === "new" ? "Saving…" : "Add player"}
-            </button>
+      {err ? (
+        <div className="card" style={{ borderColor: "rgba(220,38,38,0.35)", marginBottom: 12 }}>
+          <div style={{ color: "crimson" }}>
+            <strong>Error:</strong> {err}
           </div>
+        </div>
+      ) : null}
 
-          {roster.length === 0 ? (
-            <div style={{ opacity: 0.8 }}>No players yet. Add players above.</div>
-          ) : (
-            roster.map((p) => (
-              <div
-                key={p.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "80px 1fr 1fr auto",
-                  gap: 10,
-                  alignItems: "center",
-                  padding: 10,
-                  border: "1px solid #eee",
-                  borderRadius: 12,
-                }}
-              >
-                <div style={{ fontWeight: 1000 }}>{p.number ? `#${p.number}` : ""}</div>
-                <div style={{ fontWeight: 1000 }}>{`${p.first || ""} ${p.last || ""}`.trim()}</div>
-                <div style={{ fontSize: 12, opacity: 0.65 }}>{p.id}</div>
-                <button
-                  onClick={() => deleteRosterPlayer(p.id)}
-                  disabled={rosterBusyId === p.id}
-                  style={{ padding: "10px 12px", borderRadius: 12, fontWeight: 900 }}
-                >
-                  {rosterBusyId === p.id ? "Deleting…" : "Delete"}
-                </button>
+      {/* Parent Inbox */}
+      <div className="card" style={{ marginBottom: 12 }}>
+        <h2 style={{ marginTop: 0 }}>Parent Inbox</h2>
+
+        {inbox.length === 0 ? (
+          <div style={{ opacity: 0.75 }}>No submissions yet.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 12 }}>
+            {inbox.map((it) => (
+              <div key={it.id} style={{ border: "1px solid rgba(0,0,0,0.12)", borderRadius: 14, padding: 12 }}>
+                <div style={{ fontWeight: 1000, fontSize: 16 }}>{it.player_name || it.playerName || "—"}</div>
+                <div style={{ fontSize: 12, opacity: 0.7 }}>
+                  Submitted: {it.created_at || it.createdAt || "—"}
+                </div>
+                <div style={{ marginTop: 8, opacity: 0.9 }}>
+                  <strong>Song request:</strong> {it.song_request || it.songRequest || "—"}
+                </div>
+
+                <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button className="btn-secondary" onClick={() => previewSubmission(it.id)}>
+                    ▶️ Preview
+                  </button>
+                  <button className="btn-secondary" onClick={() => downloadSubmission(it.id, it.player_name || "parent-recording")}>
+                    ⬇️ Download
+                  </button>
+                  <button className="btn-danger" onClick={() => deleteSubmission(it.id)}>
+                    🗑 Delete
+                  </button>
+                </div>
               </div>
-            ))
-          )}
-        </div>
-
-        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-          Coaches can only add players from this list. If you delete a player, they’ll disappear from coach “Add” options.
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* PARENT INBOX */}
-      <div style={{ marginTop: 14, border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-          <h2 style={{ margin: 0 }}>Parent Inbox</h2>
-          <button onClick={loadInbox} disabled={inboxLoading} style={{ padding: "10px 14px", borderRadius: 10 }}>
-            {inboxLoading ? "Loading…" : "Reload"}
+      {/* Final Walk-Up Clips */}
+      <div className="card">
+        <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+          <h2 style={{ marginTop: 0 }}>Final Walk-Up Clips</h2>
+          <button className="btn-secondary" onClick={() => fetchFinalStatus()} disabled={loading}>
+            Reload status
           </button>
         </div>
 
         <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-          {inbox.length === 0 ? (
-            <div style={{ opacity: 0.75 }}>No pending submissions.</div>
-          ) : (
-            inbox.map((s) => {
-              const playerName = s.player_name || s.playerName || "(no name)";
-              const songRequest = s.song_request || s.songRequest || "";
-              const createdAt = s.created_at || s.createdAt || "";
-              const created = createdAt ? formatTs(createdAt) : "";
-
-              return (
-                <div key={s.id} style={{ border: "1px solid #eee", borderRadius: 14, padding: 12, display: "grid", gap: 8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                    <div>
-                      <div style={{ fontWeight: 1000 }}>{playerName}</div>
-                      <div style={{ fontSize: 12, opacity: 0.75 }}>{created ? `Submitted: ${created}` : ""}</div>
-                    </div>
-                    <div style={{ fontSize: 12, opacity: 0.6 }}>ID: {s.id}</div>
-                  </div>
-
-                  <div style={{ fontSize: 14, opacity: 0.9 }}>
-                    <strong>Song request:</strong> {songRequest || "(none)"}
-                  </div>
-
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <button
-                      onClick={() => previewInbox(s.id)}
-                      disabled={inboxBusyId === s.id}
-                      style={{ padding: "10px 12px", borderRadius: 12, fontWeight: 900 }}
-                    >
-                      {inboxBusyId === s.id ? "Working…" : "▶️ Preview"}
-                    </button>
-                    <button
-                      onClick={() => downloadInbox(s.id, `${playerName.replace(/\s+/g, "_") || s.id}-parent-audio`)}
-                      disabled={inboxBusyId === s.id}
-                      style={{ padding: "10px 12px", borderRadius: 12, fontWeight: 900 }}
-                    >
-                      ⬇️ Download
-                    </button>
-                    <button
-                      onClick={() => deleteInbox(s.id)}
-                      disabled={inboxBusyId === s.id}
-                      style={{ padding: "10px 12px", borderRadius: 12, fontWeight: 900 }}
-                    >
-                      🗑 Delete
-                    </button>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-
-      {/* FINAL CLIPS */}
-      <div style={{ marginTop: 14, border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-          <h2 style={{ margin: 0 }}>Final Walk-Up Clips</h2>
-          <button onClick={loadFinalStatus} disabled={finalLoading} style={{ padding: "10px 14px", borderRadius: 10 }}>
-            {finalLoading ? "Loading…" : "Reload status"}
-          </button>
-        </div>
-
-        <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
           {roster.length === 0 ? (
-            <div style={{ opacity: 0.8 }}>No roster yet. Add players in “Master Roster” above.</div>
+            <div style={{ opacity: 0.75 }}>
+              No roster found yet. Add roster players first (or ensure the roster endpoints are working).
+            </div>
           ) : (
             roster.map((p) => {
-              const meta = finalMap.get(p.id);
-              const hasFinal = !!meta;
-
-              const uploaded =
-                meta?.uploadedAt || meta?.uploaded_at || meta?.uploaded || meta?.updatedAt || meta?.updated_at || "";
-
-              const pendingFile = finalFiles[p.id];
+              const pid = p.id;
+              const exists = !!finalStatus[pid];
+              const uploading = !!finalUploading[pid];
+              const rowErr = finalRowError[pid] || "";
 
               return (
-                <div
-                  key={p.id}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr auto",
-                    gap: 10,
-                    padding: 12,
-                    borderRadius: 14,
-                    border: "1px solid #eee",
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: 1000 }}>
-                      {p.number ? `#${p.number} ` : ""}
-                      {(p.first || "") + " " + (p.last || "")}
-                    </div>
+                <div key={pid} style={{ border: "1px solid rgba(0,0,0,0.12)", borderRadius: 14, padding: 12 }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                    <div style={{ fontWeight: 1000 }}>{formatPlayer(p)}</div>
                     <div style={{ fontSize: 12, opacity: 0.75 }}>
-                      {hasFinal ? `✅ Uploaded${uploaded ? `: ${formatTs(uploaded)}` : ""}` : "⚠️ Missing final clip"}
+                      Status:{" "}
+                      <strong style={{ color: exists ? "green" : "crimson" }}>
+                        {exists ? "Uploaded" : "Missing"}
+                      </strong>
                     </div>
-                    <div style={{ fontSize: 12, opacity: 0.65 }}>ID: {p.id}</div>
                   </div>
 
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                     <input
                       type="file"
                       accept="audio/*"
                       onChange={(e) => {
                         const f = e.target.files && e.target.files[0];
-                        setFinalFiles((prev) => ({ ...prev, [p.id]: f || null }));
+                        setFinalFile((prev) => ({ ...prev, [pid]: f || null }));
+                        setFinalRowError((prev) => ({ ...prev, [pid]: "" }));
                       }}
-                      style={{ maxWidth: 260 }}
                     />
 
-                    <button
-                      onClick={() => uploadFinal(p.id)}
-                      disabled={!pendingFile || finalUploadingId === p.id}
-                      style={{ padding: "10px 12px", borderRadius: 12, fontWeight: 900 }}
-                    >
-                      {finalUploadingId === p.id ? "Uploading…" : "Upload final"}
+                    <button className="btn" onClick={() => uploadFinal(pid)} disabled={uploading || !finalFile[pid]}>
+                      {uploading ? "Uploading…" : "Upload final"}
                     </button>
 
-                    <button
-                      onClick={() => downloadFinal(p.id)}
-                      disabled={!hasFinal}
-                      style={{ padding: "10px 12px", borderRadius: 12, fontWeight: 900 }}
-                    >
+                    <button className="btn-secondary" onClick={() => downloadFinal(pid)} disabled={!exists}>
                       Download
                     </button>
                   </div>
+
+                  {rowErr ? (
+                    <div style={{ marginTop: 8, color: "crimson" }}>
+                      <strong>Upload error:</strong> {rowErr}
+                    </div>
+                  ) : null}
                 </div>
               );
             })
           )}
-        </div>
-
-        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-          Workflow: download a parent recording → mix it with the requested song offline → upload the final clip for that player here.
         </div>
       </div>
     </div>

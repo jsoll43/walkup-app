@@ -26,12 +26,10 @@ a {
   text-decoration: none;
 }
 
-/* IMPORTANT: do NOT make the app a scroll container */
 .bgsl-app {
   min-height: 100vh;
 }
 
-/* Sticky header is OK as long as body scrolls (not a nested container) */
 .bgsl-header {
   position: sticky;
   top: 0;
@@ -105,7 +103,7 @@ a {
   padding: 18px 16px 30px;
 }
 
-/* Common page helpers used by ParentHome */
+/* Common */
 .page {
   max-width: 720px;
   margin: 0 auto;
@@ -149,7 +147,6 @@ a {
   box-shadow: 0 0 0 4px rgba(211, 165, 28, 0.22);
 }
 
-/* Buttons */
 button {
   cursor: pointer;
   border: none;
@@ -168,10 +165,6 @@ button:disabled {
   color: var(--bgsl-navy-dark);
 }
 
-.btn:hover:not(:disabled) {
-  filter: brightness(1.03);
-}
-
 .btn-secondary {
   background: rgba(16, 46, 79, 0.10);
   color: var(--bgsl-ink);
@@ -182,4 +175,102 @@ button:disabled {
   background: rgba(220, 38, 38, 0.10);
   color: #991b1b;
   border: 1px solid rgba(220, 38, 38, 0.25);
+}
+
+/* Coach-specific */
+.coach-add-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  border-radius: 14px;
+  background: rgba(16, 46, 79, 0.04);
+}
+
+.coach-add-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 900;
+}
+
+.coach-row {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  background: rgba(16, 46, 79, 0.04);
+}
+
+.coach-row.current {
+  background: rgba(16, 46, 79, 0.12);
+  border-color: rgba(0, 0, 0, 0.18);
+}
+
+.coach-pos {
+  font-weight: 1000;
+  text-align: right;
+}
+
+.coach-main {
+  min-width: 0;
+}
+
+.coach-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.coach-name > span {
+  min-width: 0;
+}
+
+.coach-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(1, 33, 68, 0.92);
+  color: white;
+  font-size: 12px;
+  font-weight: 1000;
+  flex: 0 0 auto;
+}
+
+.coach-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Mobile: make action buttons wrap under the player name instead of pushing wide */
+@media (max-width: 520px) {
+  .bgsl-header-inner {
+    align-items: flex-start;
+  }
+
+  .bgsl-title {
+    max-width: 190px;
+  }
+
+  .coach-row {
+    grid-template-columns: 36px 1fr;
+    grid-template-rows: auto auto;
+  }
+
+  .coach-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  button {
+    padding: 10px 12px;
+  }
 }
