@@ -1,10 +1,20 @@
+function isAdmin(request, env) {
+  const auth = request.headers.get("Authorization") || "";
+  return auth === "Bearer " + env.ADMIN_KEY;
+}
+
+// Optional GET sanity check
+export async function onRequestGet({ request, env }) {
+  if (!isAdmin(request, env)) return new Response("Unauthorized", { status: 401 });
+  return Response.json({ ok: true, note: "Use POST to run migrations." });
+}
+
 export async function onRequestPost({ request, env }) {
   try {
-    const auth = request.headers.get("Authorization") || "";
-    if (auth !== "Bearer " + env.ADMIN_KEY) return new Response("Unauthorized", { status: 401 });
+    if (!isAdmin(request, env)) return new Response("Unauthorized", { status: 401 });
 
-    // parent_submissions table
-    await env.DB.exec(`
+    // 1) parent_submissions
+    await env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS parent_submissions (
         id TEXT PRIMARY KEY,
         player_name TEXT,
@@ -16,10 +26,10 @@ export async function onRequestPost({ request, env }) {
         created_at TEXT,
         deleted_at TEXT
       );
-    `);
+    `).run();
 
-    // coach_state table if not exists
-    await env.DB.exec(`
+    // 2) coach_state (includes version)
+    await env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS coach_state (
         id INTEGER PRIMARY KEY,
         lineup_ids TEXT,
@@ -27,19 +37,20 @@ export async function onRequestPost({ request, env }) {
         updated_at TEXT,
         version INTEGER
       );
-    `);
+    `).run();
 
-    // Ensure version column exists (safe attempt)
-    // If it already exists, D1 may throw; we ignore.
+    // 3) If an older coach_state exists without 'version', try to add it (ignore if already there)
     try {
-      await env.DB.exec(`ALTER TABLE coach_state ADD COLUMN version INTEGER;`);
-    } catch (_) {}
+      await env.DB.prepare(`ALTER TABLE coach_state ADD COLUMN version INTEGER;`).run();
+    } catch (_) {
+      // Ignore errors like "duplicate column name"
+    }
 
-    // Ensure row id=1 exists
-    await env.DB.prepare(
-      `INSERT OR IGNORE INTO coach_state (id, lineup_ids, current_index, updated_at, version)
-       VALUES (1, '[]', 0, '', 0)`
-    ).run();
+    // 4) Ensure row id=1 exists
+    await env.DB.prepare(`
+      INSERT OR IGNORE INTO coach_state (id, lineup_ids, current_index, updated_at, version)
+      VALUES (1, '[]', 0, '', 0)
+    `).run();
 
     return Response.json({ ok: true });
   } catch (e) {
