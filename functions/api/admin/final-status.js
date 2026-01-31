@@ -1,11 +1,68 @@
-export async function onRequestGet({ request, env }) {
-  const auth = request.headers.get("Authorization") || "";
-  if (auth !== `Bearer ${env.ADMIN_KEY}`) return new Response("Unauthorized", { status: 401 });
+// functions/api/admin/final-upload.js
+function getAuthKey(req) {
+  const h = req.headers;
+  const bearer = h.get("authorization") || "";
+  if (bearer.toLowerCase().startsWith("bearer ")) return bearer.slice(7).trim();
+  return (h.get("x-admin-key") || "").trim();
+}
 
-  const rows = await env.DB.prepare(`
-    SELECT player_id, r2_key, uploaded_at
-    FROM player_final
-  `).all();
+function json(obj, status = 200) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
 
-  return Response.json({ ok: true, rows: rows.results || [] });
+export async function onRequest(context) {
+  const { request, env } = context;
+
+  try {
+    const key = getAuthKey(request);
+    if (!key || key !== env.ADMIN_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
+
+    if (request.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
+
+    const ct = request.headers.get("content-type") || "";
+    if (!ct.toLowerCase().includes("multipart/form-data")) {
+      return json({ ok: false, error: "Expected multipart/form-data" }, 400);
+    }
+
+    const form = await request.formData();
+    const playerId = String(form.get("playerId") || "").trim();
+    const file = form.get("file");
+
+    if (!playerId) return json({ ok: false, error: "Missing playerId" }, 400);
+    if (!file || typeof file === "string") return json({ ok: false, error: "Missing file" }, 400);
+
+    const bucket = env.WALKUP_VOICE;
+    if (!bucket) return json({ ok: false, error: "R2 binding WALKUP_VOICE not configured" }, 500);
+
+    // Canonical key: no extension, always the same
+    const r2Key = `final/${playerId}`;
+
+    const buf = await file.arrayBuffer();
+    const contentType = file.type || "application/octet-stream";
+
+    await bucket.put(r2Key, buf, {
+      httpMetadata: {
+        contentType,
+        cacheControl: "no-store",
+      },
+      customMetadata: {
+        originalName: file.name || "",
+        uploadedAt: new Date().toISOString(),
+      },
+    });
+
+    return json({
+      ok: true,
+      playerId,
+      r2Key,
+      contentType,
+      sizeBytes: buf.byteLength,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    return json({ ok: false, error: e?.message || String(e) }, 500);
+  }
 }

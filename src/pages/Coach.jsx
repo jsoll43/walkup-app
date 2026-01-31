@@ -18,6 +18,22 @@ function formatPlayer(p) {
   return name || p.id;
 }
 
+function formatET(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return String(ts);
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  }).format(d);
+}
+
 async function safeJsonOrText(res) {
   const text = await res.text();
   try {
@@ -38,7 +54,7 @@ export default function Coach() {
   const [coachKey, setCoachKey] = useState(getSavedCoachKey());
   const [isAuthed, setIsAuthed] = useState(false);
 
-  const [roster, setRoster] = useState([]); // master roster
+  const [roster, setRoster] = useState([]);
   const rosterById = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
 
   const [lineupIds, setLineupIds] = useState([]);
@@ -53,7 +69,6 @@ export default function Coach() {
 
   const [search, setSearch] = useState("");
 
-  // audio playback (final clips)
   const audioRef = useRef(null);
   const [playingPlayerId, setPlayingPlayerId] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -180,7 +195,6 @@ export default function Coach() {
     setErr("");
     setLoading(true);
     try {
-      // validate key by loading state + roster
       const res = await fetch("/api/coach/state", {
         headers: { Authorization: `Bearer ${key}` },
       });
@@ -341,12 +355,6 @@ export default function Coach() {
 
   return (
     <div style={{ maxWidth: 980, margin: "0 auto" }}>
-      <div className="card" style={{ marginBottom: 12 }}>
-        <div style={{ fontWeight: 900, opacity: 0.9 }}>
-          Coaches can only add players from the master roster. Admin manages the master list in /admin.
-        </div>
-      </div>
-
       {err ? (
         <div className="card" style={{ borderColor: "rgba(220,38,38,0.35)", marginBottom: 12 }}>
           <div style={{ color: "crimson" }}>
@@ -355,7 +363,6 @@ export default function Coach() {
         </div>
       ) : null}
 
-      {/* GAME MODE */}
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="cardTitle">Game mode</div>
 
@@ -364,16 +371,7 @@ export default function Coach() {
           <div style={{ fontSize: 18, opacity: lastP ? 1 : 0.4, marginBottom: 10 }}>{lastP ? formatPlayer(lastP) : "—"}</div>
 
           <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>NOW BATTING</div>
-          <div
-            style={{
-              marginTop: 8,
-              marginBottom: 12,
-              padding: 14,
-              borderRadius: 16,
-              border: "3px solid #111",
-              background: "#e9e9e9",
-            }}
-          >
+          <div style={{ marginTop: 8, marginBottom: 12, padding: 14, borderRadius: 16, border: "3px solid #111", background: "#e9e9e9" }}>
             <div style={{ fontSize: 36, fontWeight: 1100, lineHeight: 1.1, color: "#111" }}>
               {nowP ? formatPlayer(nowP) : "No lineup set"}
             </div>
@@ -394,8 +392,8 @@ export default function Coach() {
             ⏭ Next + Play
           </button>
 
-          <div style={{ marginLeft: "auto", fontSize: 12, opacity: 0.75 }}>
-            {updatedAt ? `Last update: ${updatedAt}` : ""}
+          <div style={{ marginLeft: "auto", fontSize: 12, opacity: 0.8 }}>
+            {updatedAt ? `Last update (ET): ${formatET(updatedAt)}` : ""}
             {isPlaying && playingPlayerId ? ` • Playing` : ""}
           </div>
 
@@ -419,7 +417,6 @@ export default function Coach() {
         </div>
       </div>
 
-      {/* BUILD LINEUP */}
       <div className="card" style={{ marginBottom: 12 }}>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <h2 style={{ margin: 0 }}>Build lineup (add players who showed up)</h2>
@@ -455,12 +452,15 @@ export default function Coach() {
         </div>
       </div>
 
-      {/* LINEUP */}
       <div className="card">
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", justifyContent: "space-between" }}>
           <h2 style={{ margin: 0 }}>Lineup</h2>
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            {lastSavedAt ? <div style={{ fontSize: 12, opacity: 0.8 }}>Last saved: <strong>{lastSavedAt}</strong></div> : null}
+            {lastSavedAt ? (
+              <div style={{ fontSize: 12, opacity: 0.85 }}>
+                Last saved (ET): <strong>{formatET(lastSavedAt)}</strong>
+              </div>
+            ) : null}
             <button className="btn" onClick={() => saveState(coachKey, lineupIds, currentIndex)} disabled={saving}>
               {saving ? "Saving…" : "Save lineup"}
             </button>
@@ -473,7 +473,6 @@ export default function Coach() {
           ) : (
             lineupDisplay.map((p, idx) => {
               const isCurrent = idx === currentIndex;
-
               return (
                 <div key={`${p.id}-${idx}`} className={`coach-row ${isCurrent ? "current" : ""}`}>
                   <div className="coach-pos">{idx + 1}.</div>

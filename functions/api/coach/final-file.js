@@ -1,40 +1,55 @@
-export async function onRequestGet(context) {
-  try {
-    const { request, env } = context;
+// functions/api/coach/final-file.js
+function getBearer(req) {
+  const auth = req.headers.get("authorization") || "";
+  if (auth.toLowerCase().startsWith("bearer ")) return auth.slice(7).trim();
+  return "";
+}
 
-    // Coach auth
-    const auth = request.headers.get("Authorization") || "";
-    if (auth !== "Bearer " + env.COACH_KEY) {
-      return new Response("Unauthorized", { status: 401 });
-    }
+function json(obj, status = 200) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
+
+export async function onRequest(context) {
+  const { request, env } = context;
+
+  try {
+    const key = getBearer(request);
+    if (!key || key !== env.COACH_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
+
+    if (request.method !== "GET") return json({ ok: false, error: "Method not allowed" }, 405);
 
     const url = new URL(request.url);
-    const playerId = url.searchParams.get("playerId");
-    if (!playerId) return new Response("Missing playerId", { status: 400 });
+    const playerId = (url.searchParams.get("playerId") || "").trim();
+    if (!playerId) return json({ ok: false, error: "Missing playerId" }, 400);
 
-    // Look up the most recent final clip key for this player
-    // Assumes table: final_clips(player_id, r2_key, uploaded_at)
-    const row = await env.DB
-      .prepare(
-        "SELECT r2_key FROM final_clips WHERE player_id = ? ORDER BY uploaded_at DESC LIMIT 1"
-      )
-      .bind(playerId)
-      .first();
+    const bucket = env.WALKUP_VOICE;
+    if (!bucket) return json({ ok: false, error: "R2 binding WALKUP_VOICE not configured" }, 500);
 
-    if (!row || !row.r2_key) {
-      return new Response("Final clip not found", { status: 404 });
+    const canonicalKey = `final/${playerId}`;
+    let obj = await bucket.get(canonicalKey);
+
+    if (!obj) {
+      const listed = await bucket.list({ prefix: `final/${playerId}` });
+      const first = listed.objects?.[0];
+      if (first?.key) obj = await bucket.get(first.key);
     }
 
-    const obj = await env.WALKUP_VOICE.get(row.r2_key);
-    if (!obj) return new Response("Final clip missing in storage", { status: 404 });
+    if (!obj) return json({ ok: false, error: "Not found" }, 404);
 
-    const headers = new Headers();
-    headers.set("Content-Type", obj.httpMetadata?.contentType || "audio/mpeg");
-    headers.set("Cache-Control", "no-store");
+    const ct = obj.httpMetadata?.contentType || "application/octet-stream";
 
-    return new Response(obj.body, { status: 200, headers });
+    return new Response(obj.body, {
+      status: 200,
+      headers: {
+        "content-type": ct,
+        "cache-control": "no-store",
+        "content-disposition": `inline; filename="${playerId}-final"`,
+      },
+    });
   } catch (e) {
-    const msg = e && (e.stack || e.message) ? (e.stack || e.message) : String(e);
-    return new Response("coach/final-file exception: " + msg, { status: 500 });
+    return json({ ok: false, error: e?.message || String(e) }, 500);
   }
 }
