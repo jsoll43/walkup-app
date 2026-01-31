@@ -258,7 +258,6 @@ export default function Coach() {
     }
   }
 
-  // NEW: supports "next" to wrap to top when at end
   async function setCurrentAndMaybePlay(indexOrKeyword, shouldPlay) {
     if (lineupIds.length === 0) return;
 
@@ -318,6 +317,15 @@ export default function Coach() {
         return hay.includes(s);
       });
   }, [roster, lineupIds, search]);
+
+  // NEW: edge labels for LAST/NEXT
+  const isTopOfOrder = lineupIds.length > 0 && currentIndex === 0;
+  const isBottomOfOrder = lineupIds.length > 0 && currentIndex === lineupIds.length - 1;
+
+  const edgeLabelStyle = {
+    fontWeight: 1000,
+    color: "#b45309", // amber-ish
+  };
 
   useEffect(() => {
     const saved = getSavedCoachKey();
@@ -381,7 +389,15 @@ export default function Coach() {
 
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>LAST UP</div>
-          <div style={{ fontSize: 18, opacity: lastP ? 1 : 0.4, marginBottom: 10 }}>{lastP ? formatPlayer(lastP) : "—"}</div>
+          <div style={{ fontSize: 18, marginBottom: 10 }}>
+            {lineupIds.length === 0 ? (
+              <span style={{ opacity: 0.4 }}>—</span>
+            ) : isTopOfOrder ? (
+              <span style={edgeLabelStyle}>Top of the order</span>
+            ) : (
+              <span>{formatPlayer(lastP)}</span>
+            )}
+          </div>
 
           <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>NOW BATTING</div>
           <div style={{ marginTop: 8, marginBottom: 12, padding: 14, borderRadius: 16, border: "3px solid #111", background: "#e9e9e9" }}>
@@ -391,7 +407,15 @@ export default function Coach() {
           </div>
 
           <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>NEXT UP</div>
-          <div style={{ fontSize: 18, opacity: nextP ? 1 : 0.4 }}>{nextP ? formatPlayer(nextP) : "—"}</div>
+          <div style={{ fontSize: 18 }}>
+            {lineupIds.length === 0 ? (
+              <span style={{ opacity: 0.4 }}>—</span>
+            ) : isBottomOfOrder ? (
+              <span style={edgeLabelStyle}>Bottom of the order</span>
+            ) : (
+              <span>{formatPlayer(nextP)}</span>
+            )}
+          </div>
         </div>
 
         <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -402,7 +426,6 @@ export default function Coach() {
             ⏸ Pause/Stop
           </button>
 
-          {/* CHANGED: always enabled if lineup exists, wraps to top */}
           <button className="btn" onClick={() => setCurrentAndMaybePlay("next", true)} disabled={lineupIds.length === 0}>
             ⏭ Next + Play
           </button>
