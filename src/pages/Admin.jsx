@@ -1,6 +1,5 @@
 // src/pages/Admin.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { roster } from "../data/roster";
 
 function getSavedAdminKey() {
   return (sessionStorage.getItem("ADMIN_KEY") || "").trim();
@@ -40,6 +39,15 @@ export default function Admin() {
   const [err, setErr] = useState("");
   const [loadingLogin, setLoadingLogin] = useState(false);
 
+  // Master roster
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const [roster, setRoster] = useState([]);
+  const [newNumber, setNewNumber] = useState("");
+  const [newFirst, setNewFirst] = useState("");
+  const [newLast, setNewLast] = useState("");
+  const [newId, setNewId] = useState("");
+  const [rosterBusyId, setRosterBusyId] = useState("");
+
   // Parent inbox
   const [inboxLoading, setInboxLoading] = useState(false);
   const [inbox, setInbox] = useState([]);
@@ -52,7 +60,7 @@ export default function Admin() {
   const [finalUploadingId, setFinalUploadingId] = useState("");
   const [finalFiles, setFinalFiles] = useState({}); // playerId -> File
 
-  const rosterById = useMemo(() => new Map(roster.map((p) => [p.id, p])), []);
+  const rosterById = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
 
   const authHeaders = useMemo(() => {
     const k = (adminKey || "").trim();
@@ -78,6 +86,8 @@ export default function Admin() {
     setIsAuthed(false);
     setLoginKey("");
     setErr("");
+
+    setRoster([]);
     setInbox([]);
     setFinalMap(new Map());
     setFinalFiles({});
@@ -90,12 +100,14 @@ export default function Admin() {
       const k = (key || "").trim();
       if (!k) throw new Error("Admin key required.");
 
-      const res = await fetch("/api/admin/parent-inbox", {
+      // auth check: call roster
+      const res = await fetch("/api/roster", {
         headers: { "x-admin-key": k, Authorization: `Bearer ${k}` },
+        cache: "no-store",
       });
 
-      if (!res.ok) {
-        const data = await readJsonOrText(res);
+      const data = await readJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
         throw new Error(extractErr(data, `Login failed (HTTP ${res.status}).`));
       }
 
@@ -111,6 +123,85 @@ export default function Admin() {
     }
   }
 
+  async function loadRoster() {
+    setErr("");
+    setRosterLoading(true);
+    try {
+      const res = await fetch("/api/roster", { headers: authHeaders, cache: "no-store" });
+      const data = await readJsonOrText(res);
+
+      if (!res.ok || data?.ok === false) {
+        if (res.status === 401) hardLogout();
+        throw new Error(extractErr(data, `Failed to load roster (HTTP ${res.status}).`));
+      }
+
+      setRoster(Array.isArray(data?.roster) ? data.roster : []);
+    } catch (e) {
+      setErr(e?.message || String(e));
+    } finally {
+      setRosterLoading(false);
+    }
+  }
+
+  async function upsertRosterPlayer() {
+    setErr("");
+    setRosterBusyId("new");
+    try {
+      const payload = {
+        id: newId.trim() || undefined,
+        number: newNumber.trim(),
+        first: newFirst.trim(),
+        last: newLast.trim(),
+      };
+
+      const res = await fetch("/api/admin/roster-upsert", {
+        method: "POST",
+        headers: { ...authHeaders, "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await readJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(extractErr(data, `Roster save failed (HTTP ${res.status}).`));
+      }
+
+      setNewId("");
+      setNewNumber("");
+      setNewFirst("");
+      setNewLast("");
+
+      await loadRoster();
+    } catch (e) {
+      setErr(e?.message || String(e));
+    } finally {
+      setRosterBusyId("");
+    }
+  }
+
+  async function deleteRosterPlayer(id) {
+    if (!id) return;
+    setErr("");
+    setRosterBusyId(id);
+    try {
+      const res = await fetch("/api/admin/roster-delete", {
+        method: "POST",
+        headers: { ...authHeaders, "content-type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+
+      const data = await readJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(extractErr(data, `Roster delete failed (HTTP ${res.status}).`));
+      }
+
+      await loadRoster();
+    } catch (e) {
+      setErr(e?.message || String(e));
+    } finally {
+      setRosterBusyId("");
+    }
+  }
+
   async function loadInbox() {
     setErr("");
     setInboxLoading(true);
@@ -123,11 +214,13 @@ export default function Admin() {
         throw new Error(extractErr(data, `Failed to load inbox (HTTP ${res.status}).`));
       }
 
-      const items =
-        Array.isArray(data?.submissions) ? data.submissions :
-        Array.isArray(data?.items) ? data.items :
-        Array.isArray(data) ? data :
-        [];
+      const items = Array.isArray(data?.submissions)
+        ? data.submissions
+        : Array.isArray(data?.items)
+        ? data.items
+        : Array.isArray(data)
+        ? data
+        : [];
 
       setInbox(items);
     } catch (e) {
@@ -149,11 +242,7 @@ export default function Admin() {
         throw new Error(extractErr(data, `Failed to load final status (HTTP ${res.status}).`));
       }
 
-      const items =
-        Array.isArray(data?.items) ? data.items :
-        Array.isArray(data?.finals) ? data.finals :
-        Array.isArray(data) ? data :
-        [];
+      const items = Array.isArray(data?.items) ? data.items : Array.isArray(data?.finals) ? data.finals : Array.isArray(data) ? data : [];
 
       const map = new Map();
       for (const it of items) {
@@ -232,7 +321,7 @@ export default function Admin() {
 
       const a = document.createElement("a");
       a.href = url;
-      a.download = nameHint || `parent-submission-${id}.webm`;
+      a.download = nameHint || `parent-submission-${id}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -283,7 +372,6 @@ export default function Admin() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      // ALSO include playerId in the body for compatibility with older handlers
       fd.append("playerId", playerId);
 
       const res = await fetch(`/api/admin/final-upload?playerId=${encodeURIComponent(playerId)}`, {
@@ -319,18 +407,14 @@ export default function Admin() {
         headers: authHeaders,
       });
 
-      if (!res.ok) {
-        const data = await readJsonOrText(res);
-        throw new Error(extractErr(data, `Final download failed (HTTP ${res.status}).`));
-      }
+      const dataMaybe = res.ok ? null : await readJsonOrText(res);
+      if (!res.ok) throw new Error(extractErr(dataMaybe, `Final download failed (HTTP ${res.status}).`));
 
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
 
       const p = rosterById.get(playerId);
-      const niceName = p
-        ? `${(p.first || "").trim()}_${(p.last || "").trim()}`.trim().replace(/\s+/g, "_")
-        : playerId;
+      const niceName = p ? `${(p.first || "").trim()}_${(p.last || "").trim()}`.trim().replace(/\s+/g, "_") : playerId;
 
       const a = document.createElement("a");
       a.href = url;
@@ -347,6 +431,7 @@ export default function Admin() {
 
   useEffect(() => {
     if (!isAuthed || !adminKey) return;
+    loadRoster();
     loadInbox();
     loadFinalStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -394,10 +479,11 @@ export default function Admin() {
         <div style={{ display: "flex", gap: 10 }}>
           <button
             onClick={() => {
+              loadRoster();
               loadInbox();
               loadFinalStatus();
             }}
-            disabled={inboxLoading || finalLoading}
+            disabled={inboxLoading || finalLoading || rosterLoading}
             style={{ padding: "10px 14px", borderRadius: 10 }}
           >
             Refresh
@@ -414,7 +500,87 @@ export default function Admin() {
         </div>
       )}
 
-      {/* Parent Inbox */}
+      {/* MASTER ROSTER */}
+      <div style={{ marginTop: 14, border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <h2 style={{ margin: 0 }}>Master Roster (Admin only)</h2>
+          <button onClick={loadRoster} disabled={rosterLoading} style={{ padding: "10px 14px", borderRadius: 10 }}>
+            {rosterLoading ? "Loading…" : "Reload"}
+          </button>
+        </div>
+
+        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 1fr 1fr auto", gap: 10 }}>
+            <input
+              value={newNumber}
+              onChange={(e) => setNewNumber(e.target.value)}
+              placeholder="Jersey #"
+              style={{ padding: 10, borderRadius: 12, border: "1px solid #ddd" }}
+            />
+            <input
+              value={newFirst}
+              onChange={(e) => setNewFirst(e.target.value)}
+              placeholder="First name (required)"
+              style={{ padding: 10, borderRadius: 12, border: "1px solid #ddd" }}
+            />
+            <input
+              value={newLast}
+              onChange={(e) => setNewLast(e.target.value)}
+              placeholder="Last name (required)"
+              style={{ padding: 10, borderRadius: 12, border: "1px solid #ddd" }}
+            />
+            <input
+              value={newId}
+              onChange={(e) => setNewId(e.target.value)}
+              placeholder="Optional ID (leave blank to auto-generate)"
+              style={{ padding: 10, borderRadius: 12, border: "1px solid #ddd" }}
+            />
+            <button
+              onClick={upsertRosterPlayer}
+              disabled={rosterBusyId === "new"}
+              style={{ padding: "10px 14px", borderRadius: 12, fontWeight: 900 }}
+            >
+              {rosterBusyId === "new" ? "Saving…" : "Add player"}
+            </button>
+          </div>
+
+          {roster.length === 0 ? (
+            <div style={{ opacity: 0.8 }}>No players yet. Add players above.</div>
+          ) : (
+            roster.map((p) => (
+              <div
+                key={p.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "80px 1fr 1fr auto",
+                  gap: 10,
+                  alignItems: "center",
+                  padding: 10,
+                  border: "1px solid #eee",
+                  borderRadius: 12,
+                }}
+              >
+                <div style={{ fontWeight: 1000 }}>{p.number ? `#${p.number}` : ""}</div>
+                <div style={{ fontWeight: 1000 }}>{`${p.first || ""} ${p.last || ""}`.trim()}</div>
+                <div style={{ fontSize: 12, opacity: 0.65 }}>{p.id}</div>
+                <button
+                  onClick={() => deleteRosterPlayer(p.id)}
+                  disabled={rosterBusyId === p.id}
+                  style={{ padding: "10px 12px", borderRadius: 12, fontWeight: 900 }}
+                >
+                  {rosterBusyId === p.id ? "Deleting…" : "Delete"}
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+          Coaches can only add players from this list. If you delete a player, they’ll disappear from coach “Add” options.
+        </div>
+      </div>
+
+      {/* PARENT INBOX */}
       <div style={{ marginTop: 14, border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
           <h2 style={{ margin: 0 }}>Parent Inbox</h2>
@@ -434,16 +600,7 @@ export default function Admin() {
               const created = createdAt ? formatTs(createdAt) : "";
 
               return (
-                <div
-                  key={s.id}
-                  style={{
-                    border: "1px solid #eee",
-                    borderRadius: 14,
-                    padding: 12,
-                    display: "grid",
-                    gap: 8,
-                  }}
-                >
+                <div key={s.id} style={{ border: "1px solid #eee", borderRadius: 14, padding: 12, display: "grid", gap: 8 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                     <div>
                       <div style={{ fontWeight: 1000 }}>{playerName}</div>
@@ -465,7 +622,7 @@ export default function Admin() {
                       {inboxBusyId === s.id ? "Working…" : "▶️ Preview"}
                     </button>
                     <button
-                      onClick={() => downloadInbox(s.id, `${playerName.replace(/\s+/g, "_") || s.id}-parent.webm`)}
+                      onClick={() => downloadInbox(s.id, `${playerName.replace(/\s+/g, "_") || s.id}-parent-audio`)}
                       disabled={inboxBusyId === s.id}
                       style={{ padding: "10px 12px", borderRadius: 12, fontWeight: 900 }}
                     >
@@ -486,7 +643,7 @@ export default function Admin() {
         </div>
       </div>
 
-      {/* Final Clips */}
+      {/* FINAL CLIPS */}
       <div style={{ marginTop: 14, border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
           <h2 style={{ margin: 0 }}>Final Walk-Up Clips</h2>
@@ -496,66 +653,72 @@ export default function Admin() {
         </div>
 
         <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-          {roster.map((p) => {
-            const meta = finalMap.get(p.id);
-            const hasFinal = !!meta;
-            const uploaded =
-              meta?.uploadedAt || meta?.uploaded_at || meta?.uploaded || meta?.updatedAt || meta?.updated_at || "";
+          {roster.length === 0 ? (
+            <div style={{ opacity: 0.8 }}>No roster yet. Add players in “Master Roster” above.</div>
+          ) : (
+            roster.map((p) => {
+              const meta = finalMap.get(p.id);
+              const hasFinal = !!meta;
 
-            const pendingFile = finalFiles[p.id];
+              const uploaded =
+                meta?.uploadedAt || meta?.uploaded_at || meta?.uploaded || meta?.updatedAt || meta?.updated_at || "";
 
-            return (
-              <div
-                key={p.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr auto",
-                  gap: 10,
-                  padding: 12,
-                  borderRadius: 14,
-                  border: "1px solid #eee",
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 1000 }}>
-                    {p.number ? `#${p.number} ` : ""}
-                    {(p.first || "") + " " + (p.last || "")}
+              const pendingFile = finalFiles[p.id];
+
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto",
+                    gap: 10,
+                    padding: 12,
+                    borderRadius: 14,
+                    border: "1px solid #eee",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 1000 }}>
+                      {p.number ? `#${p.number} ` : ""}
+                      {(p.first || "") + " " + (p.last || "")}
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.75 }}>
+                      {hasFinal ? `✅ Uploaded${uploaded ? `: ${formatTs(uploaded)}` : ""}` : "⚠️ Missing final clip"}
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.65 }}>ID: {p.id}</div>
                   </div>
-                  <div style={{ fontSize: 12, opacity: 0.75 }}>
-                    {hasFinal ? `✅ Uploaded${uploaded ? `: ${formatTs(uploaded)}` : ""}` : "⚠️ Missing final clip"}
+
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      onChange={(e) => {
+                        const f = e.target.files && e.target.files[0];
+                        setFinalFiles((prev) => ({ ...prev, [p.id]: f || null }));
+                      }}
+                      style={{ maxWidth: 260 }}
+                    />
+
+                    <button
+                      onClick={() => uploadFinal(p.id)}
+                      disabled={!pendingFile || finalUploadingId === p.id}
+                      style={{ padding: "10px 12px", borderRadius: 12, fontWeight: 900 }}
+                    >
+                      {finalUploadingId === p.id ? "Uploading…" : "Upload final"}
+                    </button>
+
+                    <button
+                      onClick={() => downloadFinal(p.id)}
+                      disabled={!hasFinal}
+                      style={{ padding: "10px 12px", borderRadius: 12, fontWeight: 900 }}
+                    >
+                      Download
+                    </button>
                   </div>
                 </div>
-
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
-                  <input
-                    type="file"
-                    accept="audio/*"
-                    onChange={(e) => {
-                      const f = e.target.files && e.target.files[0];
-                      setFinalFiles((prev) => ({ ...prev, [p.id]: f || null }));
-                    }}
-                    style={{ maxWidth: 260 }}
-                  />
-
-                  <button
-                    onClick={() => uploadFinal(p.id)}
-                    disabled={!pendingFile || finalUploadingId === p.id}
-                    style={{ padding: "10px 12px", borderRadius: 12, fontWeight: 900 }}
-                  >
-                    {finalUploadingId === p.id ? "Uploading…" : "Upload final"}
-                  </button>
-
-                  <button
-                    onClick={() => downloadFinal(p.id)}
-                    disabled={!hasFinal}
-                    style={{ padding: "10px 12px", borderRadius: 12, fontWeight: 900 }}
-                  >
-                    Download
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
 
         <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>

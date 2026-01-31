@@ -1,6 +1,5 @@
 // src/pages/Coach.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { roster as defaultRoster } from "../data/roster";
 
 function getSavedCoachKey() {
   return sessionStorage.getItem("COACH_KEY") || "";
@@ -19,7 +18,7 @@ function formatTimestamp(ts) {
   return d.toLocaleString();
 }
 
-async function safeJson(res) {
+async function readJsonOrText(res) {
   const text = await res.text();
   try {
     return JSON.parse(text);
@@ -28,31 +27,14 @@ async function safeJson(res) {
   }
 }
 
-function normalizeRoster(data) {
-  // Accept either an array of players, or { roster: [...] }
-  const arr = Array.isArray(data) ? data : Array.isArray(data?.roster) ? data.roster : null;
-  if (!arr) return null;
-
-  // Minimal normalization / filtering
-  const cleaned = arr
-    .map((p) => ({
-      id: String(p?.id || "").trim(),
-      number: p?.number ?? "",
-      first: p?.first ?? "",
-      last: p?.last ?? "",
-    }))
-    .filter((p) => p.id);
-
-  return cleaned.length ? cleaned : [];
-}
-
 export default function Coach() {
   const [loginKey, setLoginKey] = useState("");
   const [coachKey, setCoachKey] = useState(getSavedCoachKey());
   const [isAuthed, setIsAuthed] = useState(false);
 
-  // Roster source (defaults to compiled roster.js; can optionally be overridden by /roster.json)
-  const [rosterList, setRosterList] = useState(defaultRoster);
+  // Master roster (from D1)
+  const [rosterList, setRosterList] = useState([]);
+  const [rosterLoading, setRosterLoading] = useState(false);
 
   // Coach state (persisted in D1 via /api/coach/state)
   const [lineupIds, setLineupIds] = useState([]);
@@ -64,7 +46,6 @@ export default function Coach() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Add/search UI
   const [search, setSearch] = useState("");
 
   // Audio
@@ -107,6 +88,30 @@ export default function Coach() {
     } catch {}
     setIsPlaying(false);
     setPlayingPlayerId("");
+  }
+
+  async function fetchRoster(key, silent = false) {
+    if (!silent) setRosterLoading(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/roster", {
+        headers: { Authorization: `Bearer ${key}` },
+        cache: "no-store",
+      });
+      const data = await readJsonOrText(res);
+
+      if (!res.ok || data?.ok === false) {
+        if (res.status === 401) setIsAuthed(false);
+        throw new Error(data?.error || data?.message || data?.raw || `Roster load failed (HTTP ${res.status}).`);
+      }
+
+      const list = Array.isArray(data?.roster) ? data.roster : [];
+      setRosterList(list);
+    } catch (e) {
+      setErr(e?.message || String(e));
+    } finally {
+      if (!silent) setRosterLoading(false);
+    }
   }
 
   async function fetchState(key, silent = false) {
@@ -199,6 +204,9 @@ export default function Coach() {
       setCurrentIndex(Math.max(0, Math.min(idx, Math.max(0, ids.length - 1))));
       setUpdatedAt(json.updatedAt || "");
       setVersion(Number(json.version || 0));
+
+      // Also load master roster
+      await fetchRoster(key);
     } catch (e) {
       setIsAuthed(false);
       setErr(e?.message || String(e));
@@ -245,7 +253,6 @@ export default function Coach() {
     if (lineupIds.length === 0) return;
     const clamped = Math.max(0, Math.min(index, lineupIds.length - 1));
     setCurrentIndex(clamped);
-    // Persist current index (and lineup) so multiple coaches stay in sync
     await saveState(coachKey, lineupIds, clamped);
     if (shouldPlay) await playForPlayerId(lineupIds[clamped]);
   }
@@ -261,6 +268,7 @@ export default function Coach() {
 
   function addToLineup(playerId) {
     if (!playerId) return;
+    if (!rosterById.has(playerId)) return; // only allow from master list
     if (lineupIds.includes(playerId)) return;
     setLineupIds((prev) => [...prev, playerId]);
   }
@@ -271,7 +279,6 @@ export default function Coach() {
       const copy = [...prev];
       copy.splice(indexToRemove, 1);
 
-      // Adjust currentIndex so it remains valid/consistent
       setCurrentIndex((ci) => {
         if (copy.length === 0) return 0;
         if (indexToRemove < ci) return Math.max(0, ci - 1);
@@ -283,67 +290,6 @@ export default function Coach() {
     });
   }
 
-  async function loadLineupFromFile() {
-    setErr("");
-    try {
-      const res = await fetch("/lineup.json", { cache: "no-store" });
-      if (!res.ok) throw new Error(`Could not load /lineup.json (HTTP ${res.status})`);
-      const data = await res.json();
-
-      let ids = [];
-      let idx = 0;
-
-      if (Array.isArray(data)) {
-        ids = data;
-      } else if (Array.isArray(data?.lineupIds)) {
-        ids = data.lineupIds;
-        idx = Number.isFinite(data.currentIndex) ? data.currentIndex : 0;
-      } else {
-        throw new Error("Invalid lineup.json format. Use an array of ids OR { lineupIds: [...], currentIndex: 0 }");
-      }
-
-      ids = ids.map((x) => String(x)).filter(Boolean);
-
-      setLineupIds(ids);
-      setCurrentIndex(Math.max(0, Math.min(idx, Math.max(0, ids.length - 1))));
-    } catch (e) {
-      setErr(e?.message || String(e));
-    }
-  }
-
-  function downloadCurrentLineupFile() {
-    const payload = {
-      lineupIds,
-      currentIndex,
-      note: "Edit lineupIds and currentIndex, then save as public/lineup.json and push to Cloudflare Pages.",
-    };
-
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "lineup.json";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-  }
-
-  async function tryLoadRosterFromFile() {
-    // Optional: if you create public/roster.json, we’ll use it automatically.
-    try {
-      const res = await fetch("/roster.json", { cache: "no-store" });
-      if (!res.ok) return;
-      const data = await res.json();
-      const normalized = normalizeRoster(data);
-      if (normalized) setRosterList(normalized);
-    } catch {
-      // ignore; fallback stays as defaultRoster
-    }
-  }
-
   useEffect(() => {
     const saved = getSavedCoachKey();
     if (saved) tryLogin(saved);
@@ -352,13 +298,17 @@ export default function Coach() {
 
   useEffect(() => {
     if (!isAuthed || !coachKey) return;
-    tryLoadRosterFromFile();
-    const id = setInterval(() => fetchState(coachKey, true), 10000);
+
+    const id = setInterval(() => {
+      fetchState(coachKey, true);
+      // refresh roster occasionally in case admin updates it
+      fetchRoster(coachKey, true);
+    }, 15000);
+
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthed, coachKey]);
 
-  // Derived: available players list (not currently in lineup)
   const availablePlayers = useMemo(() => {
     const q = search.trim().toLowerCase();
     const inLineup = new Set(lineupIds);
@@ -372,22 +322,6 @@ export default function Coach() {
         const id = String(p.id || "").toLowerCase();
         return name.includes(q) || num.includes(q) || id.includes(q);
       });
-
-    // Sort: numeric-ish number first, then last, first
-    list.sort((a, b) => {
-      const an = parseInt(a.number, 10);
-      const bn = parseInt(b.number, 10);
-      const aHas = Number.isFinite(an);
-      const bHas = Number.isFinite(bn);
-      if (aHas && bHas && an !== bn) return an - bn;
-      if (aHas !== bHas) return aHas ? -1 : 1;
-      const al = String(a.last || "");
-      const bl = String(b.last || "");
-      if (al !== bl) return al.localeCompare(bl);
-      const af = String(a.first || "");
-      const bf = String(b.first || "");
-      return af.localeCompare(bf);
-    });
 
     return list;
   }, [rosterList, lineupIds, search]);
@@ -446,8 +380,11 @@ export default function Coach() {
           </div>
 
           <button
-            onClick={() => fetchState(coachKey)}
-            disabled={loading || saving}
+            onClick={() => {
+              fetchState(coachKey);
+              fetchRoster(coachKey);
+            }}
+            disabled={loading || saving || rosterLoading}
             style={{ padding: "10px 14px", borderRadius: 10 }}
           >
             Refresh
@@ -474,27 +411,6 @@ export default function Coach() {
           <strong>Error:</strong> {err}
         </div>
       )}
-
-      {/* LINEUP FILE TOOLS */}
-      <div style={{ marginTop: 14, border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontWeight: 1000 }}>Lineup file</div>
-            <div style={{ fontSize: 12, opacity: 0.75 }}>
-              Optional: load a starting lineup from <code>/public/lineup.json</code>.
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button onClick={loadLineupFromFile} style={{ padding: "10px 14px", borderRadius: 10, fontWeight: 900 }}>
-              Load from lineup.json
-            </button>
-            <button onClick={downloadCurrentLineupFile} style={{ padding: "10px 14px", borderRadius: 10, fontWeight: 900 }}>
-              Download current lineup.json
-            </button>
-          </div>
-        </div>
-      </div>
 
       {/* GAME MODE */}
       <div style={{ marginTop: 14, border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
@@ -547,10 +463,10 @@ export default function Coach() {
         </div>
       </div>
 
-      {/* BUILD LINEUP: ADD PLAYERS */}
+      {/* BUILD LINEUP */}
       <div style={{ marginTop: 14, border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <h2 style={{ margin: 0 }}>Build lineup (add players who showed up)</h2>
+          <h2 style={{ margin: 0 }}>Build lineup (add players from master roster)</h2>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <input
@@ -573,8 +489,14 @@ export default function Coach() {
         </div>
 
         <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-          {availablePlayers.length === 0 ? (
-            <div style={{ opacity: 0.75 }}>No available players (or all are already in the lineup).</div>
+          {rosterLoading ? (
+            <div style={{ opacity: 0.75 }}>Loading roster…</div>
+          ) : rosterList.length === 0 ? (
+            <div style={{ opacity: 0.8 }}>
+              The master roster is empty. Ask the admin to add players in <strong>/admin</strong>.
+            </div>
+          ) : availablePlayers.length === 0 ? (
+            <div style={{ opacity: 0.75 }}>No available players (or all players are already in the lineup).</div>
           ) : (
             availablePlayers.map((p) => (
               <div
@@ -590,11 +512,7 @@ export default function Coach() {
               >
                 <div style={{ width: 70, fontWeight: 900, textAlign: "right" }}>{p.number ? `#${p.number}` : ""}</div>
                 <div style={{ flex: 1, fontWeight: 900 }}>{`${p.first || ""} ${p.last || ""}`.trim() || p.id}</div>
-                <div style={{ fontSize: 12, opacity: 0.65 }}>{p.id}</div>
-                <button
-                  onClick={() => addToLineup(p.id)}
-                  style={{ padding: "10px 12px", borderRadius: 12, fontWeight: 900 }}
-                >
+                <button onClick={() => addToLineup(p.id)} style={{ padding: "10px 12px", borderRadius: 12, fontWeight: 900 }}>
                   Add →
                 </button>
               </div>
@@ -603,7 +521,7 @@ export default function Coach() {
         </div>
 
         <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-          Tip: Create today’s lineup by adding only the players who are present, then reorder below and click “Save lineup”.
+          Coaches can only add players from the master roster. Admin manages the master list in /admin.
         </div>
       </div>
 
@@ -719,22 +637,17 @@ export default function Coach() {
                   {leftBarStyle ? <div style={leftBarStyle} /> : null}
 
                   <div style={{ width: 36, textAlign: "right", fontWeight: 900 }}>{idx + 1}.</div>
-
                   {isCurrent ? <div style={badgeStyle}>CURRENT</div> : null}
 
                   <button
                     onClick={() => setCurrentAndMaybePlay(idx, true)}
                     style={primaryButtonStyle}
-                    title={p._missing ? `Not found in roster. ID: ${p.id}` : p.id}
+                    title={p._missing ? `Not found in master roster. ID: ${p.id}` : p.id}
                   >
                     {formatPlayer(p)} {p._missing ? " (ID only)" : ""}
                   </button>
 
-                  <button
-                    onClick={() => setLineupIds(moveItem(idx, idx - 1))}
-                    disabled={idx === 0}
-                    style={smallButtonStyle}
-                  >
+                  <button onClick={() => setLineupIds(moveItem(idx, idx - 1))} disabled={idx === 0} style={smallButtonStyle}>
                     ↑
                   </button>
                   <button
@@ -759,7 +672,7 @@ export default function Coach() {
         </div>
 
         <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-          Tip: Reorder with ↑/↓ then click “Save lineup”. If another coach saved changes, you’ll get a conflict message instead of overwriting.
+          Tip: Reorder with ↑/↓ then click “Save lineup”. Coaches can only add players from the master roster.
         </div>
       </div>
     </div>
