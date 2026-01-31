@@ -13,14 +13,12 @@ function json(obj, status = 200) {
   });
 }
 
-export async function onRequest(context) {
+export const onRequestPost = async (context) => {
   const { request, env } = context;
 
   try {
     const key = getAuthKey(request);
     if (!key || key !== env.ADMIN_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
-
-    if (request.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
 
     const ct = request.headers.get("content-type") || "";
     if (!ct.toLowerCase().includes("multipart/form-data")) {
@@ -37,7 +35,7 @@ export async function onRequest(context) {
     const bucket = env.WALKUP_VOICE;
     if (!bucket) return json({ ok: false, error: "R2 binding WALKUP_VOICE not configured" }, 500);
 
-    // Canonical key: no extension, always the same
+    // Canonical final key (no extension)
     const r2Key = `final/${playerId}`;
 
     const buf = await file.arrayBuffer();
@@ -65,4 +63,19 @@ export async function onRequest(context) {
   } catch (e) {
     return json({ ok: false, error: e?.message || String(e) }, 500);
   }
-}
+};
+
+export const onRequestOptions = async () => {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "POST,OPTIONS",
+      "access-control-allow-headers": "authorization,x-admin-key,content-type",
+      "access-control-max-age": "86400",
+    },
+  });
+};
+
+// If something accidentally calls GET, return a clear 405.
+export const onRequestGet = async () => json({ ok: false, error: "Method not allowed" }, 405);
