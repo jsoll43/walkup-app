@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { Routes, Route, Navigate, NavLink } from "react-router-dom";
 
 import ParentLogin from "./pages/ParentLogin.jsx";
-import ParentHome from "./pages/Parent_Home.jsx";
+import ParentHome from "./pages/ParentHome.jsx";
 import Coach from "./pages/Coach.jsx";
 import Admin from "./pages/Admin.jsx";
 
