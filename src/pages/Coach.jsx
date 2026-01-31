@@ -258,12 +258,25 @@ export default function Coach() {
     }
   }
 
-  async function setCurrentAndMaybePlay(index, shouldPlay) {
+  // NEW: supports "next" to wrap to top when at end
+  async function setCurrentAndMaybePlay(indexOrKeyword, shouldPlay) {
     if (lineupIds.length === 0) return;
-    const clamped = clampIndex(index, lineupIds.length);
-    setCurrentIndex(clamped);
-    await saveState(coachKey, lineupIds, clamped);
-    if (shouldPlay) await playForPlayerId(lineupIds[clamped]);
+
+    let nextIdx;
+    if (indexOrKeyword === "next") {
+      nextIdx = currentIndex + 1;
+      if (nextIdx >= lineupIds.length) nextIdx = 0; // wrap
+    } else {
+      nextIdx = clampIndex(indexOrKeyword, lineupIds.length);
+    }
+
+    setCurrentIndex(nextIdx);
+    await saveState(coachKey, lineupIds, nextIdx);
+
+    if (shouldPlay) {
+      const pid = lineupIds[nextIdx];
+      if (pid) await playForPlayerId(pid);
+    }
   }
 
   function moveItem(from, to) {
@@ -388,7 +401,9 @@ export default function Coach() {
           <button className="btn-secondary" onClick={stopAudio}>
             ⏸ Pause/Stop
           </button>
-          <button className="btn" onClick={() => setCurrentAndMaybePlay(currentIndex + 1, true)} disabled={currentIndex >= lineupIds.length - 1}>
+
+          {/* CHANGED: always enabled if lineup exists, wraps to top */}
+          <button className="btn" onClick={() => setCurrentAndMaybePlay("next", true)} disabled={lineupIds.length === 0}>
             ⏭ Next + Play
           </button>
 
