@@ -28,6 +28,10 @@ async function readJsonOrText(res) {
   }
 }
 
+function extractErr(data, fallback) {
+  return data?.error || data?.message || data?.raw || fallback;
+}
+
 export default function Admin() {
   const [loginKey, setLoginKey] = useState("");
   const [adminKey, setAdminKey] = useState(getSavedAdminKey());
@@ -68,6 +72,7 @@ export default function Admin() {
       }
     } catch {}
     inboxAudioRef.current = null;
+
     clearAdminKey();
     setAdminKey("");
     setIsAuthed(false);
@@ -85,14 +90,13 @@ export default function Admin() {
       const k = (key || "").trim();
       if (!k) throw new Error("Admin key required.");
 
-      // Use an admin-gated endpoint as the auth check:
       const res = await fetch("/api/admin/parent-inbox", {
         headers: { "x-admin-key": k, Authorization: `Bearer ${k}` },
       });
 
       if (!res.ok) {
         const data = await readJsonOrText(res);
-        throw new Error(data?.error || data?.message || `Login failed (HTTP ${res.status}).`);
+        throw new Error(extractErr(data, `Login failed (HTTP ${res.status}).`));
       }
 
       saveAdminKey(k);
@@ -116,10 +120,9 @@ export default function Admin() {
 
       if (!res.ok || data?.ok === false) {
         if (res.status === 401) hardLogout();
-        throw new Error(data?.error || data?.message || `Failed to load inbox (HTTP ${res.status}).`);
+        throw new Error(extractErr(data, `Failed to load inbox (HTTP ${res.status}).`));
       }
 
-      // Accept common shapes:
       const items =
         Array.isArray(data?.submissions) ? data.submissions :
         Array.isArray(data?.items) ? data.items :
@@ -143,10 +146,9 @@ export default function Admin() {
 
       if (!res.ok || data?.ok === false) {
         if (res.status === 401) hardLogout();
-        throw new Error(data?.error || data?.message || `Failed to load final status (HTTP ${res.status}).`);
+        throw new Error(extractErr(data, `Failed to load final status (HTTP ${res.status}).`));
       }
 
-      // Try to normalize to { items: [{playerId, ...}] } or an array
       const items =
         Array.isArray(data?.items) ? data.items :
         Array.isArray(data?.finals) ? data.finals :
@@ -172,7 +174,6 @@ export default function Admin() {
     setInboxBusyId(id);
 
     try {
-      // stop any existing playback
       try {
         if (inboxAudioRef.current) {
           inboxAudioRef.current.pause();
@@ -187,7 +188,7 @@ export default function Admin() {
 
       if (!res.ok) {
         const data = await readJsonOrText(res);
-        throw new Error(data?.error || data?.message || `Preview failed (HTTP ${res.status}).`);
+        throw new Error(extractErr(data, `Preview failed (HTTP ${res.status}).`));
       }
 
       const blob = await res.blob();
@@ -223,7 +224,7 @@ export default function Admin() {
 
       if (!res.ok) {
         const data = await readJsonOrText(res);
-        throw new Error(data?.error || data?.message || `Download failed (HTTP ${res.status}).`);
+        throw new Error(extractErr(data, `Download failed (HTTP ${res.status}).`));
       }
 
       const blob = await res.blob();
@@ -261,7 +262,7 @@ export default function Admin() {
 
       const data = await readJsonOrText(res);
       if (!res.ok || data?.ok === false) {
-        throw new Error(data?.error || data?.message || `Delete failed (HTTP ${res.status}).`);
+        throw new Error(extractErr(data, `Delete failed (HTTP ${res.status}).`));
       }
 
       setInbox((prev) => prev.filter((x) => x.id !== id));
@@ -282,6 +283,8 @@ export default function Admin() {
     try {
       const fd = new FormData();
       fd.append("file", file);
+      // ALSO include playerId in the body for compatibility with older handlers
+      fd.append("playerId", playerId);
 
       const res = await fetch(`/api/admin/final-upload?playerId=${encodeURIComponent(playerId)}`, {
         method: "POST",
@@ -291,7 +294,7 @@ export default function Admin() {
 
       const data = await readJsonOrText(res);
       if (!res.ok || data?.ok === false) {
-        throw new Error(data?.error || data?.message || `Final upload failed (HTTP ${res.status}).`);
+        throw new Error(extractErr(data, `Final upload failed (HTTP ${res.status}).`));
       }
 
       await loadFinalStatus();
@@ -318,7 +321,7 @@ export default function Admin() {
 
       if (!res.ok) {
         const data = await readJsonOrText(res);
-        throw new Error(data?.error || data?.message || `Final download failed (HTTP ${res.status}).`);
+        throw new Error(extractErr(data, `Final download failed (HTTP ${res.status}).`));
       }
 
       const blob = await res.blob();
@@ -399,10 +402,7 @@ export default function Admin() {
           >
             Refresh
           </button>
-          <button
-            onClick={hardLogout}
-            style={{ padding: "10px 14px", borderRadius: 10, fontWeight: 900 }}
-          >
+          <button onClick={hardLogout} style={{ padding: "10px 14px", borderRadius: 10, fontWeight: 900 }}>
             Log out
           </button>
         </div>
@@ -414,7 +414,7 @@ export default function Admin() {
         </div>
       )}
 
-      {/* PARENT INBOX */}
+      {/* Parent Inbox */}
       <div style={{ marginTop: 14, border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
           <h2 style={{ margin: 0 }}>Parent Inbox</h2>
@@ -447,9 +447,7 @@ export default function Admin() {
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                     <div>
                       <div style={{ fontWeight: 1000 }}>{playerName}</div>
-                      <div style={{ fontSize: 12, opacity: 0.75 }}>
-                        {created ? `Submitted: ${created}` : ""}
-                      </div>
+                      <div style={{ fontSize: 12, opacity: 0.75 }}>{created ? `Submitted: ${created}` : ""}</div>
                     </div>
                     <div style={{ fontSize: 12, opacity: 0.6 }}>ID: {s.id}</div>
                   </div>
@@ -488,7 +486,7 @@ export default function Admin() {
         </div>
       </div>
 
-      {/* FINAL CLIPS */}
+      {/* Final Clips */}
       <div style={{ marginTop: 14, border: "1px solid #ddd", borderRadius: 16, padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
           <h2 style={{ margin: 0 }}>Final Walk-Up Clips</h2>
@@ -501,7 +499,6 @@ export default function Admin() {
           {roster.map((p) => {
             const meta = finalMap.get(p.id);
             const hasFinal = !!meta;
-
             const uploaded =
               meta?.uploadedAt || meta?.uploaded_at || meta?.uploaded || meta?.updatedAt || meta?.updated_at || "";
 
