@@ -13,11 +13,6 @@
   box-sizing: border-box;
 }
 
-html,
-body {
-  height: 100%;
-}
-
 body {
   margin: 0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
@@ -31,10 +26,12 @@ a {
   text-decoration: none;
 }
 
+/* IMPORTANT: do NOT make the app a scroll container */
 .bgsl-app {
   min-height: 100vh;
 }
 
+/* Sticky header is OK as long as body scrolls (not a nested container) */
 .bgsl-header {
   position: sticky;
   top: 0;
@@ -42,6 +39,7 @@ a {
   background: rgba(1, 33, 68, 0.92);
   border-bottom: 1px solid var(--bgsl-border);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .bgsl-header-inner {
@@ -68,6 +66,7 @@ a {
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.10);
   padding: 4px;
+  flex: 0 0 auto;
 }
 
 .bgsl-title {
