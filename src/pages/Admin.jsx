@@ -1,28 +1,36 @@
 import { useEffect, useMemo, useState } from "react";
 import { roster } from "../data/roster";
 
-function getAdminKey() {
+function getSavedAdminKey() {
   return sessionStorage.getItem("ADMIN_KEY") || "";
 }
 
+function saveAdminKey(k) {
+  sessionStorage.setItem("ADMIN_KEY", k);
+}
+
+function clearAdminKey() {
+  sessionStorage.removeItem("ADMIN_KEY");
+}
+
 export default function Admin() {
-  const [adminKey, setAdminKey] = useState(getAdminKey());
-  const [loadingInbox, setLoadingInbox] = useState(false);
-  const [loadingFinalStatus, setLoadingFinalStatus] = useState(false);
-  const [uploadingFinal, setUploadingFinal] = useState(false);
+  const [loginKey, setLoginKey] = useState("");
+  const [adminKey, setAdminKey] = useState(getSavedAdminKey());
+  const [isAuthed, setIsAuthed] = useState(false);
 
   const [err, setErr] = useState("");
 
   // Voice inbox
+  const [loadingInbox, setLoadingInbox] = useState(false);
   const [voiceObjects, setVoiceObjects] = useState([]);
   const [previewKey, setPreviewKey] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
 
-  // Final clip upload
+  // Final clip upload + status
+  const [loadingFinalStatus, setLoadingFinalStatus] = useState(false);
+  const [uploadingFinal, setUploadingFinal] = useState(false);
   const [selectedPlayerId, setSelectedPlayerId] = useState("");
   const [finalFile, setFinalFile] = useState(null);
-
-  // Final status from DB
   const [finalRows, setFinalRows] = useState([]);
 
   const rosterById = useMemo(() => new Map(roster.map((p) => [p.id, p])), []);
@@ -35,7 +43,8 @@ export default function Admin() {
   const groupedVoice = useMemo(() => {
     const map = new Map();
     for (const o of voiceObjects) {
-      const [playerId] = o.key.split("/");
+      const [playerId] = (o.key || "").split("/");
+      if (!playerId) continue;
       if (!map.has(playerId)) map.set(playerId, []);
       map.get(playerId).push(o);
     }
@@ -44,6 +53,12 @@ export default function Admin() {
     }
     return Array.from(map.entries()).sort((a, b) => (a[0] > b[0] ? 1 : -1));
   }, [voiceObjects]);
+
+  function clearPreview() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl("");
+    setPreviewKey("");
+  }
 
   async function fetchVoiceInbox(key) {
     setLoadingInbox(true);
@@ -56,8 +71,11 @@ export default function Admin() {
       const json = await res.json();
       setVoiceObjects(json.objects || []);
     } catch (e) {
-      setErr(e?.message || String(e));
+      const msg = e?.message || String(e);
+      setErr(msg);
       setVoiceObjects([]);
+      // If unauthorized, force re-login
+      if (msg.toLowerCase().includes("unauthorized")) setIsAuthed(false);
     } finally {
       setLoadingInbox(false);
     }
@@ -74,11 +92,61 @@ export default function Admin() {
       const json = await res.json();
       setFinalRows(json.rows || []);
     } catch (e) {
-      setErr(e?.message || String(e));
+      const msg = e?.message || String(e);
+      setErr(msg);
       setFinalRows([]);
+      if (msg.toLowerCase().includes("unauthorized")) setIsAuthed(false);
     } finally {
       setLoadingFinalStatus(false);
     }
+  }
+
+  async function loadAll(key) {
+    await Promise.all([fetchVoiceInbox(key), fetchFinalStatus(key)]);
+  }
+
+  async function tryLogin(key) {
+    setErr("");
+    setLoadingFinalStatus(true);
+    setLoadingInbox(true);
+    try {
+      // "final-status" is a cheap auth check + useful data
+      const res = await fetch("/api/admin/final-status", {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      if (!res.ok) throw new Error(await res.text());
+
+      const json = await res.json();
+      setFinalRows(json.rows || []);
+
+      // logged in
+      setIsAuthed(true);
+      setAdminKey(key);
+      saveAdminKey(key);
+      setLoginKey("");
+
+      // load the rest
+      await fetchVoiceInbox(key);
+    } catch (e) {
+      setIsAuthed(false);
+      setErr(e?.message || String(e));
+    } finally {
+      setLoadingFinalStatus(false);
+      setLoadingInbox(false);
+    }
+  }
+
+  async function logout() {
+    clearPreview();
+    clearAdminKey();
+    setIsAuthed(false);
+    setAdminKey("");
+    setLoginKey("");
+    setErr("");
+    setVoiceObjects([]);
+    setFinalRows([]);
+    setSelectedPlayerId("");
+    setFinalFile(null);
   }
 
   async function previewOrDownloadVoice(key, objectKey, mode = "preview") {
@@ -106,7 +174,9 @@ export default function Admin() {
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1500);
     } catch (e) {
-      setErr(e?.message || String(e));
+      const msg = e?.message || String(e);
+      setErr(msg);
+      if (msg.toLowerCase().includes("unauthorized")) setIsAuthed(false);
     }
   }
 
@@ -132,83 +202,108 @@ export default function Admin() {
       // Refresh status after upload
       await fetchFinalStatus(key);
 
-      // clear file picker
+      // clear file picker state
       setFinalFile(null);
       alert("Final clip uploaded!");
     } catch (e) {
-      setErr(e?.message || String(e));
+      const msg = e?.message || String(e);
+      setErr(msg);
+      if (msg.toLowerCase().includes("unauthorized")) setIsAuthed(false);
     } finally {
       setUploadingFinal(false);
     }
   }
 
-  function clearPreview() {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl("");
-    setPreviewKey("");
-  }
-
-  function loadAll(key) {
-    fetchVoiceInbox(key);
-    fetchFinalStatus(key);
-  }
-
+  // Auto-login if a key exists in sessionStorage
   useEffect(() => {
-    // auto-load if key already in sessionStorage
-    if (adminKey) loadAll(adminKey);
-
+    const saved = getSavedAdminKey();
+    if (saved) {
+      tryLogin(saved);
+    }
     return () => {
-      // cleanup preview blob url on unmount
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // If auth gets flipped off (e.g., key rotated), clear saved key
+  useEffect(() => {
+    if (!isAuthed) {
+      // Don't spam-clearing while user is typing a key before logging in
+      // Only clear if we previously had an adminKey saved.
+      if (adminKey) clearAdminKey();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthed]);
+
+  // -------------------------
+  // LOGIN VIEW
+  // -------------------------
+  if (!isAuthed) {
+    return (
+      <div style={{ padding: 24, maxWidth: 520, margin: "0 auto" }}>
+        <h1 style={{ marginTop: 0 }}>Admin Login</h1>
+
+        <div style={{ marginTop: 14 }}>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 900, opacity: 0.75, marginBottom: 6 }}>
+            Admin Key
+          </label>
+          <input
+            type="password"
+            value={loginKey}
+            onChange={(e) => setLoginKey(e.target.value)}
+            placeholder="Enter admin key…"
+            style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
+          />
+        </div>
+
+        <button
+          onClick={() => tryLogin(loginKey)}
+          disabled={!loginKey || loadingInbox || loadingFinalStatus}
+          style={{
+            marginTop: 12,
+            width: "100%",
+            padding: "12px 14px",
+            borderRadius: 12,
+            fontWeight: 900,
+          }}
+        >
+          {loadingInbox || loadingFinalStatus ? "Logging in…" : "Log in"}
+        </button>
+
+        {err && (
+          <div style={{ marginTop: 12, color: "crimson" }}>
+            <strong>Error:</strong> {err}
+          </div>
+        )}
+
+        <div style={{ marginTop: 14, fontSize: 12, opacity: 0.7 }}>
+          Tip: Once you log in, you won’t see the key field again until you log out.
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------------
+  // DASHBOARD VIEW
+  // -------------------------
   return (
     <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
-      <h1 style={{ marginTop: 0 }}>Admin</h1>
-
-      {/* Key + controls */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <input
-          type="password"
-          placeholder="Admin key"
-          value={adminKey}
-          onChange={(e) => setAdminKey(e.target.value)}
-          style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd", minWidth: 280 }}
-        />
-        <button
-          onClick={() => {
-            sessionStorage.setItem("ADMIN_KEY", adminKey);
-            loadAll(adminKey);
-          }}
-          style={{ padding: "10px 14px", borderRadius: 10, fontWeight: 800 }}
-        >
-          Load
-        </button>
-        <button
-          onClick={() => {
-            sessionStorage.removeItem("ADMIN_KEY");
-            setAdminKey("");
-            setVoiceObjects([]);
-            setFinalRows([]);
-            setSelectedPlayerId("");
-            setFinalFile(null);
-            clearPreview();
-            setErr("");
-          }}
-          style={{ padding: "10px 14px", borderRadius: 10 }}
-        >
-          Clear Key
-        </button>
-
-        <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+        <h1 style={{ marginTop: 0, marginBottom: 0 }}>Admin</h1>
+        <div style={{ display: "flex", gap: 10 }}>
           <button
             onClick={() => loadAll(adminKey)}
-            disabled={!adminKey || loadingInbox || loadingFinalStatus}
+            disabled={loadingInbox || loadingFinalStatus}
             style={{ padding: "10px 14px", borderRadius: 10 }}
           >
             Refresh
+          </button>
+          <button
+            onClick={logout}
+            style={{ padding: "10px 14px", borderRadius: 10, fontWeight: 900 }}
+          >
+            Log out
           </button>
         </div>
       </div>
@@ -244,7 +339,7 @@ export default function Admin() {
         />
 
         <button
-          disabled={!adminKey || !selectedPlayerId || !finalFile || uploadingFinal}
+          disabled={!selectedPlayerId || !finalFile || uploadingFinal}
           onClick={() => uploadFinalClip(adminKey)}
           style={{ padding: "10px 14px", borderRadius: 10, fontWeight: 900 }}
         >
@@ -253,7 +348,7 @@ export default function Admin() {
       </div>
 
       <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
-        This uploads the merged “final” walk-up clip to R2 and records it in the DB so coaches can play it.
+        Upload the merged “final” walk-up clip to R2 and store it in the DB so coaches can play it.
       </div>
 
       <hr style={{ margin: "18px 0" }} />
@@ -286,9 +381,7 @@ export default function Admin() {
                     <span style={{ fontSize: 12, opacity: 0.7 }}>({p.id})</span>
                   </div>
                   <div style={{ fontSize: 12, opacity: 0.75 }}>
-                    {ready
-                      ? `Ready • ${row.uploaded_at} • ${row.r2_key}`
-                      : "Missing"}
+                    {ready ? `Ready • ${row.uploaded_at}` : "Missing"}
                   </div>
                 </div>
 
@@ -366,14 +459,12 @@ export default function Admin() {
                         <button
                           onClick={() => previewOrDownloadVoice(adminKey, o.key, "preview")}
                           style={{ padding: "8px 10px", borderRadius: 10 }}
-                          disabled={!adminKey}
                         >
                           Preview
                         </button>
                         <button
                           onClick={() => previewOrDownloadVoice(adminKey, o.key, "download")}
                           style={{ padding: "8px 10px", borderRadius: 10, fontWeight: 900 }}
-                          disabled={!adminKey}
                         >
                           Download
                         </button>
