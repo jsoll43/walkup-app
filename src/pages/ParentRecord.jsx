@@ -2,6 +2,16 @@ import { useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { roster } from "../data/roster";
 
+function getSavedParentKey() {
+  return sessionStorage.getItem("PARENT_UPLOAD_KEY") || "";
+}
+function saveParentKey(k) {
+  sessionStorage.setItem("PARENT_UPLOAD_KEY", k);
+}
+function clearParentKey() {
+  sessionStorage.removeItem("PARENT_UPLOAD_KEY");
+}
+
 export default function ParentRecord() {
   const nav = useNavigate();
   const { playerId } = useParams();
@@ -30,7 +40,6 @@ export default function ParentRecord() {
 
   async function startRecording() {
     setErr("");
-
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("Recording not supported in this browser.");
@@ -53,11 +62,9 @@ export default function ParentRecord() {
       mr.onstop = () => {
         const b = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
         setBlob(b);
-        const url = URL.createObjectURL(b);
-        setBlobUrl(url);
+        setBlobUrl(URL.createObjectURL(b));
         setStatus("recorded");
 
-        // stop tracks
         if (streamRef.current) {
           streamRef.current.getTracks().forEach((t) => t.stop());
           streamRef.current = null;
@@ -83,13 +90,31 @@ export default function ParentRecord() {
     }
   }
 
+  function ensureParentKey() {
+    let key = getSavedParentKey();
+
+    if (!key) {
+      key = prompt("Parent Upload Key:");
+      if (!key) return ""; // cancelled
+      saveParentKey(key);
+    }
+
+    return key;
+  }
+
   async function submit() {
     setErr("");
     if (!player) return setErr("Unknown player.");
     if (!blob) return setErr("Record something first.");
 
-    try {
-      setStatus("uploading");
+    setStatus("uploading");
+
+    const doUpload = async () => {
+      const key = ensureParentKey();
+      if (!key) {
+        setStatus("recorded");
+        return;
+      }
 
       const form = new FormData();
       form.append("playerId", player.id);
@@ -97,12 +122,27 @@ export default function ParentRecord() {
 
       const res = await fetch("/api/voice-upload", {
         method: "POST",
+        headers: { Authorization: "Bearer " + key },
         body: form,
       });
 
-      if (!res.ok) throw new Error(await res.text());
+      if (res.status === 401) {
+        // Key is wrong or was rotated. Clear and retry once.
+        clearParentKey();
+        throw new Error("Unauthorized. The Parent Upload Key may have changed. Please try again.");
+      }
 
-      // LOCK the screen after success
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      return true;
+    };
+
+    try {
+      await doUpload();
+
+      // success → lock screen
       cleanupBlobUrl();
       setBlob(null);
       setStatus("submitted");
@@ -201,25 +241,14 @@ export default function ParentRecord() {
           </button>
         )}
 
-        {canSubmit ? (
-          <button
-            onClick={submit}
-            style={{ padding: "12px 14px", borderRadius: 12, fontWeight: 900 }}
-          >
-            Submit to coaching staff
-          </button>
-        ) : (
-          <button disabled style={{ padding: "12px 14px", borderRadius: 12, opacity: 0.6 }}>
-            Submit to coaching staff
-          </button>
-        )}
+        <button
+          disabled={!canSubmit || status === "uploading"}
+          onClick={submit}
+          style={{ padding: "12px 14px", borderRadius: 12, fontWeight: 900 }}
+        >
+          {status === "uploading" ? "Submitting…" : "Submit to coaching staff"}
+        </button>
       </div>
-
-      {status === "uploading" && (
-        <div style={{ marginTop: 12, fontWeight: 900 }}>
-          Uploading… please keep this page open.
-        </div>
-      )}
 
       {blobUrl && status === "recorded" && (
         <div style={{ marginTop: 16 }}>
