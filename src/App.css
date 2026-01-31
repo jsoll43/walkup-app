@@ -48,6 +48,8 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
+  /* Allow wrapping when space is tight (mobile) */
+  flex-wrap: wrap;
 }
 
 .bgsl-brand {
@@ -71,9 +73,15 @@ a {
   font-weight: 1000;
   font-size: 16px;
   letter-spacing: 0.2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+
+  /* ✅ Wrap instead of ellipsis */
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+
+  /* Important for wrapping in flex layouts */
+  min-width: 0;
+  line-height: 1.15;
 }
 
 .bgsl-nav {
@@ -250,14 +258,26 @@ button:disabled {
   justify-content: flex-end;
 }
 
-/* Mobile: make action buttons wrap under the player name instead of pushing wide */
+/* Mobile */
 @media (max-width: 520px) {
   .bgsl-header-inner {
     align-items: flex-start;
   }
 
+  /* Put brand on first row, nav on the next row */
+  .bgsl-brand {
+    flex: 1 1 100%;
+  }
+
+  .bgsl-nav {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+    margin-top: 8px;
+  }
+
+  /* Cap title to two-ish lines without ellipsis */
   .bgsl-title {
-    max-width: 190px;
+    max-width: 100%;
   }
 
   .coach-row {
