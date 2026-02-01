@@ -1,18 +1,43 @@
-export async function onRequestGet({ request, env }) {
-  try {
-    const auth = request.headers.get("Authorization") || "";
-    if (auth !== "Bearer " + env.ADMIN_KEY) return new Response("Unauthorized", { status: 401 });
+// functions/api/admin/parent-inbox.js
+function getAdminKey(req) {
+  const h = req.headers;
+  const bearer = (h.get("authorization") || "").trim();
+  if (bearer.toLowerCase().startsWith("bearer ")) return bearer.slice(7).trim();
+  return (h.get("x-admin-key") || "").trim();
+}
 
-    const rows = await env.DB.prepare(
-      `SELECT id, player_name, song_request, created_at, size_bytes, content_type, status
-       FROM parent_submissions
-       WHERE status = 'pending'
-       ORDER BY created_at DESC`
+function json(obj, status = 200) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
+
+export const onRequestGet = async ({ request, env }) => {
+  try {
+    const key = getAdminKey(request);
+    if (!key || key !== env.ADMIN_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
+
+    const res = await env.DB.prepare(
+      `SELECT
+         ps.id,
+         ps.player_name,
+         ps.song_request,
+         ps.content_type,
+         ps.size_bytes,
+         ps.status,
+         ps.created_at,
+         t.slug AS team_slug,
+         t.name AS team_name
+       FROM parent_submissions ps
+       LEFT JOIN teams t ON t.id = ps.team_id
+       WHERE ps.status = 'pending'
+       ORDER BY ps.created_at DESC
+       LIMIT 200`
     ).all();
 
-    return Response.json({ ok: true, items: rows.results || [] });
+    return json({ ok: true, submissions: res.results || [] });
   } catch (e) {
-    const msg = e?.stack || e?.message || String(e);
-    return new Response("admin/parent-inbox exception: " + msg, { status: 500 });
+    return json({ ok: false, error: e?.message || String(e) }, 500);
   }
-}
+};

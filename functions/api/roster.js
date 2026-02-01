@@ -1,105 +1,56 @@
 // functions/api/roster.js
 function json(obj, status = 200) {
-  return new Response(JSON.stringify(obj, null, 2), {
+  return new Response(JSON.stringify(obj), {
     status,
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 }
 
-function getAuthKey(request) {
-  const url = new URL(request.url);
-  const headerKey =
-    request.headers.get("x-admin-key") ||
-    request.headers.get("x-coach-key") ||
-    request.headers.get("x-api-key") ||
-    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
-    "";
-  const queryKey = url.searchParams.get("key") || "";
-  return (headerKey || queryKey || "").trim();
+function getTeamSlug(req) {
+  return (req.headers.get("x-team-slug") || "").trim().toLowerCase();
 }
 
-function isAllowed(key, env) {
-  const a = (env.ADMIN_KEY || "").trim();
-  const c = (env.COACH_KEY || "").trim();
-  return !!key && (key === a || key === c);
+function getCoachKey(req) {
+  const bearer = (req.headers.get("authorization") || "").trim();
+  if (bearer.toLowerCase().startsWith("bearer ")) return bearer.slice(7).trim();
+  return (req.headers.get("x-coach-key") || "").trim();
 }
 
-function isNoSuchTable(err, tableName) {
-  const msg = String(err?.message || err || "").toLowerCase();
-  return msg.includes("no such table") && msg.includes(tableName.toLowerCase());
+function getAdminKey(req) {
+  const bearer = (req.headers.get("authorization") || "").trim();
+  if (bearer.toLowerCase().startsWith("bearer ")) return bearer.slice(7).trim();
+  return (req.headers.get("x-admin-key") || "").trim();
 }
 
-async function ensureRosterTable(db) {
-  const stmts = [
-    `
-    CREATE TABLE IF NOT EXISTS roster_players (
-      id TEXT PRIMARY KEY,
-      number TEXT,
-      first TEXT,
-      last TEXT,
-      status TEXT DEFAULT 'active',
-      created_at TEXT,
-      updated_at TEXT,
-      deleted_at TEXT
-    );
-    `.trim(),
-    `CREATE INDEX IF NOT EXISTS idx_roster_status ON roster_players(status);`.trim(),
-    `CREATE INDEX IF NOT EXISTS idx_roster_number ON roster_players(number);`.trim(),
-    `CREATE INDEX IF NOT EXISTS idx_roster_name ON roster_players(last, first);`.trim(),
-  ];
-
-  for (const s of stmts) {
-    await db.prepare(s).run();
-  }
-}
-
-async function fetchRoster(db) {
-  const q = `
-    SELECT id, number, first, last, created_at, updated_at
-    FROM roster_players
-    WHERE status = 'active'
-    ORDER BY
-      CASE
-        WHEN number GLOB '[0-9]*' AND number <> '' THEN CAST(number AS INTEGER)
-        ELSE 9999
-      END,
-      number,
-      last,
-      first;
-  `.trim();
-
-  const res = await db.prepare(q).all();
-  const roster = (res?.results || []).map((r) => ({
-    id: r.id,
-    number: r.number ?? "",
-    first: r.first ?? "",
-    last: r.last ?? "",
-    created_at: r.created_at ?? "",
-    updated_at: r.updated_at ?? "",
-  }));
-
-  return roster;
-}
-
-export async function onRequestGet({ request, env }) {
+export const onRequestGet = async ({ request, env }) => {
   try {
-    if (!env?.DB) return json({ ok: false, error: "Missing D1 binding env.DB" }, 500);
+    const teamSlug = getTeamSlug(request);
+    if (!teamSlug) return json({ ok: false, error: "Missing team (x-team-slug)" }, 400);
 
-    const key = getAuthKey(request);
-    if (!isAllowed(key, env)) return json({ ok: false, error: "Unauthorized" }, 401);
+    const team = await env.DB.prepare(`SELECT id, name, slug, coach_key, status FROM teams WHERE slug = ?`)
+      .bind(teamSlug)
+      .first();
+    if (!team || team.status !== "active") return json({ ok: false, error: "Unknown team" }, 404);
 
-    try {
-      const roster = await fetchRoster(env.DB);
-      return json({ ok: true, roster });
-    } catch (e) {
-      if (isNoSuchTable(e, "roster_players")) {
-        await ensureRosterTable(env.DB);
-        const roster = await fetchRoster(env.DB);
-        return json({ ok: true, roster, note: "Roster table was auto-created." });
-      }
-      throw e;
-    }
+    // allow coach OR admin
+    const coachKey = getCoachKey(request);
+    const adminKey = getAdminKey(request);
+    const isAdmin = adminKey && adminKey === env.ADMIN_KEY;
+    const isCoach = coachKey && coachKey === team.coach_key;
+
+    if (!isAdmin && !isCoach) return json({ ok: false, error: "Unauthorized" }, 401);
+
+    const res = await env.DB.prepare(
+      `SELECT id, number, first, last, active
+       FROM roster_players
+       WHERE team_id = ? AND active = 1
+       ORDER BY CAST(number AS INTEGER) ASC, last ASC, first ASC`
+    )
+      .bind(team.id)
+      .all();
+
+    return json({ ok: true, team: { slug: team.slug, name: team.name }, roster: res.results || [] });
   } catch (e) {
-    return json({ ok: false, error: String(e?.message || e), stack: e?.stack || null }, 500);
+    return json({ ok: false, error: e?.message || String(e) }, 500);
   }
-}
+};
