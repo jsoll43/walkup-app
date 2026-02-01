@@ -1,7 +1,8 @@
+// src/pages/ParentHome.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ParentRecord from "./ParentRecord.jsx";
-import { getParentKey, getTeamSlug, getTeamName } from "../auth/parentAuth";
+import { getParentKey, getTeamSlug } from "../auth/parentAuth";
 
 async function readJsonOrText(res) {
   const text = await res.text();
@@ -15,9 +16,8 @@ async function readJsonOrText(res) {
 export default function ParentHome() {
   const nav = useNavigate();
 
-  const parentKey = useMemo(() => getParentKey(), []);
-  const teamSlug = useMemo(() => getTeamSlug(), []);
-  const teamName = useMemo(() => getTeamName(), []);
+  const parentKey = useMemo(() => (getParentKey() || "").trim(), []);
+  const teamSlug = useMemo(() => (getTeamSlug() || "").trim().toLowerCase(), []);
 
   const [playerName, setPlayerName] = useState("");
   const [songRequest, setSongRequest] = useState("");
@@ -27,9 +27,8 @@ export default function ParentHome() {
   const [submitted, setSubmitted] = useState(false);
   const [err, setErr] = useState("");
 
+  // If user lands here without selecting team/key, push them to login.
   useEffect(() => {
-    // If they hit /parent directly without going through /parent-login
-    // send them back to login so they can choose team + enter key.
     if (!teamSlug || !parentKey) {
       nav("/parent-login", { replace: true, state: { redirectTo: "/parent" } });
     }
@@ -40,7 +39,7 @@ export default function ParentHome() {
     setErr("");
 
     if (!teamSlug) {
-      setErr("Missing team selection. Go back to Parent Login and select a team.");
+      setErr("Missing team. Go back and select your team.");
       return;
     }
     if (!parentKey) {
@@ -68,8 +67,10 @@ export default function ParentHome() {
       const res = await fetch("/api/voice-upload", {
         method: "POST",
         headers: {
+          // ✅ team context
           "x-team-slug": teamSlug,
-          "x-parent-key": parentKey,
+          // ✅ auth
+          "x-parent-upload-key": parentKey,
           Authorization: `Bearer ${parentKey}`,
         },
         body: fd,
@@ -77,7 +78,9 @@ export default function ParentHome() {
 
       const data = await readJsonOrText(res);
       if (!res.ok || data?.ok === false) {
-        throw new Error(data?.error || data?.message || data?.raw || `Upload failed (HTTP ${res.status}).`);
+        throw new Error(
+          data?.error || data?.message || data?.raw || `Upload failed (HTTP ${res.status}).`
+        );
       }
 
       setSubmitted(true);
@@ -92,11 +95,10 @@ export default function ParentHome() {
     return (
       <div className="page">
         <div className="card">
-          <div className="cardTitle">Team</div>
-          <div style={{ fontWeight: 1000, marginTop: 6 }}>{teamName || "—"}</div>
-
-          <h1 style={{ marginTop: 12 }}>Submitted ✅</h1>
-          <div style={{ marginTop: 10, opacity: 0.85 }}>Thanks! Your walk-up request has been submitted.</div>
+          <h1 style={{ marginTop: 0 }}>Submitted ✅</h1>
+          <div style={{ marginTop: 10, opacity: 0.85 }}>
+            Thanks! Your walk-up request has been submitted.
+          </div>
         </div>
       </div>
     );
@@ -105,10 +107,7 @@ export default function ParentHome() {
   return (
     <div className="page">
       <div className="card">
-        <div className="cardTitle">Team</div>
-        <div style={{ fontWeight: 1000, marginTop: 6 }}>{teamName || "—"}</div>
-
-        <h1 style={{ marginTop: 12 }}>Parent Submission</h1>
+        <h1 style={{ marginTop: 0 }}>Parent Submission</h1>
 
         <div style={{ marginTop: 14 }}>
           <label className="label">Player Name (required)</label>

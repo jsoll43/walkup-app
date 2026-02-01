@@ -1,3 +1,4 @@
+// src/pages/ParentLogin.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getParentKey, setParentKey, getTeamSlug, setTeam } from "../auth/parentAuth";
@@ -11,19 +12,29 @@ async function safeJsonOrText(res) {
   }
 }
 
+function writeTeamToSessionStorage(slug, name) {
+  try {
+    sessionStorage.setItem("TEAM_SLUG", (slug || "").trim().toLowerCase());
+    sessionStorage.setItem("TEAM_NAME", (name || "").trim());
+    // Backward/alternate keys just in case other code reads these:
+    sessionStorage.setItem("teamSlug", (slug || "").trim().toLowerCase());
+    sessionStorage.setItem("teamName", (name || "").trim());
+  } catch {}
+}
+
 export default function ParentLogin() {
   const nav = useNavigate();
   const loc = useLocation();
   const redirectTo = loc.state?.redirectTo || "/parent";
 
   const [teams, setTeams] = useState([]);
-  const [teamSlug, setTeamSlug] = useState(getTeamSlug() || "default");
+  const [teamSlug, setTeamSlug] = useState((getTeamSlug() || "default").trim().toLowerCase());
   const [key, setKey] = useState("");
   const [loadingTeams, setLoadingTeams] = useState(false);
   const [err, setErr] = useState("");
 
   const selectedTeam = useMemo(() => {
-    return teams.find((t) => t.slug === teamSlug) || null;
+    return teams.find((t) => String(t.slug || "").toLowerCase() === teamSlug) || null;
   }, [teams, teamSlug]);
 
   useEffect(() => {
@@ -38,17 +49,22 @@ export default function ParentLogin() {
         const list = Array.isArray(data.teams) ? data.teams : [];
         setTeams(list);
 
-        // If current selection isn't present, pick first team (or default)
+        // Resolve initial team selection
         if (list.length > 0) {
-          const found = list.some((t) => t.slug === teamSlug);
-          const nextSlug = found ? teamSlug : list[0].slug;
+          const found = list.some((t) => String(t.slug || "").toLowerCase() === teamSlug);
+          const nextSlug = found ? teamSlug : String(list[0].slug || "default").toLowerCase();
           setTeamSlug(nextSlug);
 
-          const chosen = list.find((t) => t.slug === nextSlug) || list[0];
-          setTeam({ slug: chosen.slug, name: chosen.name });
+          const chosen = list.find((t) => String(t.slug || "").toLowerCase() === nextSlug) || list[0];
+          const slug = String(chosen.slug || "default").toLowerCase();
+          const name = String(chosen.name || slug);
+
+          setTeam({ slug, name });
+          writeTeamToSessionStorage(slug, name);
         } else {
           // No teams exist yet (admin hasn't created any) — keep default
           setTeam({ slug: "default", name: "Barrington Girls Softball" });
+          writeTeamToSessionStorage("default", "Barrington Girls Softball");
         }
 
         // If key already saved, go straight through
@@ -66,9 +82,15 @@ export default function ParentLogin() {
   }, []);
 
   function onChangeTeam(nextSlug) {
-    setTeamSlug(nextSlug);
-    const t = teams.find((x) => x.slug === nextSlug);
-    if (t) setTeam({ slug: t.slug, name: t.name });
+    const slug = String(nextSlug || "").trim().toLowerCase();
+    setTeamSlug(slug);
+
+    const t = teams.find((x) => String(x.slug || "").toLowerCase() === slug);
+    if (t) {
+      const name = String(t.name || slug);
+      setTeam({ slug, name });
+      writeTeamToSessionStorage(slug, name);
+    }
   }
 
   function login() {
@@ -76,8 +98,13 @@ export default function ParentLogin() {
     if (!selectedTeam) return setErr("Please select a team.");
     if (!key) return setErr("Please enter the Parent key.");
 
-    setTeam({ slug: selectedTeam.slug, name: selectedTeam.name });
+    const slug = String(selectedTeam.slug || "default").toLowerCase();
+    const name = String(selectedTeam.name || slug);
+
+    setTeam({ slug, name });
+    writeTeamToSessionStorage(slug, name);
     setParentKey(key);
+
     nav(redirectTo, { replace: true });
   }
 
@@ -102,7 +129,7 @@ export default function ParentLogin() {
             <option value="default">{loadingTeams ? "Loading teams…" : "No teams found (ask admin)"}</option>
           ) : (
             teams.map((t) => (
-              <option key={t.slug} value={t.slug}>
+              <option key={t.slug} value={String(t.slug || "").toLowerCase()}>
                 {t.name}
               </option>
             ))
