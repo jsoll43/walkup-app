@@ -6,6 +6,15 @@ function getAuthKey(req) {
   return (h.get("x-admin-key") || "").trim();
 }
 
+function getTeamSlug(req) {
+  const u = new URL(req.url);
+  return (
+    (req.headers.get("x-team-slug") || "").trim().toLowerCase() ||
+    (u.searchParams.get("teamSlug") || "").trim().toLowerCase() ||
+    "default"
+  );
+}
+
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
@@ -13,12 +22,22 @@ function json(obj, status = 200) {
   });
 }
 
-export const onRequestPost = async (context) => {
-  const { request, env } = context;
+async function requireTeam(env, slug) {
+  const team = await env.DB.prepare(
+    `SELECT id, name, slug, status FROM teams WHERE slug = ?`
+  ).bind(slug).first();
+  if (!team || team.status !== "active") return null;
+  return team;
+}
 
+export const onRequestPost = async ({ request, env }) => {
   try {
     const key = getAuthKey(request);
     if (!key || key !== env.ADMIN_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
+
+    const teamSlug = getTeamSlug(request);
+    const team = await requireTeam(env, teamSlug);
+    if (!team) return json({ ok: false, error: `Unknown team: ${teamSlug}` }, 404);
 
     const ct = request.headers.get("content-type") || "";
     if (!ct.toLowerCase().includes("multipart/form-data")) {
@@ -35,11 +54,12 @@ export const onRequestPost = async (context) => {
     const bucket = env.WALKUP_VOICE;
     if (!bucket) return json({ ok: false, error: "R2 binding WALKUP_VOICE not configured" }, 500);
 
-    // Canonical final key (no extension)
-    const r2Key = `final/${playerId}`;
+    // Team-aware final key (no extension for backwards compatibility with your UI/status map)
+    const r2Key = `final/${team.slug}/${playerId}`;
 
     const buf = await file.arrayBuffer();
     const contentType = file.type || "application/octet-stream";
+    const now = new Date().toISOString();
 
     await bucket.put(r2Key, buf, {
       httpMetadata: {
@@ -48,17 +68,20 @@ export const onRequestPost = async (context) => {
       },
       customMetadata: {
         originalName: file.name || "",
-        uploadedAt: new Date().toISOString(),
+        uploadedAt: now,
+        teamSlug: team.slug,
+        teamName: team.name,
       },
     });
 
     return json({
       ok: true,
+      team: { slug: team.slug, name: team.name },
       playerId,
       r2Key,
       contentType,
       sizeBytes: buf.byteLength,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
     });
   } catch (e) {
     return json({ ok: false, error: e?.message || String(e) }, 500);
@@ -71,11 +94,10 @@ export const onRequestOptions = async () => {
     headers: {
       "access-control-allow-origin": "*",
       "access-control-allow-methods": "POST,OPTIONS",
-      "access-control-allow-headers": "authorization,x-admin-key,content-type",
+      "access-control-allow-headers": "authorization,x-admin-key,x-team-slug,content-type",
       "access-control-max-age": "86400",
     },
   });
 };
 
-// If something accidentally calls GET, return a clear 405.
 export const onRequestGet = async () => json({ ok: false, error: "Method not allowed" }, 405);
