@@ -11,6 +11,22 @@ function clearCoachKey() {
   sessionStorage.removeItem("COACH_KEY");
 }
 
+// Team context is stored by the team-selection flow (Parent/Coach selection screens).
+function getTeamSlug() {
+  return (
+    sessionStorage.getItem("TEAM_SLUG") ||
+    sessionStorage.getItem("teamSlug") ||
+    ""
+  ).trim().toLowerCase();
+}
+function getTeamName() {
+  return (
+    sessionStorage.getItem("TEAM_NAME") ||
+    sessionStorage.getItem("teamName") ||
+    ""
+  ).trim();
+}
+
 function formatPlayer(p) {
   if (!p) return "";
   const name = `${p.first || ""} ${p.last || ""}`.trim();
@@ -53,6 +69,9 @@ export default function Coach() {
   const [loginKey, setLoginKey] = useState("");
   const [coachKey, setCoachKey] = useState(getSavedCoachKey());
   const [isAuthed, setIsAuthed] = useState(false);
+
+  const teamSlug = useMemo(() => getTeamSlug(), []);
+  const teamName = useMemo(() => getTeamName(), []);
 
   const [roster, setRoster] = useState([]);
   const rosterById = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
@@ -97,15 +116,20 @@ export default function Coach() {
     setPlayingPlayerId("");
   }
 
+  function headersForCoach(key) {
+    return {
+      Authorization: `Bearer ${key}`,
+      "x-coach-key": key,
+      "x-team-slug": teamSlug, // ✅ required by team-scoped APIs
+    };
+  }
+
   async function fetchRoster(key, silent = false) {
     if (!silent) setLoading(true);
     setErr("");
     try {
       const res = await fetch("/api/roster", {
-        headers: {
-          Authorization: `Bearer ${key}`,
-          "x-coach-key": key,
-        },
+        headers: headersForCoach(key),
       });
       const data = await safeJsonOrText(res);
       if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Roster failed (HTTP ${res.status})`);
@@ -122,7 +146,7 @@ export default function Coach() {
     setErr("");
     try {
       const res = await fetch("/api/coach/state", {
-        headers: { Authorization: `Bearer ${key}` },
+        headers: headersForCoach(key),
       });
       const json = await safeJsonOrText(res);
       if (!res.ok || json?.ok === false) throw new Error(json?.error || json?.raw || `State failed (HTTP ${res.status})`);
@@ -152,7 +176,7 @@ export default function Coach() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${key}`,
+          ...headersForCoach(key),
         },
         body: JSON.stringify({
           lineupIds: nextLineupIds,
@@ -196,7 +220,7 @@ export default function Coach() {
     setLoading(true);
     try {
       const res = await fetch("/api/coach/state", {
-        headers: { Authorization: `Bearer ${key}` },
+        headers: headersForCoach(key),
       });
       const json = await safeJsonOrText(res);
       if (!res.ok || json?.ok === false) throw new Error(json?.error || json?.raw || "Unauthorized");
@@ -231,7 +255,7 @@ export default function Coach() {
 
     try {
       const res = await fetch(`/api/coach/final-file?playerId=${encodeURIComponent(playerId)}`, {
-        headers: { Authorization: `Bearer ${coachKey}` },
+        headers: headersForCoach(coachKey),
       });
 
       if (res.status === 404) throw new Error("No final clip uploaded for this player yet.");
@@ -264,7 +288,7 @@ export default function Coach() {
     let nextIdx;
     if (indexOrKeyword === "next") {
       nextIdx = currentIndex + 1;
-      if (nextIdx >= lineupIds.length) nextIdx = 0; // wrap
+      if (nextIdx >= lineupIds.length) nextIdx = 0; // wrap ✅
     } else {
       nextIdx = clampIndex(indexOrKeyword, lineupIds.length);
     }
@@ -318,13 +342,12 @@ export default function Coach() {
       });
   }, [roster, lineupIds, search]);
 
-  // NEW: edge labels for LAST/NEXT
   const isTopOfOrder = lineupIds.length > 0 && currentIndex === 0;
   const isBottomOfOrder = lineupIds.length > 0 && currentIndex === lineupIds.length - 1;
 
   const edgeLabelStyle = {
     fontWeight: 1000,
-    color: "#b45309", // amber-ish
+    color: "#b45309",
   };
 
   useEffect(() => {
@@ -343,11 +366,31 @@ export default function Coach() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthed, coachKey]);
 
+  // If team isn't selected, show a clear message instead of failing API calls.
+  if (!teamSlug) {
+    return (
+      <div className="page">
+        <div className="card">
+          <h1 style={{ marginTop: 0 }}>Coach</h1>
+          <div style={{ marginTop: 8, opacity: 0.85 }}>
+            <strong>Error:</strong> Missing team selection.
+          </div>
+          <div style={{ marginTop: 10, opacity: 0.8 }}>
+            Go back to the Team Select screen and choose a team, then return here.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!isAuthed) {
     return (
       <div className="page">
         <div className="card">
-          <h1 style={{ marginTop: 0 }}>Coach Login</h1>
+          <div className="cardTitle">Team</div>
+          <div style={{ fontWeight: 1000, marginTop: 6 }}>{teamName || teamSlug}</div>
+
+          <h1 style={{ marginTop: 12 }}>Coach Login</h1>
 
           <div style={{ marginTop: 14 }}>
             <label className="label">Coach Key</label>
@@ -357,6 +400,7 @@ export default function Coach() {
               onChange={(e) => setLoginKey(e.target.value)}
               placeholder="Enter coach key…"
               className="input"
+              onKeyDown={(e) => (e.key === "Enter" ? tryLogin(loginKey) : null)}
             />
           </div>
 
@@ -385,7 +429,10 @@ export default function Coach() {
       ) : null}
 
       <div className="card" style={{ marginBottom: 12 }}>
-        <div className="cardTitle">Game mode</div>
+        <div className="cardTitle">Team</div>
+        <div style={{ fontWeight: 1000, marginTop: 6 }}>{teamName || teamSlug}</div>
+
+        <div className="cardTitle" style={{ marginTop: 14 }}>Game mode</div>
 
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>LAST UP</div>
