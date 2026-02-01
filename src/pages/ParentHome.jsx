@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import ParentRecord from "./ParentRecord.jsx";
 import { getParentKey, getTeamSlug, getTeamName } from "../auth/parentAuth";
 
@@ -12,6 +13,8 @@ async function readJsonOrText(res) {
 }
 
 export default function ParentHome() {
+  const nav = useNavigate();
+
   const parentKey = useMemo(() => getParentKey(), []);
   const teamSlug = useMemo(() => getTeamSlug(), []);
   const teamName = useMemo(() => getTeamName(), []);
@@ -23,6 +26,15 @@ export default function ParentHome() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [err, setErr] = useState("");
+
+  useEffect(() => {
+    // If they hit /parent directly without going through /parent-login
+    // send them back to login so they can choose team + enter key.
+    if (!teamSlug || !parentKey) {
+      nav("/parent-login", { replace: true, state: { redirectTo: "/parent" } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function submit() {
     setErr("");

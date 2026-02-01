@@ -1,3 +1,4 @@
+// src/pages/Admin.jsx
 import { useEffect, useMemo, useState } from "react";
 
 function getSavedAdminKey() {
@@ -69,21 +70,20 @@ export default function Admin() {
   const [finalFile, setFinalFile] = useState({});
   const [finalRowError, setFinalRowError] = useState({});
 
-  const authedHeaders = useMemo(() => {
+  const adminHeaders = useMemo(() => {
     return { "x-admin-key": adminKey, Authorization: `Bearer ${adminKey}` };
   }, [adminKey]);
 
   const manageTeam = useMemo(() => teams.find((t) => t.slug === manageTeamSlug) || null, [teams, manageTeamSlug]);
 
-  function teamHeaders(slug) {
-    return { ...authedHeaders, "x-team-slug": slug || "default" };
+  function teamHeaders(teamSlug) {
+    return { ...adminHeaders, "x-team-slug": (teamSlug || "default").toLowerCase() };
   }
 
   async function tryLogin(key) {
     setErr("");
     setLoading(true);
     try {
-      // quick auth check
       const res = await fetch("/api/admin/parent-inbox", {
         headers: { "x-admin-key": key, Authorization: `Bearer ${key}` },
       });
@@ -95,7 +95,8 @@ export default function Admin() {
       saveAdminKey(key);
       setLoginKey("");
 
-      await refreshAll(key);
+      // Important: after setting key, refresh everything (no “override headers” that drop team headers)
+      await refreshAll();
     } catch (e) {
       setIsAuthed(false);
       setErr(e?.message || String(e));
@@ -104,56 +105,59 @@ export default function Admin() {
     }
   }
 
-  async function fetchTeams(headersOverride) {
-    const res = await fetch("/api/admin/teams", { headers: headersOverride || authedHeaders });
+  async function fetchTeams() {
+    const res = await fetch("/api/admin/teams", { headers: adminHeaders });
     const data = await safeJsonOrText(res);
     if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Teams failed (HTTP ${res.status})`);
+
     const list = Array.isArray(data.teams) ? data.teams : [];
     setTeams(list);
 
     // Ensure manageTeamSlug is valid
-    const found = list.some((t) => t.slug === manageTeamSlug);
-    if (!found) {
-      const fallback = list.find((t) => t.slug === "default") || list[0];
-      if (fallback) {
-        setManageTeamSlug(fallback.slug);
-        sessionStorage.setItem("ADMIN_TEAM_SLUG", fallback.slug);
+    if (list.length > 0) {
+      const found = list.some((t) => t.slug === manageTeamSlug);
+      const next = found ? manageTeamSlug : (list.find((t) => t.slug === "default")?.slug || list[0].slug);
+      if (next !== manageTeamSlug) {
+        setManageTeamSlug(next);
+        sessionStorage.setItem("ADMIN_TEAM_SLUG", next);
       }
+      return next;
     }
+    return manageTeamSlug || "default";
   }
 
-  async function fetchRoster(headersOverride, slugOverride) {
-    const slug = slugOverride || manageTeamSlug || "default";
-    const res = await fetch("/api/roster", { headers: headersOverride || teamHeaders(slug) });
+  async function fetchRosterForTeam(teamSlug) {
+    const res = await fetch("/api/roster", { headers: teamHeaders(teamSlug) });
     const data = await safeJsonOrText(res);
     if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Roster failed (HTTP ${res.status})`);
     setRoster(Array.isArray(data.roster) ? data.roster : []);
   }
 
-  async function fetchInbox(headersOverride) {
-    const res = await fetch("/api/admin/parent-inbox", { headers: headersOverride || authedHeaders });
+  async function fetchInbox() {
+    const res = await fetch("/api/admin/parent-inbox", { headers: adminHeaders });
     const data = await safeJsonOrText(res);
     if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Inbox failed (HTTP ${res.status})`);
-    // new backend returns { submissions: [...] }
     const list = Array.isArray(data.submissions) ? data.submissions : Array.isArray(data.items) ? data.items : [];
     setInbox(list);
   }
 
-  async function fetchFinalStatus(headersOverride, slugOverride) {
-    const slug = slugOverride || manageTeamSlug || "default";
-    const res = await fetch("/api/admin/final-status", { headers: headersOverride || teamHeaders(slug) });
+  async function fetchFinalStatusForTeam(teamSlug) {
+    const res = await fetch("/api/admin/final-status", { headers: teamHeaders(teamSlug) });
     const data = await safeJsonOrText(res);
     if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Final status failed (HTTP ${res.status})`);
     setFinalStatus(data.status && typeof data.status === "object" ? data.status : {});
   }
 
-  async function refreshAll(keyOverride) {
+  async function refreshAll() {
     setErr("");
     setLoading(true);
     try {
-      const headers = keyOverride ? { "x-admin-key": keyOverride, Authorization: `Bearer ${keyOverride}` } : authedHeaders;
-      await fetchTeams(headers);
-      await Promise.all([fetchInbox(headers), fetchRoster(headers), fetchFinalStatus(headers)]);
+      const resolvedTeamSlug = await fetchTeams();
+      await Promise.all([
+        fetchInbox(),
+        fetchRosterForTeam(resolvedTeamSlug),
+        fetchFinalStatusForTeam(resolvedTeamSlug),
+      ]);
     } catch (e) {
       setErr(e?.message || String(e));
     } finally {
@@ -175,7 +179,7 @@ export default function Admin() {
   async function downloadSubmission(id, playerName = "parent-recording") {
     setErr("");
     try {
-      const res = await fetch(`/api/admin/parent-audio?id=${encodeURIComponent(id)}`, { headers: authedHeaders });
+      const res = await fetch(`/api/admin/parent-audio?id=${encodeURIComponent(id)}`, { headers: adminHeaders });
       if (!res.ok) throw new Error(await res.text());
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -198,7 +202,7 @@ export default function Admin() {
     try {
       const res = await fetch("/api/admin/parent-delete", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authedHeaders },
+        headers: { "Content-Type": "application/json", ...adminHeaders },
         body: JSON.stringify({ id }),
       });
       const data = await safeJsonOrText(res);
@@ -236,7 +240,7 @@ export default function Admin() {
         throw new Error(data?.error || data?.message || data?.raw || `Final upload failed (HTTP ${res.status}).`);
       }
 
-      await fetchFinalStatus(undefined, manageTeamSlug);
+      await fetchFinalStatusForTeam(manageTeamSlug);
     } catch (e) {
       setFinalRowError((prev) => ({ ...prev, [playerId]: e?.message || String(e) }));
     } finally {
@@ -247,7 +251,9 @@ export default function Admin() {
   async function downloadFinal(playerId) {
     setErr("");
     try {
-      const res = await fetch(`/api/admin/voice-file?playerId=${encodeURIComponent(playerId)}`, { headers: teamHeaders(manageTeamSlug) });
+      const res = await fetch(`/api/admin/voice-file?playerId=${encodeURIComponent(playerId)}`, {
+        headers: teamHeaders(manageTeamSlug),
+      });
       if (!res.ok) throw new Error(await res.text());
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -275,7 +281,7 @@ export default function Admin() {
     try {
       const res = await fetch("/api/admin/teams", {
         method: "POST",
-        headers: { "content-type": "application/json", ...authedHeaders },
+        headers: { "content-type": "application/json", ...adminHeaders },
         body: JSON.stringify({
           name: newName.trim(),
           slug: newSlug.trim().toLowerCase(),
@@ -292,7 +298,7 @@ export default function Admin() {
       setNewParentKey("");
       setNewCoachKey("");
 
-      await fetchTeams();
+      await refreshAll();
     } catch (e) {
       setErr(e?.message || String(e));
     } finally {
@@ -302,11 +308,9 @@ export default function Admin() {
 
   async function deleteTeam(slug) {
     if (!slug) return;
-    if (slug === "default") {
-      setErr("Cannot delete the default team.");
-      return;
-    }
-    const ok = window.confirm(`Delete team "${slug}"? This hides it from parents/coaches. (Roster/submissions remain in DB.)`);
+    if (slug === "default") return setErr("Cannot delete the default team.");
+
+    const ok = window.confirm(`Delete team "${slug}"? This hides it from parents/coaches.`);
     if (!ok) return;
 
     setDeletingTeam(true);
@@ -314,14 +318,13 @@ export default function Admin() {
     try {
       const res = await fetch("/api/admin/teams", {
         method: "DELETE",
-        headers: { "content-type": "application/json", ...authedHeaders },
+        headers: { "content-type": "application/json", ...adminHeaders },
         body: JSON.stringify({ slug }),
       });
       const data = await safeJsonOrText(res);
       if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Delete team failed (HTTP ${res.status})`);
 
-      await fetchTeams();
-      await fetchInbox();
+      await refreshAll();
     } catch (e) {
       setErr(e?.message || String(e));
     } finally {
@@ -332,9 +335,8 @@ export default function Admin() {
   function setManageTeam(nextSlug) {
     setManageTeamSlug(nextSlug);
     sessionStorage.setItem("ADMIN_TEAM_SLUG", nextSlug);
-    // refresh team-scoped sections
-    fetchRoster(undefined, nextSlug).catch(() => {});
-    fetchFinalStatus(undefined, nextSlug).catch(() => {});
+    fetchRosterForTeam(nextSlug).catch(() => {});
+    fetchFinalStatusForTeam(nextSlug).catch(() => {});
   }
 
   const filteredInbox = useMemo(() => {
@@ -444,10 +446,6 @@ export default function Admin() {
             <button className="btn" onClick={createTeam} disabled={creatingTeam}>
               {creatingTeam ? "Creating…" : "Create team"}
             </button>
-
-            <div style={{ fontSize: 12, opacity: 0.75 }}>
-              Tip: Slug should be short and URL-friendly (letters/numbers/dashes). Parents/coaches will select the team first, then enter the team key.
-            </div>
           </div>
 
           <div style={{ borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: 12 }}>
@@ -465,11 +463,7 @@ export default function Admin() {
                 </select>
               </div>
 
-              <button
-                className="btn-danger"
-                onClick={() => deleteTeam(manageTeamSlug)}
-                disabled={deletingTeam || manageTeamSlug === "default"}
-              >
+              <button className="btn-danger" onClick={() => deleteTeam(manageTeamSlug)} disabled={deletingTeam || manageTeamSlug === "default"}>
                 {deletingTeam ? "Deleting…" : "Delete this team"}
               </button>
 
@@ -558,7 +552,7 @@ export default function Admin() {
               Managing team: <strong>{manageTeam ? `${manageTeam.name} (${manageTeam.slug})` : manageTeamSlug}</strong>
             </div>
           </div>
-          <button className="btn-secondary" onClick={() => fetchFinalStatus(undefined, manageTeamSlug)} disabled={loading}>
+          <button className="btn-secondary" onClick={() => fetchFinalStatusForTeam(manageTeamSlug)} disabled={loading}>
             Reload status
           </button>
         </div>
@@ -578,8 +572,7 @@ export default function Admin() {
                   <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
                     <div style={{ fontWeight: 1000 }}>{formatPlayer(p)}</div>
                     <div style={{ fontSize: 12, opacity: 0.75 }}>
-                      Status:{" "}
-                      <strong style={{ color: exists ? "green" : "crimson" }}>{exists ? "Uploaded" : "Missing"}</strong>
+                      Status: <strong style={{ color: exists ? "green" : "crimson" }}>{exists ? "Uploaded" : "Missing"}</strong>
                     </div>
                   </div>
 
