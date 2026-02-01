@@ -1,27 +1,82 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { getParentKey, setParentKey } from "../auth/parentAuth";
+import { getParentKey, setParentKey, getTeamSlug, setTeam } from "../auth/parentAuth";
+
+async function safeJsonOrText(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
 
 export default function ParentLogin() {
   const nav = useNavigate();
   const loc = useLocation();
   const redirectTo = loc.state?.redirectTo || "/parent";
 
+  const [teams, setTeams] = useState([]);
+  const [teamSlug, setTeamSlug] = useState(getTeamSlug() || "default");
   const [key, setKey] = useState("");
+  const [loadingTeams, setLoadingTeams] = useState(false);
   const [err, setErr] = useState("");
 
+  const selectedTeam = useMemo(() => {
+    return teams.find((t) => t.slug === teamSlug) || null;
+  }, [teams, teamSlug]);
+
   useEffect(() => {
-    const saved = getParentKey();
-    if (saved) {
-      // Already "logged in" for this session
-      nav(redirectTo, { replace: true });
-    }
+    (async () => {
+      setLoadingTeams(true);
+      setErr("");
+      try {
+        const res = await fetch("/api/public/teams");
+        const data = await safeJsonOrText(res);
+        if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || "Failed to load teams.");
+
+        const list = Array.isArray(data.teams) ? data.teams : [];
+        setTeams(list);
+
+        // If current selection isn't present, pick first team (or default)
+        if (list.length > 0) {
+          const found = list.some((t) => t.slug === teamSlug);
+          const nextSlug = found ? teamSlug : list[0].slug;
+          setTeamSlug(nextSlug);
+
+          const chosen = list.find((t) => t.slug === nextSlug) || list[0];
+          setTeam({ slug: chosen.slug, name: chosen.name });
+        } else {
+          // No teams exist yet (admin hasn't created any) — keep default
+          setTeam({ slug: "default", name: "Barrington Girls Softball" });
+        }
+
+        // If key already saved, go straight through
+        const saved = getParentKey();
+        if (saved) {
+          nav(redirectTo, { replace: true });
+        }
+      } catch (e) {
+        setErr(e?.message || String(e));
+      } finally {
+        setLoadingTeams(false);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function onChangeTeam(nextSlug) {
+    setTeamSlug(nextSlug);
+    const t = teams.find((x) => x.slug === nextSlug);
+    if (t) setTeam({ slug: t.slug, name: t.name });
+  }
+
   function login() {
     setErr("");
-    if (!key) return setErr("Please enter the key.");
+    if (!selectedTeam) return setErr("Please select a team.");
+    if (!key) return setErr("Please enter the Parent key.");
+
+    setTeam({ slug: selectedTeam.slug, name: selectedTeam.name });
     setParentKey(key);
     nav(redirectTo, { replace: true });
   }
@@ -30,18 +85,40 @@ export default function ParentLogin() {
     <div style={{ padding: 24, maxWidth: 520, margin: "0 auto" }}>
       <h1 style={{ marginTop: 0 }}>Parent Access</h1>
       <div style={{ opacity: 0.75, marginTop: 8 }}>
-        Enter the team key to view the roster and submit a walk-up announcement.
+        Select your team, then enter the Parent key to submit a walk-up announcement.
       </div>
 
       <div style={{ marginTop: 14 }}>
         <label style={{ display: "block", fontSize: 12, fontWeight: 900, opacity: 0.75, marginBottom: 6 }}>
-          Team Key
+          Team
+        </label>
+        <select
+          value={teamSlug}
+          onChange={(e) => onChangeTeam(e.target.value)}
+          disabled={loadingTeams || teams.length === 0}
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
+        >
+          {teams.length === 0 ? (
+            <option value="default">{loadingTeams ? "Loading teams…" : "No teams found (ask admin)"}</option>
+          ) : (
+            teams.map((t) => (
+              <option key={t.slug} value={t.slug}>
+                {t.name}
+              </option>
+            ))
+          )}
+        </select>
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <label style={{ display: "block", fontSize: 12, fontWeight: 900, opacity: 0.75, marginBottom: 6 }}>
+          Parent Key
         </label>
         <input
           type="password"
           value={key}
           onChange={(e) => setKey(e.target.value)}
-          placeholder="Enter key…"
+          placeholder="Enter parent key…"
           style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
           onKeyDown={(e) => (e.key === "Enter" ? login() : null)}
         />
@@ -49,7 +126,7 @@ export default function ParentLogin() {
 
       <button
         onClick={login}
-        disabled={!key}
+        disabled={!key || !selectedTeam || loadingTeams || teams.length === 0}
         style={{
           marginTop: 12,
           width: "100%",
@@ -68,7 +145,7 @@ export default function ParentLogin() {
       )}
 
       <div style={{ marginTop: 14, fontSize: 12, opacity: 0.7 }}>
-        Privacy note: the roster is hidden unless you enter the key.
+        Privacy note: you must select the correct team and enter the Parent key to submit.
       </div>
     </div>
   );

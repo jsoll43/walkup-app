@@ -1,15 +1,6 @@
-// src/pages/Parent_Home.jsx
 import { useMemo, useState } from "react";
 import ParentRecord from "./ParentRecord.jsx";
-
-function getParentKey() {
-  return (
-    sessionStorage.getItem("PARENT_UPLOAD_KEY") ||
-    sessionStorage.getItem("parentKey") ||
-    sessionStorage.getItem("key") ||
-    ""
-  ).trim();
-}
+import { getParentKey, getTeamSlug, getTeamName } from "../auth/parentAuth";
 
 async function readJsonOrText(res) {
   const text = await res.text();
@@ -22,6 +13,9 @@ async function readJsonOrText(res) {
 
 export default function ParentHome() {
   const parentKey = useMemo(() => getParentKey(), []);
+  const teamSlug = useMemo(() => getTeamSlug(), []);
+  const teamName = useMemo(() => getTeamName(), []);
+
   const [playerName, setPlayerName] = useState("");
   const [songRequest, setSongRequest] = useState("");
   const [wavBlob, setWavBlob] = useState(null);
@@ -33,8 +27,12 @@ export default function ParentHome() {
   async function submit() {
     setErr("");
 
+    if (!teamSlug) {
+      setErr("Missing team selection. Go back to Parent Login and select a team.");
+      return;
+    }
     if (!parentKey) {
-      setErr("Missing parent key. Go to Parent Login and enter the Parent key.");
+      setErr("Missing parent key. Go back to Parent Login and enter the Parent key.");
       return;
     }
     if (!playerName.trim()) {
@@ -58,7 +56,8 @@ export default function ParentHome() {
       const res = await fetch("/api/voice-upload", {
         method: "POST",
         headers: {
-          "x-parent-upload-key": parentKey,
+          "x-team-slug": teamSlug,
+          "x-parent-key": parentKey,
           Authorization: `Bearer ${parentKey}`,
         },
         body: fd,
@@ -81,10 +80,11 @@ export default function ParentHome() {
     return (
       <div className="page">
         <div className="card">
-          <h1 style={{ marginTop: 0 }}>Submitted ✅</h1>
-          <div style={{ marginTop: 10, opacity: 0.85 }}>
-            Thanks! Your walk-up request has been submitted.
-          </div>
+          <div className="cardTitle">Team</div>
+          <div style={{ fontWeight: 1000, marginTop: 6 }}>{teamName || "—"}</div>
+
+          <h1 style={{ marginTop: 12 }}>Submitted ✅</h1>
+          <div style={{ marginTop: 10, opacity: 0.85 }}>Thanks! Your walk-up request has been submitted.</div>
         </div>
       </div>
     );
@@ -93,7 +93,10 @@ export default function ParentHome() {
   return (
     <div className="page">
       <div className="card">
-        <h1 style={{ marginTop: 0 }}>Parent Submission</h1>
+        <div className="cardTitle">Team</div>
+        <div style={{ fontWeight: 1000, marginTop: 6 }}>{teamName || "—"}</div>
+
+        <h1 style={{ marginTop: 12 }}>Parent Submission</h1>
 
         <div style={{ marginTop: 14 }}>
           <label className="label">Player Name (required)</label>
