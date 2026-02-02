@@ -41,6 +41,15 @@ function formatPlayer(p) {
   return p.number ? `#${p.number} ${name}`.trim() : name || p.id;
 }
 
+function slugify(s) {
+  return String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
 export default function Admin() {
   const [loginKey, setLoginKey] = useState("");
   const [adminKey, setAdminKey] = useState(getSavedAdminKey());
@@ -51,7 +60,9 @@ export default function Admin() {
 
   // Teams
   const [teams, setTeams] = useState([]);
-  const [manageTeamSlug, setManageTeamSlug] = useState(sessionStorage.getItem("ADMIN_TEAM_SLUG") || "default");
+  const [manageTeamSlug, setManageTeamSlug] = useState(
+    sessionStorage.getItem("ADMIN_TEAM_SLUG") || "default"
+  );
   const [inboxFilterSlug, setInboxFilterSlug] = useState("all");
 
   // Team create form
@@ -64,6 +75,11 @@ export default function Admin() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showManageKeysModal, setShowManageKeysModal] = useState(false);
 
+  // Roster add form state  ✅ (hooks must live here, not inside createTeam)
+  const [addNumber, setAddNumber] = useState("");
+  const [addFirst, setAddFirst] = useState("");
+  const [addLast, setAddLast] = useState("");
+
   // Data
   const [roster, setRoster] = useState([]);
   const [inbox, setInbox] = useState([]);
@@ -72,22 +88,36 @@ export default function Admin() {
   const [finalFile, setFinalFile] = useState({});
   const [finalRowError, setFinalRowError] = useState({});
 
-  const adminHeaders = useMemo(() => {
-    return { "x-admin-key": adminKey, Authorization: `Bearer ${adminKey}` };
-  }, [adminKey]);
+  function adminHeadersFor(key) {
+    const k = (key || "").trim();
+    return { "x-admin-key": k, Authorization: `Bearer ${k}` };
+  }
 
-  const manageTeam = useMemo(() => teams.find((t) => t.slug === manageTeamSlug) || null, [teams, manageTeamSlug]);
+  const adminHeaders = useMemo(() => adminHeadersFor(adminKey), [adminKey]);
+
+  const manageTeam = useMemo(
+    () => teams.find((t) => t.slug === manageTeamSlug) || null,
+    [teams, manageTeamSlug]
+  );
 
   // Edit keys for selected team
   const [editParentKey, setEditParentKey] = useState("");
   const [editCoachKey, setEditCoachKey] = useState("");
   useEffect(() => {
-    setEditParentKey(manageTeam ? (manageTeam.parent_key || manageTeam.parentKey || "") : "");
-    setEditCoachKey(manageTeam ? (manageTeam.coach_key || manageTeam.coachKey || "") : "");
+    setEditParentKey(
+      manageTeam ? (manageTeam.parent_key || manageTeam.parentKey || "") : ""
+    );
+    setEditCoachKey(
+      manageTeam ? (manageTeam.coach_key || manageTeam.coachKey || "") : ""
+    );
   }, [manageTeam]);
 
-  function teamHeaders(teamSlug) {
-    return { ...adminHeaders, "x-team-slug": (teamSlug || "default").toLowerCase() };
+  function teamHeaders(teamSlug, keyOverride) {
+    const base = keyOverride ? adminHeadersFor(keyOverride) : adminHeaders;
+    return {
+      ...base,
+      "x-team-slug": (teamSlug || "default").toLowerCase(),
+    };
   }
 
   async function tryLogin(key) {
@@ -95,19 +125,20 @@ export default function Admin() {
     setLoading(true);
     try {
       const res = await fetch("/api/admin/parent-inbox", {
-        headers: { "x-admin-key": key, Authorization: `Bearer ${key}` },
+        headers: adminHeadersFor(key),
       });
       const data = await safeJsonOrText(res);
-      if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || "Unauthorized");
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || "Unauthorized");
+      }
 
       setIsAuthed(true);
       setAdminKey(key);
       saveAdminKey(key);
       setLoginKey("");
 
-      // Important: after setting key, refresh everything (no “override headers” that drop team headers)
-      // swallow refresh errors so a transient failure doesn't show "Unauthorized" after login
-      refreshAll().catch(() => {});
+      // Refresh with the key we *know* is valid (avoids state timing issues)
+      refreshAll(key).catch(() => {});
     } catch (e) {
       setIsAuthed(false);
       setErr(e?.message || String(e));
@@ -116,10 +147,14 @@ export default function Admin() {
     }
   }
 
-  async function fetchTeams() {
-    const res = await fetch("/api/admin/teams", { headers: adminHeaders });
+  async function fetchTeams(keyOverride) {
+    const res = await fetch("/api/admin/teams", {
+      headers: keyOverride ? adminHeadersFor(keyOverride) : adminHeaders,
+    });
     const data = await safeJsonOrText(res);
-    if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Teams failed (HTTP ${res.status})`);
+    if (!res.ok || data?.ok === false) {
+      throw new Error(data?.error || data?.raw || `Teams failed (HTTP ${res.status})`);
+    }
 
     const list = Array.isArray(data.teams) ? data.teams : [];
     setTeams(list);
@@ -127,7 +162,11 @@ export default function Admin() {
     // Ensure manageTeamSlug is valid
     if (list.length > 0) {
       const found = list.some((t) => t.slug === manageTeamSlug);
-      const next = found ? manageTeamSlug : (list.find((t) => t.slug === "default")?.slug || list[0].slug);
+      const next =
+        found
+          ? manageTeamSlug
+          : list.find((t) => t.slug === "default")?.slug || list[0].slug;
+
       if (next !== manageTeamSlug) {
         setManageTeamSlug(next);
         sessionStorage.setItem("ADMIN_TEAM_SLUG", next);
@@ -137,37 +176,53 @@ export default function Admin() {
     return manageTeamSlug || "default";
   }
 
-  async function fetchRosterForTeam(teamSlug) {
-    const res = await fetch("/api/roster", { headers: teamHeaders(teamSlug) });
+  async function fetchRosterForTeam(teamSlug, keyOverride) {
+    const res = await fetch("/api/roster", { headers: teamHeaders(teamSlug, keyOverride) });
     const data = await safeJsonOrText(res);
-    if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Roster failed (HTTP ${res.status})`);
+    if (!res.ok || data?.ok === false) {
+      throw new Error(data?.error || data?.raw || `Roster failed (HTTP ${res.status})`);
+    }
     setRoster(Array.isArray(data.roster) ? data.roster : []);
   }
 
-  async function fetchInbox() {
-    const res = await fetch("/api/admin/parent-inbox", { headers: adminHeaders });
+  async function fetchInbox(keyOverride) {
+    const res = await fetch("/api/admin/parent-inbox", {
+      headers: keyOverride ? adminHeadersFor(keyOverride) : adminHeaders,
+    });
     const data = await safeJsonOrText(res);
-    if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Inbox failed (HTTP ${res.status})`);
-    const list = Array.isArray(data.submissions) ? data.submissions : Array.isArray(data.items) ? data.items : [];
+    if (!res.ok || data?.ok === false) {
+      throw new Error(data?.error || data?.raw || `Inbox failed (HTTP ${res.status})`);
+    }
+    const list = Array.isArray(data.submissions)
+      ? data.submissions
+      : Array.isArray(data.items)
+      ? data.items
+      : [];
     setInbox(list);
   }
 
-  async function fetchFinalStatusForTeam(teamSlug) {
-    const res = await fetch("/api/admin/final-status", { headers: teamHeaders(teamSlug) });
+  async function fetchFinalStatusForTeam(teamSlug, keyOverride) {
+    const res = await fetch("/api/admin/final-status", {
+      headers: teamHeaders(teamSlug, keyOverride),
+    });
     const data = await safeJsonOrText(res);
-    if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Final status failed (HTTP ${res.status})`);
+    if (!res.ok || data?.ok === false) {
+      throw new Error(
+        data?.error || data?.raw || `Final status failed (HTTP ${res.status})`
+      );
+    }
     setFinalStatus(data.status && typeof data.status === "object" ? data.status : {});
   }
 
-  async function refreshAll() {
+  async function refreshAll(keyOverride) {
     setErr("");
     setLoading(true);
     try {
-      const resolvedTeamSlug = await fetchTeams();
+      const resolvedTeamSlug = await fetchTeams(keyOverride);
       await Promise.all([
-        fetchInbox(),
-        fetchRosterForTeam(resolvedTeamSlug),
-        fetchFinalStatusForTeam(resolvedTeamSlug),
+        fetchInbox(keyOverride),
+        fetchRosterForTeam(resolvedTeamSlug, keyOverride),
+        fetchFinalStatusForTeam(resolvedTeamSlug, keyOverride),
       ]);
     } catch (e) {
       setErr(e?.message || String(e));
@@ -190,7 +245,9 @@ export default function Admin() {
   async function downloadSubmission(id, playerName = "parent-recording") {
     setErr("");
     try {
-      const res = await fetch(`/api/admin/parent-audio?id=${encodeURIComponent(id)}`, { headers: adminHeaders });
+      const res = await fetch(`/api/admin/parent-audio?id=${encodeURIComponent(id)}`, {
+        headers: adminHeaders,
+      });
       if (!res.ok) throw new Error(await res.text());
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -217,7 +274,9 @@ export default function Admin() {
         body: JSON.stringify({ id }),
       });
       const data = await safeJsonOrText(res);
-      if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Delete failed (HTTP ${res.status})`);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || `Delete failed (HTTP ${res.status})`);
+      }
       await fetchInbox();
     } catch (e) {
       setErr(e?.message || String(e));
@@ -248,7 +307,12 @@ export default function Admin() {
 
       const data = await safeJsonOrText(res);
       if (!res.ok || data?.ok === false) {
-        throw new Error(data?.error || data?.message || data?.raw || `Final upload failed (HTTP ${res.status}).`);
+        throw new Error(
+          data?.error ||
+            data?.message ||
+            data?.raw ||
+            `Final upload failed (HTTP ${res.status}).`
+        );
       }
 
       await fetchFinalStatusForTeam(manageTeamSlug);
@@ -262,9 +326,10 @@ export default function Admin() {
   async function downloadFinal(playerId) {
     setErr("");
     try {
-      const res = await fetch(`/api/admin/voice-file?playerId=${encodeURIComponent(playerId)}`, {
-        headers: teamHeaders(manageTeamSlug),
-      });
+      const res = await fetch(
+        `/api/admin/voice-file?playerId=${encodeURIComponent(playerId)}`,
+        { headers: teamHeaders(manageTeamSlug) }
+      );
       if (!res.ok) throw new Error(await res.text());
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -281,31 +346,101 @@ export default function Admin() {
     }
   }
 
+  // ✅ finished + closed createTeam (this was your main break)
   async function createTeam() {
     setErr("");
     if (!newName.trim()) return setErr("Team name is required.");
     if (!newParentKey.trim()) return setErr("Parent key is required.");
     if (!newCoachKey.trim()) return setErr("Coach key is required.");
 
-      
+    setCreatingTeam(true);
+    try {
+      const slug = (newSlug || "").trim() ? slugify(newSlug) : slugify(newName);
 
-  // Roster add form state
-  const [addNumber, setAddNumber] = useState("");
-  const [addFirst, setAddFirst] = useState("");
-  const [addLast, setAddLast] = useState("");
+      const res = await fetch("/api/admin/teams", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...adminHeaders },
+        body: JSON.stringify({
+          name: newName.trim(),
+          slug,
+          parentKey: newParentKey.trim(),
+          coachKey: newCoachKey.trim(),
+        }),
+      });
+
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || `Create team failed (HTTP ${res.status})`);
+      }
+
+      // Reset form + close modal
+      setNewName("");
+      setNewSlug("");
+      setNewParentKey("");
+      setNewCoachKey("");
+      setShowCreateModal(false);
+
+      const next = await fetchTeams();
+      setManageTeam(next);
+      await Promise.all([fetchRosterForTeam(next), fetchFinalStatusForTeam(next)]).catch(() => {});
+    } catch (e) {
+      setErr(e?.message || String(e));
+    } finally {
+      setCreatingTeam(false);
+    }
+  }
+
+  async function saveTeamUpdate() {
+    setErr("");
+    if (!manageTeamSlug) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/teams", {
+        method: "PUT",
+        headers: { "content-type": "application/json", ...adminHeaders },
+        body: JSON.stringify({
+          slug: manageTeamSlug,
+          parentKey: editParentKey.trim(),
+          coachKey: editCoachKey.trim(),
+        }),
+      });
+
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || `Save keys failed (HTTP ${res.status})`);
+      }
+
+      setShowManageKeysModal(false);
+      await fetchTeams();
+    } catch (e) {
+      setErr(e?.message || String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function addPlayer() {
     setErr("");
     if (!manageTeam || !manageTeam.slug) return setErr("No team selected");
     if (!addFirst.trim() || !addLast.trim()) return setErr("First and last name are required");
+
     try {
       const res = await fetch("/api/admin/roster-upsert", {
         method: "POST",
         headers: { "content-type": "application/json", ...adminHeaders },
-        body: JSON.stringify({ number: addNumber.trim(), first: addFirst.trim(), last: addLast.trim(), teamSlug: manageTeam.slug }),
+        body: JSON.stringify({
+          number: addNumber.trim(),
+          first: addFirst.trim(),
+          last: addLast.trim(),
+          teamSlug: manageTeam.slug,
+        }),
       });
+
       const data = await safeJsonOrText(res);
-      if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Add player failed (HTTP ${res.status})`);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || `Add player failed (HTTP ${res.status})`);
+      }
+
       setAddNumber("");
       setAddFirst("");
       setAddLast("");
@@ -330,8 +465,11 @@ export default function Admin() {
         headers: { "content-type": "application/json", ...adminHeaders },
         body: JSON.stringify({ slug }),
       });
+
       const data = await safeJsonOrText(res);
-      if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Delete team failed (HTTP ${res.status})`);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || `Delete team failed (HTTP ${res.status})`);
+      }
 
       // Refresh team list and switch to a valid team to avoid fetching the deleted team
       const next = await fetchTeams();
@@ -364,7 +502,6 @@ export default function Admin() {
 
   if (!isAuthed) {
     return (
-      <>
       <div className="page">
         <div className="card">
           <h1 style={{ marginTop: 0 }}>Admin Login</h1>
@@ -381,7 +518,12 @@ export default function Admin() {
             onKeyDown={(e) => (e.key === "Enter" ? tryLogin(loginKey) : null)}
           />
 
-          <button className="btn" onClick={() => tryLogin(loginKey)} disabled={!loginKey || loading} style={{ marginTop: 12, width: "100%" }}>
+          <button
+            className="btn"
+            onClick={() => tryLogin(loginKey)}
+            disabled={!loginKey || loading}
+            style={{ marginTop: 12, width: "100%" }}
+          >
             {loading ? "Logging in…" : "Log in"}
           </button>
 
@@ -392,64 +534,21 @@ export default function Admin() {
           ) : null}
         </div>
       </div>
-      
-      {showCreateModal ? (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
-          <div style={{ background: "white", padding: 20, borderRadius: 12, width: 560, maxWidth: "95%", color: "#111" }}>
-            <h3 style={{ marginTop: 0 }}>Create new team</h3>
-            <div style={{ display: "grid", gap: 8 }}>
-              <div>
-                <label className="label">Team Name</label>
-                <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. 10U Blue" />
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <div style={{ flex: 1 }}>
-                  <label className="label">Parent Key</label>
-                  <input className="input" value={newParentKey} onChange={(e) => setNewParentKey(e.target.value)} placeholder="Parent key" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label className="label">Coach Key</label>
-                  <input className="input" value={newCoachKey} onChange={(e) => setNewCoachKey(e.target.value)} placeholder="Coach key" />
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
-                <button className="btn" onClick={createTeam} disabled={creatingTeam}>{creatingTeam ? "Creating…" : "Create"}</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      
-      {showManageKeysModal ? (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
-          <div style={{ background: "white", padding: 20, borderRadius: 12, width: 520, maxWidth: "95%", color: "#111" }}>
-            <h3 style={{ marginTop: 0 }}>Manage team keys</h3>
-            <div style={{ display: "grid", gap: 8 }}>
-              <div>
-                <label className="label">Parent Key</label>
-                <input className="input" value={editParentKey} onChange={(e) => setEditParentKey(e.target.value)} placeholder="Parent key" />
-              </div>
-              <div>
-                <label className="label">Coach Key</label>
-                <input className="input" value={editCoachKey} onChange={(e) => setEditCoachKey(e.target.value)} placeholder="Coach key" />
-              </div>
-              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                <button className="btn-secondary" onClick={() => setShowManageKeysModal(false)}>Cancel</button>
-                <button className="btn" onClick={saveTeamUpdate}>Save</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-      </>
     );
   }
 
   return (
     <div style={{ maxWidth: 980, margin: "0 auto" }}>
-      <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", marginBottom: 12 }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          marginBottom: 12,
+        }}
+      >
         <h1 style={{ margin: 0, color: "white" }}>Admin</h1>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button className="btn-secondary" onClick={() => refreshAll()} disabled={loading}>
@@ -478,52 +577,60 @@ export default function Admin() {
         </div>
       ) : null}
 
-      
+      {/* Teams */}
       <div className="card" style={{ marginBottom: 12 }}>
         <h2 style={{ marginTop: 0 }}>Teams</h2>
 
-          <div style={{ display: "grid", gap: 10 }}>
-            <div style={{ fontWeight: 1000 }}>Create a new team</div>
-            <div>
-              <button className="btn" onClick={() => setShowCreateModal(true)}>Create new team</button>
+        <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ fontWeight: 1000 }}>Create a new team</div>
+          <div>
+            <button className="btn" onClick={() => setShowCreateModal(true)}>
+              Create new team
+            </button>
+          </div>
+        </div>
+
+        <div style={{ borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: 12, marginTop: 12 }}>
+          <div style={{ fontWeight: 1000, marginBottom: 8 }}>Manage a team</div>
+
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ minWidth: 240 }}>
+              <label className="label">Managing Team (roster + finals)</label>
+              <select className="input" value={manageTeamSlug} onChange={(e) => setManageTeam(e.target.value)}>
+                {teams.map((t) => (
+                  <option key={t.slug} value={t.slug}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              className="btn-danger"
+              onClick={() => deleteTeam(manageTeamSlug)}
+              disabled={deletingTeam || manageTeamSlug === "default"}
+            >
+              {deletingTeam ? "Deleting…" : "Delete this team"}
+            </button>
+
+            <div style={{ fontSize: 12, opacity: 0.75 }}>
+              Selected: <strong>{manageTeam ? `${manageTeam.name}` : manageTeamSlug}</strong>
             </div>
           </div>
 
-          <div style={{ borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: 12 }}>
-            <div style={{ fontWeight: 1000, marginBottom: 8 }}>Manage a team</div>
-
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <div style={{ minWidth: 240 }}>
-                <label className="label">Managing Team (roster + finals)</label>
-                <select className="input" value={manageTeamSlug} onChange={(e) => setManageTeam(e.target.value)}>
-                  {teams.map((t) => (
-                    <option key={t.slug} value={t.slug}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button className="btn-danger" onClick={() => deleteTeam(manageTeamSlug)} disabled={deletingTeam || manageTeamSlug === "default"}>
-                {deletingTeam ? "Deleting…" : "Delete this team"}
-              </button>
-
-              <div style={{ fontSize: 12, opacity: 0.75 }}>
-                Selected: <strong>{manageTeam ? `${manageTeam.name}` : manageTeamSlug}</strong>
-              </div>
-            </div>
-            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <div>
-                  <button className="btn" onClick={() => setShowManageKeysModal(true)}>Manage team keys</button>
-                </div>
+          <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div>
+                <button className="btn" onClick={() => setShowManageKeysModal(true)}>
+                  Manage team keys
+                </button>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      
+      {/* Inbox */}
       <div className="card" style={{ marginBottom: 12 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
           <h2 style={{ marginTop: 0 }}>Parent Inbox</h2>
@@ -563,9 +670,7 @@ export default function Admin() {
 
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: 12, opacity: 0.75 }}>Team</div>
-                    <div style={{ fontWeight: 1000 }}>
-                      {(it.team_name || it.teamName || "—")}
-                    </div>
+                    <div style={{ fontWeight: 1000 }}>{it.team_name || it.teamName || "—"}</div>
                   </div>
                 </div>
 
@@ -590,7 +695,7 @@ export default function Admin() {
         )}
       </div>
 
-      
+      {/* Roster + Final Uploads */}
       <div className="card">
         <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
           <div>
@@ -616,9 +721,12 @@ export default function Admin() {
               <input className="input" placeholder="Last name" value={addLast} onChange={(e) => setAddLast(e.target.value)} />
             </div>
             <div>
-              <button className="btn" onClick={addPlayer}>Add player</button>
+              <button className="btn" onClick={addPlayer}>
+                Add player
+              </button>
             </div>
           </div>
+
           {roster.length === 0 ? (
             <div style={{ opacity: 0.75 }}>No roster found yet for this team.</div>
           ) : (
@@ -633,7 +741,8 @@ export default function Admin() {
                   <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
                     <div style={{ fontWeight: 1000 }}>{formatPlayer(p)}</div>
                     <div style={{ fontSize: 12, opacity: 0.75 }}>
-                      Status: <strong style={{ color: exists ? "green" : "crimson" }}>{exists ? "Uploaded" : "Missing"}</strong>
+                      Status:{" "}
+                      <strong style={{ color: exists ? "green" : "crimson" }}>{exists ? "Uploaded" : "Missing"}</strong>
                     </div>
                   </div>
 
@@ -668,15 +777,29 @@ export default function Admin() {
           )}
         </div>
 
-        {/* Create Team Modal (authenticated render) */}
+        {/* Create Team Modal */}
         {showCreateModal ? (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.4)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 9999,
+            }}
+          >
             <div style={{ background: "white", padding: 20, borderRadius: 12, width: 560, maxWidth: "95%", color: "#111" }}>
               <h3 style={{ marginTop: 0 }}>Create new team</h3>
               <div style={{ display: "grid", gap: 8 }}>
                 <div>
                   <label className="label">Team Name</label>
                   <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. 10U Blue" />
+                </div>
+                <div>
+                  <label className="label">Team Slug (optional)</label>
+                  <input className="input" value={newSlug} onChange={(e) => setNewSlug(e.target.value)} placeholder="e.g. 10u-blue" />
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <div style={{ flex: 1 }}>
@@ -689,17 +812,31 @@ export default function Admin() {
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                  <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
-                  <button className="btn" onClick={createTeam} disabled={creatingTeam}>{creatingTeam ? "Creating…" : "Create"}</button>
+                  <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>
+                    Cancel
+                  </button>
+                  <button className="btn" onClick={createTeam} disabled={creatingTeam}>
+                    {creatingTeam ? "Creating…" : "Create"}
+                  </button>
                 </div>
               </div>
             </div>
           </div>
         ) : null}
 
-        {/* Manage Team Keys Modal (authenticated render) */}
+        {/* Manage Team Keys Modal */}
         {showManageKeysModal ? (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.4)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 9999,
+            }}
+          >
             <div style={{ background: "white", padding: 20, borderRadius: 12, width: 520, maxWidth: "95%", color: "#111" }}>
               <h3 style={{ marginTop: 0 }}>Manage team keys</h3>
               <div style={{ display: "grid", gap: 8 }}>
@@ -712,17 +849,18 @@ export default function Admin() {
                   <input className="input" value={editCoachKey} onChange={(e) => setEditCoachKey(e.target.value)} placeholder="Coach key" />
                 </div>
                 <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                  <button className="btn-secondary" onClick={() => setShowManageKeysModal(false)}>Cancel</button>
-                  <button className="btn" onClick={saveTeamUpdate}>Save</button>
+                  <button className="btn-secondary" onClick={() => setShowManageKeysModal(false)}>
+                    Cancel
+                  </button>
+                  <button className="btn" onClick={saveTeamUpdate} disabled={loading}>
+                    Save
+                  </button>
                 </div>
               </div>
             </div>
           </div>
         ) : null}
-
       </div>
     </div>
   );
 }
-
- 
