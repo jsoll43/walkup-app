@@ -450,6 +450,28 @@ export default function Admin() {
     }
   }
 
+  async function deletePlayer(playerId) {
+    if (!playerId) return;
+    const ok = window.confirm("Delete this player? This action can be undone by re-adding the player.");
+    if (!ok) return;
+    setErr("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/roster-delete", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...adminHeaders },
+        body: JSON.stringify({ id: playerId }),
+      });
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Roster delete failed (HTTP ${res.status})`);
+      await fetchRosterForTeam(playersTeamSlug);
+    } catch (e) {
+      setErr(e?.message || String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function deleteTeam(slug) {
     if (!slug) return;
     if (slug === "default") return setErr("Cannot delete the default team.");
@@ -742,6 +764,9 @@ export default function Admin() {
 
                     <button className="btn-secondary" onClick={() => downloadFinal(pid)} disabled={!exists}>
                       Download
+                    </button>
+                    <button className="btn-danger" onClick={() => deletePlayer(pid)} style={{ marginLeft: 6 }}>
+                      Delete
                     </button>
                   </div>
 
