@@ -423,7 +423,26 @@ export default function Coach() {
       <div className="page">
         <div className="card">
           <div className="cardTitle">Team</div>
-          <div style={{ fontWeight: 1000, marginTop: 6 }}>{teamName || teamSlug}</div>
+          <div style={{ marginTop: 6 }}>
+            <label className="label">Team</label>
+            <select className="input" value={teamSlug} onChange={(e) => {
+              const slug = e.target.value;
+              const t = availableTeams.find(x => String(x.slug || '') === slug);
+              if (!t) return;
+              sessionStorage.setItem('TEAM_SLUG', String(t.slug || '').toLowerCase());
+              sessionStorage.setItem('TEAM_NAME', String(t.name || t.slug || ''));
+              // reload to pick up selection
+              window.location.reload();
+            }}>
+              {availableTeams.length === 0 ? (
+                <option value="">No teams</option>
+              ) : (
+                availableTeams.map((t) => (
+                  <option key={t.slug} value={t.slug}>{t.name}</option>
+                ))
+              )}
+            </select>
+          </div>
 
           <h1 style={{ marginTop: 12 }}>Coach Login</h1>
 
