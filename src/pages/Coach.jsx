@@ -559,44 +559,9 @@ export default function Coach() {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 12 }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <h2 style={{ margin: 0 }}>Build lineup (add players who showed up)</h2>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search roster…"
-            className="input"
-            style={{ width: 240, maxWidth: "100%" }}
-          />
-          <button className="btn-secondary" onClick={clearLineup}>
-            Clear lineup
-          </button>
-        </div>
-
-        <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-          {availableRoster.length === 0 ? (
-            <div style={{ opacity: 0.75 }}>No available players (or all are already in the lineup).</div>
-          ) : (
-            availableRoster.map((p) => (
-              <div key={p.id} className="coach-add-row">
-                <div className="coach-add-name">{formatPlayer(p)}</div>
-                <button className="btn" onClick={() => addToLineup(p.id)}>
-                  Add
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-
-        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-          Tip: Create today’s lineup by adding only players who are present, then reorder below and click “Save lineup”.
-        </div>
-      </div>
-
       <div className="card">
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", justifyContent: "space-between" }}>
-          <h2 style={{ margin: 0 }}>Lineup</h2>
+          <h2 style={{ margin: 0 }}>Lineup (reorder players)</h2>
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             {lastSavedAt ? (
               <div style={{ fontSize: 12, opacity: 0.85 }}>
@@ -649,6 +614,41 @@ export default function Coach() {
 
         <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
           Tip: Reorder with ↑/↓ then click “Save lineup”. If another coach saved changes, you’ll get a conflict message instead of overwriting.
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <h2 style={{ margin: 0 }}>Add players to the lineup</h2>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search roster…"
+            className="input"
+            style={{ width: 240, maxWidth: "100%" }}
+          />
+          <button className="btn-secondary" onClick={clearLineup}>
+            Clear lineup
+          </button>
+        </div>
+
+        <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+          {availableRoster.length === 0 ? (
+            <div style={{ opacity: 0.75 }}>No available players (or all are already in the lineup).</div>
+          ) : (
+            availableRoster.map((p) => (
+              <div key={p.id} className="coach-add-row">
+                <div className="coach-add-name">{formatPlayer(p)}</div>
+                <button className="btn" onClick={() => addToLineup(p.id)}>
+                  Add
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+          Tip: Create today’s lineup by adding only players who are present, then reorder below and click “Save lineup”.
         </div>
       </div>
     </div>
