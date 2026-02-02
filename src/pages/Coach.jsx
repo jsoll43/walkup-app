@@ -72,6 +72,7 @@ export default function Coach() {
 
   const teamSlug = useMemo(() => getTeamSlug(), []);
   const teamName = useMemo(() => getTeamName(), []);
+  const [availableTeams, setAvailableTeams] = useState([]);
 
   const [roster, setRoster] = useState([]);
   const rosterById = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
@@ -359,6 +360,21 @@ export default function Coach() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Fetch public teams for team selection
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/public/teams');
+        const json = await safeJsonOrText(res);
+        if (!res.ok || json?.ok === false) return;
+        if (!mounted) return;
+        setAvailableTeams(Array.isArray(json.teams) ? json.teams : []);
+      } catch {}
+    })();
+    return () => (mounted = false);
+  }, []);
+
   useEffect(() => {
     if (!isAuthed || !coachKey) return;
     const id = setInterval(() => {
@@ -369,17 +385,33 @@ export default function Coach() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthed, coachKey]);
 
-  // If team isn't selected, show a clear message instead of failing API calls.
+  // If team isn't selected, show a selection UI so coach can pick a team then enter key
   if (!teamSlug) {
     return (
       <div className="page">
         <div className="card">
-          <h1 style={{ marginTop: 0 }}>Coach</h1>
-          <div style={{ marginTop: 8, opacity: 0.85 }}>
-            <strong>Error:</strong> Missing team selection.
+          <h1 style={{ marginTop: 0 }}>Coach — Select Team</h1>
+
+          <div style={{ marginTop: 8 }}>
+            <label className="label">Team</label>
+            <select className="input" defaultValue="" onChange={(e) => {
+              const slug = e.target.value;
+              const t = availableTeams.find(x => String(x.slug || '') === slug);
+              if (!t) return;
+              sessionStorage.setItem('TEAM_SLUG', String(t.slug || '').toLowerCase());
+              sessionStorage.setItem('TEAM_NAME', String(t.name || t.slug || ''));
+              // reload to pick up selection
+              window.location.reload();
+            }}>
+              <option value="">Choose a team…</option>
+              {availableTeams.map((t) => (
+                <option key={t.slug} value={t.slug}>{t.name}</option>
+              ))}
+            </select>
           </div>
-          <div style={{ marginTop: 10, opacity: 0.8 }}>
-            Go back to the Team Select screen and choose a team, then return here.
+
+          <div style={{ marginTop: 12, opacity: 0.8 }}>
+            After choosing a team, enter the coach key on the Coach page.
           </div>
         </div>
       </div>
@@ -494,6 +526,9 @@ export default function Coach() {
             onClick={() => {
               stopAudio();
               clearCoachKey();
+              // allow switching teams on logout
+              sessionStorage.removeItem('TEAM_SLUG');
+              sessionStorage.removeItem('TEAM_NAME');
               setIsAuthed(false);
               setCoachKey("");
               setLoginKey("");

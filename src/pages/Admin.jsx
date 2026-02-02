@@ -104,7 +104,8 @@ export default function Admin() {
       setLoginKey("");
 
       // Important: after setting key, refresh everything (no “override headers” that drop team headers)
-      await refreshAll();
+      // swallow refresh errors so a transient failure doesn't show "Unauthorized" after login
+      refreshAll().catch(() => {});
     } catch (e) {
       setIsAuthed(false);
       setErr(e?.message || String(e));
@@ -480,10 +481,7 @@ export default function Admin() {
                 <label className="label">Team Name</label>
                 <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. 10U Blue" />
               </div>
-              <div>
-                <label className="label">Team Slug</label>
-                <input className="input" value={newSlug} onChange={(e) => setNewSlug(e.target.value)} placeholder="e.g. 10u-blue" />
-              </div>
+              {/* Team slug has been removed from the UI; server will derive a slug from the name if needed */}
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -511,7 +509,7 @@ export default function Admin() {
                 <select className="input" value={manageTeamSlug} onChange={(e) => setManageTeam(e.target.value)}>
                   {teams.map((t) => (
                     <option key={t.slug} value={t.slug}>
-                      {t.name} ({t.slug})
+                      {t.name}
                     </option>
                   ))}
                 </select>
@@ -522,7 +520,7 @@ export default function Admin() {
               </button>
 
               <div style={{ fontSize: 12, opacity: 0.75 }}>
-                Selected: <strong>{manageTeam ? `${manageTeam.name} (${manageTeam.slug})` : manageTeamSlug}</strong>
+                Selected: <strong>{manageTeam ? `${manageTeam.name}` : manageTeamSlug}</strong>
               </div>
             </div>
             <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
