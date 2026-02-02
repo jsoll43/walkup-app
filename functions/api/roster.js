@@ -41,9 +41,9 @@ export const onRequestGet = async ({ request, env }) => {
     if (!isAdmin && !isCoach) return json({ ok: false, error: "Unauthorized" }, 401);
 
     const res = await env.DB.prepare(
-      `SELECT id, number, first, last, active
+      `SELECT id, number, first, last, status
        FROM roster_players
-       WHERE team_id = ? AND active = 1
+       WHERE team_id = ? AND status = 'active'
        ORDER BY CAST(number AS INTEGER) ASC, last ASC, first ASC`
     )
       .bind(team.id)

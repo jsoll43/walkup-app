@@ -52,7 +52,10 @@ export const onRequestPost = async ({ request, env }) => {
         number TEXT,
         first TEXT,
         last TEXT,
-        active INTEGER DEFAULT 1
+        status TEXT DEFAULT 'active',
+        created_at TEXT,
+        updated_at TEXT,
+        deleted_at TEXT
       )`
     );
 
