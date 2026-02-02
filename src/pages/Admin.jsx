@@ -67,7 +67,6 @@ export default function Admin() {
 
   // Team create form
   const [newName, setNewName] = useState("");
-  const [newSlug, setNewSlug] = useState("");
   const [newParentKey, setNewParentKey] = useState("");
   const [newCoachKey, setNewCoachKey] = useState("");
   const [creatingTeam, setCreatingTeam] = useState(false);
@@ -360,14 +359,11 @@ export default function Admin() {
 
     setCreatingTeam(true);
     try {
-      const slug = (newSlug || "").trim() ? slugify(newSlug) : slugify(newName);
-
       const res = await fetch("/api/admin/teams", {
         method: "POST",
         headers: { "content-type": "application/json", ...adminHeaders },
         body: JSON.stringify({
           name: newName.trim(),
-          slug,
           parentKey: newParentKey.trim(),
           coachKey: newCoachKey.trim(),
         }),
@@ -380,7 +376,6 @@ export default function Admin() {
 
       // Reset form + close modal
       setNewName("");
-      setNewSlug("");
       setNewParentKey("");
       setNewCoachKey("");
       setShowCreateModal(false);
@@ -781,10 +776,7 @@ export default function Admin() {
                   <label className="label">Team Name</label>
                   <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. 10U Blue" />
                 </div>
-                <div>
-                  <label className="label">Team Slug (optional)</label>
-                  <input className="input" value={newSlug} onChange={(e) => setNewSlug(e.target.value)} placeholder="e.g. 10u-blue" />
-                </div>
+                {/* slug removed: server generates slug from name */}
                 <div style={{ display: "flex", gap: 8 }}>
                   <div style={{ flex: 1 }}>
                     <label className="label">Parent Key</label>

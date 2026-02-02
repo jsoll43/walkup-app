@@ -385,33 +385,14 @@ export default function Coach() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthed, coachKey]);
 
-  // If team isn't selected, show a selection UI so coach can pick a team then enter key
+  // Coach must use a pre-selected team (no team selection here).
   if (!teamSlug) {
     return (
       <div className="page">
         <div className="card">
-          <h1 style={{ marginTop: 0 }}>Coach — Select Team</h1>
-
-          <div style={{ marginTop: 8 }}>
-            <label className="label">Team</label>
-            <select className="input" defaultValue="" onChange={(e) => {
-              const slug = e.target.value;
-              const t = availableTeams.find(x => String(x.slug || '') === slug);
-              if (!t) return;
-              sessionStorage.setItem('TEAM_SLUG', String(t.slug || '').toLowerCase());
-              sessionStorage.setItem('TEAM_NAME', String(t.name || t.slug || ''));
-              // reload to pick up selection
-              window.location.reload();
-            }}>
-              <option value="">Choose a team…</option>
-              {availableTeams.map((t) => (
-                <option key={t.slug} value={t.slug}>{t.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div style={{ marginTop: 12, opacity: 0.8 }}>
-            After choosing a team, enter the coach key on the Coach page.
+          <h1 style={{ marginTop: 0 }}>Coach — No Team Selected</h1>
+          <div style={{ marginTop: 8, opacity: 0.9 }}>
+            No team has been configured for this device. Please ask your admin to set the team before logging in.
           </div>
         </div>
       </div>
