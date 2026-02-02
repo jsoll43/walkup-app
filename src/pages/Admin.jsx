@@ -61,6 +61,8 @@ export default function Admin() {
   const [newCoachKey, setNewCoachKey] = useState("");
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [deletingTeam, setDeletingTeam] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showManageKeysModal, setShowManageKeysModal] = useState(false);
 
   // Data
   const [roster, setRoster] = useState([]);
@@ -306,6 +308,7 @@ export default function Admin() {
       setNewSlug("");
       setNewParentKey("");
       setNewCoachKey("");
+      setShowCreateModal(false);
 
       await refreshAll();
     } catch (e) {
@@ -329,6 +332,7 @@ export default function Admin() {
       });
       const data = await safeJsonOrText(res);
       if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Update failed (HTTP ${res.status})`);
+      setShowManageKeysModal(false);
       await refreshAll();
     } catch (e) {
       setErr(e?.message || String(e));
@@ -379,7 +383,10 @@ export default function Admin() {
       const data = await safeJsonOrText(res);
       if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Delete team failed (HTTP ${res.status})`);
 
-      await refreshAll();
+      // Refresh team list and switch to a valid team to avoid fetching the deleted team
+      const next = await fetchTeams();
+      setManageTeam(next);
+      await Promise.all([fetchRosterForTeam(next), fetchFinalStatusForTeam(next)]).catch(() => {});
     } catch (e) {
       setErr(e?.message || String(e));
     } finally {
@@ -434,6 +441,57 @@ export default function Admin() {
           ) : null}
         </div>
       </div>
+      {/* Create Team Modal */}
+      {showCreateModal ? (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+          <div style={{ background: "white", padding: 20, borderRadius: 12, width: 560, maxWidth: "95%", color: "#111" }}>
+            <h3 style={{ marginTop: 0 }}>Create new team</h3>
+            <div style={{ display: "grid", gap: 8 }}>
+              <div>
+                <label className="label">Team Name</label>
+                <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. 10U Blue" />
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <label className="label">Parent Key</label>
+                  <input className="input" value={newParentKey} onChange={(e) => setNewParentKey(e.target.value)} placeholder="Parent key" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label className="label">Coach Key</label>
+                  <input className="input" value={newCoachKey} onChange={(e) => setNewCoachKey(e.target.value)} placeholder="Coach key" />
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
+                <button className="btn" onClick={createTeam} disabled={creatingTeam}>{creatingTeam ? "Creating…" : "Create"}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Manage Team Keys Modal */}
+      {showManageKeysModal ? (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+          <div style={{ background: "white", padding: 20, borderRadius: 12, width: 520, maxWidth: "95%", color: "#111" }}>
+            <h3 style={{ marginTop: 0 }}>Manage team keys</h3>
+            <div style={{ display: "grid", gap: 8 }}>
+              <div>
+                <label className="label">Parent Key</label>
+                <input className="input" value={editParentKey} onChange={(e) => setEditParentKey(e.target.value)} placeholder="Parent key" />
+              </div>
+              <div>
+                <label className="label">Coach Key</label>
+                <input className="input" value={editCoachKey} onChange={(e) => setEditCoachKey(e.target.value)} placeholder="Coach key" />
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button className="btn-secondary" onClick={() => setShowManageKeysModal(false)}>Cancel</button>
+                <button className="btn" onClick={saveTeamUpdate}>Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     );
   }
 
@@ -472,32 +530,11 @@ export default function Admin() {
       <div className="card" style={{ marginBottom: 12 }}>
         <h2 style={{ marginTop: 0 }}>Teams</h2>
 
-        <div style={{ display: "grid", gap: 12 }}>
           <div style={{ display: "grid", gap: 10 }}>
             <div style={{ fontWeight: 1000 }}>Create a new team</div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div>
-                <label className="label">Team Name</label>
-                <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. 10U Blue" />
-              </div>
-              {/* Team slug has been removed from the UI; server will derive a slug from the name if needed */}
+            <div>
+              <button className="btn" onClick={() => setShowCreateModal(true)}>Create new team</button>
             </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div>
-                <label className="label">Parent Key</label>
-                <input className="input" value={newParentKey} onChange={(e) => setNewParentKey(e.target.value)} placeholder="Set a parent key…" />
-              </div>
-              <div>
-                <label className="label">Coach Key</label>
-                <input className="input" value={newCoachKey} onChange={(e) => setNewCoachKey(e.target.value)} placeholder="Set a coach key…" />
-              </div>
-            </div>
-
-            <button className="btn" onClick={createTeam} disabled={creatingTeam}>
-              {creatingTeam ? "Creating…" : "Create team"}
-            </button>
           </div>
 
           <div style={{ borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: 12 }}>
@@ -525,16 +562,8 @@ export default function Admin() {
             </div>
             <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <div style={{ minWidth: 220 }}>
-                  <label className="label">Parent Key</label>
-                  <input className="input" value={editParentKey} onChange={(e) => setEditParentKey(e.target.value)} placeholder="Change parent key…" />
-                </div>
-                <div style={{ minWidth: 220 }}>
-                  <label className="label">Coach Key</label>
-                  <input className="input" value={editCoachKey} onChange={(e) => setEditCoachKey(e.target.value)} placeholder="Change coach key…" />
-                </div>
-                <div style={{ display: "flex", alignItems: "end" }}>
-                  <button className="btn" onClick={saveTeamUpdate}>Save changes</button>
+                <div>
+                  <button className="btn" onClick={() => setShowManageKeysModal(true)}>Manage team keys</button>
                 </div>
               </div>
             </div>
@@ -554,7 +583,7 @@ export default function Admin() {
                 <option value="all">All teams</option>
                 {teams.map((t) => (
                   <option key={t.slug} value={t.slug}>
-                    {t.name} ({t.slug})
+                    {t.name}
                   </option>
                 ))}
               </select>
@@ -583,8 +612,7 @@ export default function Admin() {
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: 12, opacity: 0.75 }}>Team</div>
                     <div style={{ fontWeight: 1000 }}>
-                      {(it.team_name || it.teamName || "—")}&nbsp;
-                      <span style={{ fontSize: 12, opacity: 0.75 }}>({it.team_slug || it.teamSlug || "—"})</span>
+                      {(it.team_name || it.teamName || "—")}
                     </div>
                   </div>
                 </div>
@@ -614,9 +642,9 @@ export default function Admin() {
       <div className="card">
         <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
           <div>
-            <h2 style={{ marginTop: 0, marginBottom: 4 }}>Final Walk-Up Clips</h2>
+            <h2 style={{ marginTop: 0, marginBottom: 4 }}>Add/Remove players and set Final Walk-Up Clips</h2>
             <div style={{ fontSize: 12, opacity: 0.75 }}>
-              Managing team: <strong>{manageTeam ? `${manageTeam.name} (${manageTeam.slug})` : manageTeamSlug}</strong>
+              Managing team: <strong>{manageTeam ? `${manageTeam.name}` : manageTeamSlug}</strong>
             </div>
           </div>
           <button className="btn-secondary" onClick={() => fetchFinalStatusForTeam(manageTeamSlug)} disabled={loading}>
