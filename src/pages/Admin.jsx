@@ -74,6 +74,10 @@ export default function Admin() {
   const [deletingTeam, setDeletingTeam] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showManageKeysModal, setShowManageKeysModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteTeamSlug, setDeleteTeamSlug] = useState(sessionStorage.getItem("ADMIN_TEAM_SLUG") || "default");
+  // Separate selector for which team we are modifying players/finals for
+  const [playersTeamSlug, setPlayersTeamSlug] = useState(sessionStorage.getItem("ADMIN_TEAM_SLUG") || "default");
 
   // Roster add form state  ✅ (hooks must live here, not inside createTeam)
   const [addNumber, setAddNumber] = useState("");
@@ -99,6 +103,7 @@ export default function Admin() {
     () => teams.find((t) => t.slug === manageTeamSlug) || null,
     [teams, manageTeamSlug]
   );
+  const playersTeam = useMemo(() => teams.find((t) => t.slug === playersTeamSlug) || null, [teams, playersTeamSlug]);
 
   // Edit keys for selected team
   const [editParentKey, setEditParentKey] = useState("");
@@ -421,7 +426,7 @@ export default function Admin() {
 
   async function addPlayer() {
     setErr("");
-    if (!manageTeam || !manageTeam.slug) return setErr("No team selected");
+    if (!playersTeamSlug) return setErr("No team selected");
     if (!addFirst.trim() || !addLast.trim()) return setErr("First and last name are required");
 
     try {
@@ -432,7 +437,7 @@ export default function Admin() {
           number: addNumber.trim(),
           first: addFirst.trim(),
           last: addLast.trim(),
-          teamSlug: manageTeam.slug,
+          teamSlug: playersTeamSlug,
         }),
       });
 
@@ -444,7 +449,7 @@ export default function Admin() {
       setAddNumber("");
       setAddFirst("");
       setAddLast("");
-      await fetchRosterForTeam(manageTeam.slug);
+      await fetchRosterForTeam(playersTeamSlug);
     } catch (e) {
       setErr(e?.message || String(e));
     }
@@ -499,6 +504,13 @@ export default function Admin() {
     if (saved) tryLogin(saved);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // When the selected players team changes, refresh roster + final status for that team
+  useEffect(() => {
+    if (!playersTeamSlug) return;
+    fetchRosterForTeam(playersTeamSlug).catch(() => {});
+    fetchFinalStatusForTeam(playersTeamSlug).catch(() => {});
+  }, [playersTeamSlug]);
 
   if (!isAuthed) {
     return (
@@ -607,7 +619,7 @@ export default function Admin() {
 
             <button
               className="btn-danger"
-              onClick={() => deleteTeam(manageTeamSlug)}
+              onClick={() => setShowDeleteModal(true)}
               disabled={deletingTeam || manageTeamSlug === "default"}
             >
               {deletingTeam ? "Deleting…" : "Delete this team"}
@@ -700,11 +712,26 @@ export default function Admin() {
         <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
           <div>
             <h2 style={{ marginTop: 0, marginBottom: 4 }}>Add/Remove players and set Final Walk-Up Clips</h2>
-            <div style={{ fontSize: 12, opacity: 0.75 }}>
-              Managing team: <strong>{manageTeam ? `${manageTeam.name}` : manageTeamSlug}</strong>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 6 }}>
+              <div style={{ minWidth: 260 }}>
+                <label className="label">Team to modify</label>
+                <select className="input" value={playersTeamSlug} onChange={(e) => setPlayersTeamSlug(e.target.value)}>
+                  {teams.length === 0 ? (
+                    <option value="default">No teams</option>
+                  ) : (
+                    teams.map((t) => (
+                      <option key={t.slug} value={t.slug}>{t.name}</option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              <div style={{ fontSize: 12, opacity: 0.75 }}>
+                Selected: <strong>{playersTeam ? `${playersTeam.name}` : playersTeamSlug}</strong>
+              </div>
             </div>
           </div>
-          <button className="btn-secondary" onClick={() => fetchFinalStatusForTeam(manageTeamSlug)} disabled={loading}>
+          <button className="btn-secondary" onClick={() => fetchFinalStatusForTeam(playersTeamSlug)} disabled={loading}>
             Reload status
           </button>
         </div>
@@ -817,6 +844,47 @@ export default function Admin() {
                   </button>
                   <button className="btn" onClick={createTeam} disabled={creatingTeam}>
                     {creatingTeam ? "Creating…" : "Create"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Delete Team Modal */}
+        {showDeleteModal ? (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+            <div style={{ background: "white", padding: 20, borderRadius: 12, width: 520, maxWidth: "95%", color: "#111" }}>
+              <h3 style={{ marginTop: 0 }}>Delete team</h3>
+              <div style={{ display: "grid", gap: 8 }}>
+                <div>
+                  <label className="label">Team to delete</label>
+                  <select className="input" value={deleteTeamSlug} onChange={(e) => setDeleteTeamSlug(e.target.value)}>
+                    {teams.length === 0 ? (
+                      <option value="default">No teams</option>
+                    ) : (
+                      teams.filter((t) => t.slug !== "default").map((t) => (
+                        <option key={t.slug} value={t.slug}>{t.name}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button className="btn-secondary" onClick={() => setShowDeleteModal(false)}>Cancel</button>
+                  <button
+                    className="btn-danger"
+                    onClick={async () => {
+                      setShowDeleteModal(false);
+                      try {
+                        await deleteTeam(deleteTeamSlug);
+                      } catch (e) {
+                        setErr(e?.message || String(e));
+                      }
+                    }}
+                    disabled={!deleteTeamSlug || deleteTeamSlug === "default"}
+                  >
+                    Delete
                   </button>
                 </div>
               </div>

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ParentRecord from "./ParentRecord.jsx";
-import { getParentKey, getTeamSlug } from "../auth/parentAuth";
+import { getParentKey, getTeamSlug, getTeamName, clearParentKey, clearTeam } from "../auth/parentAuth";
 
 async function readJsonOrText(res) {
   const text = await res.text();
@@ -107,7 +107,24 @@ export default function ParentHome() {
   return (
     <div className="page">
       <div className="card">
-        <h1 style={{ marginTop: 0 }}>Parent Submission</h1>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h1 style={{ marginTop: 0 }}>Parent Submission</h1>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>Team</div>
+            <div style={{ fontWeight: 900 }}>{getTeamName()}</div>
+            <button
+              className="btn-secondary"
+              style={{ marginTop: 6 }}
+              onClick={() => {
+                clearParentKey();
+                clearTeam();
+                nav("/parent-login", { replace: true });
+              }}
+            >
+              Log out
+            </button>
+          </div>
+        </div>
 
         <div style={{ marginTop: 14 }}>
           <label className="label">Player Name (required)</label>
