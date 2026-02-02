@@ -414,6 +414,7 @@ export default function Admin() {
 
   if (!isAuthed) {
     return (
+      <>
       <div className="page">
         <div className="card">
           <h1 style={{ marginTop: 0 }}>Admin Login</h1>
@@ -492,6 +493,7 @@ export default function Admin() {
           </div>
         </div>
       ) : null}
+      </>
     );
   }
 
