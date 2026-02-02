@@ -87,7 +87,7 @@ export default function Coach() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [search, setSearch] = useState("");
+  
 
   const audioRef = useRef(null);
   const [playingPlayerId, setPlayingPlayerId] = useState("");
@@ -335,16 +335,9 @@ export default function Coach() {
   }
 
   const availableRoster = useMemo(() => {
-    const s = search.trim().toLowerCase();
     const inLineup = new Set(lineupIds);
-    return roster
-      .filter((p) => !inLineup.has(p.id))
-      .filter((p) => {
-        if (!s) return true;
-        const hay = `${p.number || ""} ${p.first || ""} ${p.last || ""}`.toLowerCase();
-        return hay.includes(s);
-      });
-  }, [roster, lineupIds, search]);
+    return roster.filter((p) => !inLineup.has(p.id));
+  }, [roster, lineupIds]);
 
   const isTopOfOrder = lineupIds.length > 0 && currentIndex === 0;
   const isBottomOfOrder = lineupIds.length > 0 && currentIndex === lineupIds.length - 1;
@@ -482,7 +475,7 @@ export default function Coach() {
         </div>
       ) : null}
 
-      <div className="card" style={{ marginBottom: 12 }}>
+      <div className="card" style={{ marginBottom: 24 }}>
         <div className="cardTitle">Team</div>
         <div style={{ fontWeight: 1000, marginTop: 6 }}>{teamName || teamSlug}</div>
 
@@ -620,13 +613,6 @@ export default function Coach() {
       <div className="card" style={{ marginBottom: 12 }}>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <h2 style={{ margin: 0 }}>Add players to the lineup</h2>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search roster…"
-            className="input"
-            style={{ width: 240, maxWidth: "100%" }}
-          />
           <button className="btn-secondary" onClick={clearLineup}>
             Clear lineup
           </button>
