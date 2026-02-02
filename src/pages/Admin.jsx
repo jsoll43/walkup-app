@@ -287,57 +287,7 @@ export default function Admin() {
     if (!newParentKey.trim()) return setErr("Parent key is required.");
     if (!newCoachKey.trim()) return setErr("Coach key is required.");
 
-    setCreatingTeam(true);
-    try {
-      const res = await fetch("/api/admin/teams", {
-        method: "POST",
-        headers: { "content-type": "application/json", ...adminHeaders },
-        body: JSON.stringify({
-          name: newName.trim(),
-          // slug is optional; server will derive one from name if omitted
-          ...(newSlug.trim() ? { slug: newSlug.trim().toLowerCase() } : {}),
-          parentKey: newParentKey.trim(),
-          coachKey: newCoachKey.trim(),
-        }),
-      });
-
-      const data = await safeJsonOrText(res);
-      if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Create team failed (HTTP ${res.status})`);
-
-      setNewName("");
-      setNewSlug("");
-      setNewParentKey("");
-      setNewCoachKey("");
-      setShowCreateModal(false);
-
-      await refreshAll();
-    } catch (e) {
-      setErr(e?.message || String(e));
-    } finally {
-      setCreatingTeam(false);
-    }
-  }
-
-  async function saveTeamUpdate() {
-    setErr("");
-    if (!manageTeam || !manageTeam.slug) return setErr("No team selected");
-    try {
-      const body = { slug: manageTeam.slug };
-      if (editParentKey) body.parentKey = editParentKey.trim();
-      if (editCoachKey) body.coachKey = editCoachKey.trim();
-      const res = await fetch("/api/admin/teams", {
-        method: "PUT",
-        headers: { "content-type": "application/json", ...adminHeaders },
-        body: JSON.stringify(body),
-      });
-      const data = await safeJsonOrText(res);
-      if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Update failed (HTTP ${res.status})`);
-      setShowManageKeysModal(false);
-      await refreshAll();
-    } catch (e) {
-      setErr(e?.message || String(e));
-    }
-  }
+      
 
   // Roster add form state
   const [addNumber, setAddNumber] = useState("");
@@ -717,7 +667,62 @@ export default function Admin() {
             })
           )}
         </div>
+
+        {/* Create Team Modal (authenticated render) */}
+        {showCreateModal ? (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+            <div style={{ background: "white", padding: 20, borderRadius: 12, width: 560, maxWidth: "95%", color: "#111" }}>
+              <h3 style={{ marginTop: 0 }}>Create new team</h3>
+              <div style={{ display: "grid", gap: 8 }}>
+                <div>
+                  <label className="label">Team Name</label>
+                  <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. 10U Blue" />
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <label className="label">Parent Key</label>
+                    <input className="input" value={newParentKey} onChange={(e) => setNewParentKey(e.target.value)} placeholder="Parent key" />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label className="label">Coach Key</label>
+                    <input className="input" value={newCoachKey} onChange={(e) => setNewCoachKey(e.target.value)} placeholder="Coach key" />
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
+                  <button className="btn" onClick={createTeam} disabled={creatingTeam}>{creatingTeam ? "Creating…" : "Create"}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Manage Team Keys Modal (authenticated render) */}
+        {showManageKeysModal ? (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+            <div style={{ background: "white", padding: 20, borderRadius: 12, width: 520, maxWidth: "95%", color: "#111" }}>
+              <h3 style={{ marginTop: 0 }}>Manage team keys</h3>
+              <div style={{ display: "grid", gap: 8 }}>
+                <div>
+                  <label className="label">Parent Key</label>
+                  <input className="input" value={editParentKey} onChange={(e) => setEditParentKey(e.target.value)} placeholder="Parent key" />
+                </div>
+                <div>
+                  <label className="label">Coach Key</label>
+                  <input className="input" value={editCoachKey} onChange={(e) => setEditCoachKey(e.target.value)} placeholder="Coach key" />
+                </div>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button className="btn-secondary" onClick={() => setShowManageKeysModal(false)}>Cancel</button>
+                  <button className="btn" onClick={saveTeamUpdate}>Save</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
       </div>
     </div>
   );
 }
+
+ 
