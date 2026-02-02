@@ -442,7 +442,7 @@ export default function Admin() {
           ) : null}
         </div>
       </div>
-      {/* Create Team Modal */}
+      
       {showCreateModal ? (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
           <div style={{ background: "white", padding: 20, borderRadius: 12, width: 560, maxWidth: "95%", color: "#111" }}>
@@ -471,7 +471,7 @@ export default function Admin() {
         </div>
       ) : null}
 
-      {/* Manage Team Keys Modal */}
+      
       {showManageKeysModal ? (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
           <div style={{ background: "white", padding: 20, borderRadius: 12, width: 520, maxWidth: "95%", color: "#111" }}>
@@ -528,7 +528,7 @@ export default function Admin() {
         </div>
       ) : null}
 
-      {/* TEAM MANAGEMENT */}
+      
       <div className="card" style={{ marginBottom: 12 }}>
         <h2 style={{ marginTop: 0 }}>Teams</h2>
 
@@ -573,7 +573,7 @@ export default function Admin() {
         </div>
       </div>
 
-      {/* INBOX */}
+      
       <div className="card" style={{ marginBottom: 12 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
           <h2 style={{ marginTop: 0 }}>Parent Inbox</h2>
@@ -640,7 +640,7 @@ export default function Admin() {
         )}
       </div>
 
-      {/* FINALS */}
+      
       <div className="card">
         <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
           <div>
