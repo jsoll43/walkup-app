@@ -589,56 +589,13 @@ export default function Admin() {
         </div>
       ) : null}
 
-      {/* Teams */}
+      {/* Team Management */}
       <div className="card" style={{ marginBottom: 12 }}>
-        <h2 style={{ marginTop: 0 }}>Teams</h2>
-
-        <div style={{ display: "grid", gap: 10 }}>
-          <div style={{ fontWeight: 1000 }}>Create a new team</div>
-          <div>
-            <button className="btn" onClick={() => setShowCreateModal(true)}>
-              Create new team
-            </button>
-          </div>
-        </div>
-
-        <div style={{ borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: 12, marginTop: 12 }}>
-          <div style={{ fontWeight: 1000, marginBottom: 8 }}>Manage a team</div>
-
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ minWidth: 240 }}>
-              <label className="label">Managing Team (roster + finals)</label>
-              <select className="input" value={manageTeamSlug} onChange={(e) => setManageTeam(e.target.value)}>
-                {teams.map((t) => (
-                  <option key={t.slug} value={t.slug}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <button
-              className="btn-danger"
-              onClick={() => setShowDeleteModal(true)}
-              disabled={deletingTeam || manageTeamSlug === "default"}
-            >
-              {deletingTeam ? "Deleting…" : "Delete this team"}
-            </button>
-
-            <div style={{ fontSize: 12, opacity: 0.75 }}>
-              Selected: <strong>{manageTeam ? `${manageTeam.name}` : manageTeamSlug}</strong>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <div>
-                <button className="btn" onClick={() => setShowManageKeysModal(true)}>
-                  Manage team keys
-                </button>
-              </div>
-            </div>
-          </div>
+        <h2 style={{ marginTop: 0 }}>Team Management</h2>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+          <button className="btn" onClick={() => setShowCreateModal(true)}>Create a New Team</button>
+          <button className="btn-danger" onClick={() => setShowDeleteModal(true)} disabled={deletingTeam}>Delete a Team</button>
+          <button className="btn" onClick={() => setShowManageKeysModal(true)}>Manage Team Keys</button>
         </div>
       </div>
 
