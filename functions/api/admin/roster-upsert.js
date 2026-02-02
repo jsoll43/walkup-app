@@ -57,21 +57,30 @@ export async function onRequestPost({ request, env }) {
 
     const now = new Date().toISOString();
 
+    // Determine team_id from body.teamId or body.teamSlug
+    let teamId = body.teamId ? String(body.teamId).trim() : "";
+    const teamSlug = body.teamSlug ? String(body.teamSlug).trim().toLowerCase() : "";
+    if (!teamId && teamSlug) {
+      const t = await env.DB.prepare(`SELECT id FROM teams WHERE slug = ? AND status = 'active'`).bind(teamSlug).first();
+      if (t && t.id) teamId = t.id;
+    }
+
     const q = `
       INSERT INTO roster_players
-        (id, number, first, last, status, created_at, updated_at, deleted_at)
+        (id, number, first, last, status, created_at, updated_at, deleted_at, team_id)
       VALUES
-        (?,  ?,      ?,     ?,    'active', ?,        ?,        NULL)
+        (?,  ?,      ?,     ?,    'active', ?,        ?,        NULL,   ?)
       ON CONFLICT(id) DO UPDATE SET
         number = excluded.number,
         first = excluded.first,
         last = excluded.last,
         status = 'active',
         updated_at = excluded.updated_at,
-        deleted_at = NULL;
+        deleted_at = NULL,
+        team_id = COALESCE(excluded.team_id, roster_players.team_id);
     `.trim();
 
-    await env.DB.prepare(q).bind(id, number, first, last, now, now).run();
+    await env.DB.prepare(q).bind(id, number, first, last, now, now, teamId || null).run();
 
     return json({ ok: true, player: { id, number, first, last } });
   } catch (e) {

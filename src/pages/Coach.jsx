@@ -258,7 +258,10 @@ export default function Coach() {
         headers: headersForCoach(coachKey),
       });
 
-      if (res.status === 404) throw new Error("No final clip uploaded for this player yet.");
+      if (res.status === 404) {
+        setErr("No final walk-up clip has been uploaded. Ask the admin to upload.");
+        return;
+      }
       if (!res.ok) throw new Error(await res.text());
 
       const blob = await res.blob();

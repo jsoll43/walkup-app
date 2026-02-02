@@ -76,6 +76,14 @@ export default function Admin() {
 
   const manageTeam = useMemo(() => teams.find((t) => t.slug === manageTeamSlug) || null, [teams, manageTeamSlug]);
 
+  // Edit keys for selected team
+  const [editParentKey, setEditParentKey] = useState("");
+  const [editCoachKey, setEditCoachKey] = useState("");
+  useEffect(() => {
+    setEditParentKey(manageTeam ? (manageTeam.parent_key || manageTeam.parentKey || "") : "");
+    setEditCoachKey(manageTeam ? (manageTeam.coach_key || manageTeam.coachKey || "") : "");
+  }, [manageTeam]);
+
   function teamHeaders(teamSlug) {
     return { ...adminHeaders, "x-team-slug": (teamSlug || "default").toLowerCase() };
   }
@@ -273,7 +281,6 @@ export default function Admin() {
   async function createTeam() {
     setErr("");
     if (!newName.trim()) return setErr("Team name is required.");
-    if (!newSlug.trim()) return setErr("Team slug is required.");
     if (!newParentKey.trim()) return setErr("Parent key is required.");
     if (!newCoachKey.trim()) return setErr("Coach key is required.");
 
@@ -284,7 +291,8 @@ export default function Admin() {
         headers: { "content-type": "application/json", ...adminHeaders },
         body: JSON.stringify({
           name: newName.trim(),
-          slug: newSlug.trim().toLowerCase(),
+          // slug is optional; server will derive one from name if omitted
+          ...(newSlug.trim() ? { slug: newSlug.trim().toLowerCase() } : {}),
           parentKey: newParentKey.trim(),
           coachKey: newCoachKey.trim(),
         }),
@@ -303,6 +311,52 @@ export default function Admin() {
       setErr(e?.message || String(e));
     } finally {
       setCreatingTeam(false);
+    }
+  }
+
+  async function saveTeamUpdate() {
+    setErr("");
+    if (!manageTeam || !manageTeam.slug) return setErr("No team selected");
+    try {
+      const body = { slug: manageTeam.slug };
+      if (editParentKey) body.parentKey = editParentKey.trim();
+      if (editCoachKey) body.coachKey = editCoachKey.trim();
+      const res = await fetch("/api/admin/teams", {
+        method: "PUT",
+        headers: { "content-type": "application/json", ...adminHeaders },
+        body: JSON.stringify(body),
+      });
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Update failed (HTTP ${res.status})`);
+      await refreshAll();
+    } catch (e) {
+      setErr(e?.message || String(e));
+    }
+  }
+
+  // Roster add form state
+  const [addNumber, setAddNumber] = useState("");
+  const [addFirst, setAddFirst] = useState("");
+  const [addLast, setAddLast] = useState("");
+
+  async function addPlayer() {
+    setErr("");
+    if (!manageTeam || !manageTeam.slug) return setErr("No team selected");
+    if (!addFirst.trim() || !addLast.trim()) return setErr("First and last name are required");
+    try {
+      const res = await fetch("/api/admin/roster-upsert", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...adminHeaders },
+        body: JSON.stringify({ number: addNumber.trim(), first: addFirst.trim(), last: addLast.trim(), teamSlug: manageTeam.slug }),
+      });
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || `Add player failed (HTTP ${res.status})`);
+      setAddNumber("");
+      setAddFirst("");
+      setAddLast("");
+      await fetchRosterForTeam(manageTeam.slug);
+    } catch (e) {
+      setErr(e?.message || String(e));
     }
   }
 
@@ -471,6 +525,21 @@ export default function Admin() {
                 Selected: <strong>{manageTeam ? `${manageTeam.name} (${manageTeam.slug})` : manageTeamSlug}</strong>
               </div>
             </div>
+            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ minWidth: 220 }}>
+                  <label className="label">Parent Key</label>
+                  <input className="input" value={editParentKey} onChange={(e) => setEditParentKey(e.target.value)} placeholder="Change parent key…" />
+                </div>
+                <div style={{ minWidth: 220 }}>
+                  <label className="label">Coach Key</label>
+                  <input className="input" value={editCoachKey} onChange={(e) => setEditCoachKey(e.target.value)} placeholder="Change coach key…" />
+                </div>
+                <div style={{ display: "flex", alignItems: "end" }}>
+                  <button className="btn" onClick={saveTeamUpdate}>Save changes</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -558,6 +627,20 @@ export default function Admin() {
         </div>
 
         <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ minWidth: 80 }}>
+              <input className="input" placeholder="#" value={addNumber} onChange={(e) => setAddNumber(e.target.value)} />
+            </div>
+            <div style={{ minWidth: 160 }}>
+              <input className="input" placeholder="First name" value={addFirst} onChange={(e) => setAddFirst(e.target.value)} />
+            </div>
+            <div style={{ minWidth: 160 }}>
+              <input className="input" placeholder="Last name" value={addLast} onChange={(e) => setAddLast(e.target.value)} />
+            </div>
+            <div>
+              <button className="btn" onClick={addPlayer}>Add player</button>
+            </div>
+          </div>
           {roster.length === 0 ? (
             <div style={{ opacity: 0.75 }}>No roster found yet for this team.</div>
           ) : (
