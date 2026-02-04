@@ -573,24 +573,7 @@ export default function Coach() {
             {isPlaying && playingPlayerId ? ` • Playing` : ""}
           </div>
 
-          <div>
-            <button
-              className="btn-secondary"
-              onClick={() => {
-                stopAudio();
-                clearCoachKey();
-                // allow switching teams on logout
-                sessionStorage.removeItem('TEAM_SLUG');
-                sessionStorage.removeItem('TEAM_NAME');
-                setIsAuthed(false);
-                setCoachKey("");
-                setLoginKey("");
-                setErr("");
-              }}
-            >
-              Log out
-            </button>
-          </div>
+          {/* logout moved below Back/Next */}
         </div>
 
         <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
@@ -599,6 +582,25 @@ export default function Coach() {
           </button>
           <button className="btn-secondary btn-sm" onClick={() => setCurrentAndMaybePlay("next", false)} disabled={lineupIds.length === 0}>
             Next ▶️
+          </button>
+        </div>
+
+        <div style={{ marginTop: 8 }}>
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              stopAudio();
+              clearCoachKey();
+              // allow switching teams on logout
+              sessionStorage.removeItem('TEAM_SLUG');
+              sessionStorage.removeItem('TEAM_NAME');
+              setIsAuthed(false);
+              setCoachKey("");
+              setLoginKey("");
+              setErr("");
+            }}
+          >
+            Log out
           </button>
         </div>
       </div>
