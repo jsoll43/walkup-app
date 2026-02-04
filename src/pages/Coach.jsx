@@ -555,39 +555,42 @@ export default function Coach() {
           </div>
         </div>
 
-        <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <button className="btn btn-sm" onClick={() => (nowId ? playForPlayerId(nowId) : null)} disabled={!nowId}>
-            ▶️ Play Now
-          </button>
-          <button className="btn-secondary btn-sm" onClick={stopAudio}>
-            ⏸ Pause/Stop
-          </button>
+        <div style={{ marginTop: 14, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button className="btn btn-sm" onClick={() => (nowId ? playForPlayerId(nowId) : null)} disabled={!nowId}>
+              ▶️ Play Now
+            </button>
+            <button className="btn-secondary btn-sm" onClick={stopAudio}>
+              ⏸ Pause/Stop
+            </button>
+            <button className="btn btn-sm" onClick={() => setCurrentAndMaybePlay("next", true)} disabled={lineupIds.length === 0}>
+              ⏭ Next + Play
+            </button>
+          </div>
 
-          <button className="btn btn-sm" onClick={() => setCurrentAndMaybePlay("next", true)} disabled={lineupIds.length === 0}>
-            ⏭ Next + Play
-          </button>
-
-          <div style={{ marginLeft: "auto", fontSize: 12, opacity: 0.8 }}>
+          <div style={{ marginLeft: "auto", fontSize: 12, opacity: 0.8, alignSelf: "center" }}>
             {updatedAt ? `Last update (ET): ${formatET(updatedAt)}` : ""}
             {isPlaying && playingPlayerId ? ` • Playing` : ""}
           </div>
 
-          <button
-            className="btn-secondary"
-            onClick={() => {
-              stopAudio();
-              clearCoachKey();
-              // allow switching teams on logout
-              sessionStorage.removeItem('TEAM_SLUG');
-              sessionStorage.removeItem('TEAM_NAME');
-              setIsAuthed(false);
-              setCoachKey("");
-              setLoginKey("");
-              setErr("");
-            }}
-          >
-            Log out
-          </button>
+          <div>
+            <button
+              className="btn-secondary"
+              onClick={() => {
+                stopAudio();
+                clearCoachKey();
+                // allow switching teams on logout
+                sessionStorage.removeItem('TEAM_SLUG');
+                sessionStorage.removeItem('TEAM_NAME');
+                setIsAuthed(false);
+                setCoachKey("");
+                setLoginKey("");
+                setErr("");
+              }}
+            >
+              Log out
+            </button>
+          </div>
         </div>
 
         <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
