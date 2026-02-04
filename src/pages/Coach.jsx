@@ -567,21 +567,10 @@ export default function Coach() {
             ⏭ Next + Play
           </button>
 
-          <button className="btn-secondary btn-sm" onClick={() => setCurrentAndMaybePlay(currentIndex - 1, false)} disabled={lineupIds.length === 0}>
-            ◀️ Back
-          </button>
-          <button className="btn-secondary btn-sm" onClick={() => setCurrentAndMaybePlay("next", false)} disabled={lineupIds.length === 0}>
-            Next ▶️
-          </button>
-
           <div style={{ marginLeft: "auto", fontSize: 12, opacity: 0.8 }}>
             {updatedAt ? `Last update (ET): ${formatET(updatedAt)}` : ""}
             {isPlaying && playingPlayerId ? ` • Playing` : ""}
           </div>
-
-          <button className="btn-secondary" onClick={() => { fetchState(coachKey); fetchRoster(coachKey); }} disabled={loading || saving}>
-            Refresh
-          </button>
 
           <button
             className="btn-secondary"
@@ -598,6 +587,15 @@ export default function Coach() {
             }}
           >
             Log out
+          </button>
+        </div>
+
+        <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
+          <button className="btn-secondary btn-sm" onClick={() => setCurrentAndMaybePlay(currentIndex - 1, false)} disabled={lineupIds.length === 0}>
+            ◀️ Back
+          </button>
+          <button className="btn-secondary btn-sm" onClick={() => setCurrentAndMaybePlay("next", false)} disabled={lineupIds.length === 0}>
+            Next ▶️
           </button>
         </div>
       </div>
