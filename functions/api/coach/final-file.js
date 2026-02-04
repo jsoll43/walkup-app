@@ -12,6 +12,15 @@ function json(obj, status = 200) {
   });
 }
 
+function getTeamSlug(req) {
+  const u = new URL(req.url);
+  return (
+    (req.headers.get("x-team-slug") || "").trim().toLowerCase() ||
+    (u.searchParams.get("teamSlug") || "").trim().toLowerCase() ||
+    ""
+  );
+}
+
 export async function onRequest(context) {
   const { request, env } = context;
 
@@ -28,13 +37,29 @@ export async function onRequest(context) {
     const bucket = env.WALKUP_VOICE;
     if (!bucket) return json({ ok: false, error: "R2 binding WALKUP_VOICE not configured" }, 500);
 
-    const canonicalKey = `final/${playerId}`;
-    let obj = await bucket.get(canonicalKey);
+    const teamSlug = getTeamSlug(request) || "";
 
+    // Prefer team-scoped key (new layout): final/<teamSlug>/<playerId>
+    let obj = null;
+    if (teamSlug) {
+      const teamKey = `final/${teamSlug}/${playerId}`;
+      obj = await bucket.get(teamKey);
+      if (!obj) {
+        const listed = await bucket.list({ prefix: `final/${teamSlug}/${playerId}` });
+        const first = listed.objects?.[0];
+        if (first?.key) obj = await bucket.get(first.key);
+      }
+    }
+
+    // Fallback to legacy layout: final/<playerId>
     if (!obj) {
-      const listed = await bucket.list({ prefix: `final/${playerId}` });
-      const first = listed.objects?.[0];
-      if (first?.key) obj = await bucket.get(first.key);
+      const canonicalKey = `final/${playerId}`;
+      obj = await bucket.get(canonicalKey);
+      if (!obj) {
+        const listed = await bucket.list({ prefix: `final/${playerId}` });
+        const first = listed.objects?.[0];
+        if (first?.key) obj = await bucket.get(first.key);
+      }
     }
 
     if (!obj) return json({ ok: false, error: "Not found" }, 404);
