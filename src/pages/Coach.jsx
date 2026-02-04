@@ -315,6 +315,33 @@ export default function Coach() {
     return copy;
   }
 
+  function adjustCurrentIndexAfterMove(curIdx, from, to, len) {
+    if (!Number.isFinite(curIdx)) return curIdx;
+    if (from === to) return curIdx;
+    if (curIdx === from) return to;
+    if (from < to) {
+      // item moved down: indices between (from+1..to) shift up by 1
+      if (curIdx > from && curIdx <= to) return curIdx - 1;
+      return curIdx;
+    }
+    // from > to: item moved up: indices between (to..from-1) shift down by 1
+    if (curIdx >= to && curIdx < from) return curIdx + 1;
+    return curIdx;
+  }
+
+  async function moveAndSave(from, to) {
+    const next = moveItem(from, to);
+    if (next === lineupIds) return;
+    const nextCurrent = adjustCurrentIndexAfterMove(currentIndex, from, to, next.length);
+    setLineupIds(next);
+    setCurrentIndex(nextCurrent);
+    try {
+      await saveState(coachKey, next, nextCurrent);
+    } catch (e) {
+      // saveState will set errors; keep optimistic local state
+    }
+  }
+
   async function addToLineup(playerId) {
     if (!playerId) return;
     if (lineupIds.includes(playerId)) return;
@@ -602,10 +629,10 @@ export default function Coach() {
                   </div>
 
                   <div className="coach-actions">
-                    <button className="btn-secondary" onClick={() => setLineupIds(moveItem(idx, idx - 1))} disabled={idx === 0}>
+                    <button className="btn-secondary" onClick={() => moveAndSave(idx, idx - 1)} disabled={idx === 0}>
                       ↑
                     </button>
-                    <button className="btn-secondary" onClick={() => setLineupIds(moveItem(idx, idx + 1))} disabled={idx === lineupIds.length - 1}>
+                    <button className="btn-secondary" onClick={() => moveAndSave(idx, idx + 1)} disabled={idx === lineupIds.length - 1}>
                       ↓
                     </button>
                     <button className="btn" onClick={() => setCurrentAndMaybePlay(idx, false)}>
