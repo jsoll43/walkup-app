@@ -305,7 +305,7 @@ export default function Admin() {
 
       const res = await fetch("/api/admin/final-upload", {
         method: "POST",
-        headers: teamHeaders(manageTeamSlug),
+        headers: teamHeaders(playersTeamSlug),
         body: fd,
       });
 
@@ -319,7 +319,7 @@ export default function Admin() {
         );
       }
 
-      await fetchFinalStatusForTeam(manageTeamSlug);
+      await fetchFinalStatusForTeam(playersTeamSlug);
     } catch (e) {
       setFinalRowError((prev) => ({ ...prev, [playerId]: e?.message || String(e) }));
     } finally {
@@ -332,7 +332,7 @@ export default function Admin() {
     try {
       const res = await fetch(
         `/api/admin/voice-file?playerId=${encodeURIComponent(playerId)}`,
-        { headers: teamHeaders(manageTeamSlug) }
+        { headers: teamHeaders(playersTeamSlug) }
       );
       if (!res.ok) throw new Error(await res.text());
       const blob = await res.blob();
