@@ -315,23 +315,39 @@ export default function Coach() {
     return copy;
   }
 
-  function addToLineup(playerId) {
+  async function addToLineup(playerId) {
     if (!playerId) return;
     if (lineupIds.includes(playerId)) return;
-    setLineupIds([...lineupIds, playerId]);
+    const next = [...lineupIds, playerId];
+    setLineupIds(next);
+    try {
+      await saveState(coachKey, next, currentIndex);
+    } catch (e) {
+      // saveState sets errors; keep local optimistic state even if save fails
+    }
   }
 
-  function removeFromLineup(idx) {
+  async function removeFromLineup(idx) {
     const copy = [...lineupIds];
     copy.splice(idx, 1);
     const nextIdx = clampIndex(currentIndex, copy.length);
     setLineupIds(copy);
     setCurrentIndex(nextIdx);
+    try {
+      await saveState(coachKey, copy, nextIdx);
+    } catch (e) {
+      // saveState sets errors; keep local optimistic state even if save fails
+    }
   }
 
-  function clearLineup() {
+  async function clearLineup() {
     setLineupIds([]);
     setCurrentIndex(0);
+    try {
+      await saveState(coachKey, [], 0);
+    } catch (e) {
+      // saveState sets errors; keep local optimistic state even if save fails
+    }
   }
 
   const availableRoster = useMemo(() => {
