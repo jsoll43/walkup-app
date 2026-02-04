@@ -555,16 +555,23 @@ export default function Coach() {
           </div>
         </div>
 
-        <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <button className="btn" onClick={() => (nowId ? playForPlayerId(nowId) : null)} disabled={!nowId}>
+        <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button className="btn btn-sm" onClick={() => (nowId ? playForPlayerId(nowId) : null)} disabled={!nowId}>
             ▶️ Play Now
           </button>
-          <button className="btn-secondary" onClick={stopAudio}>
+          <button className="btn-secondary btn-sm" onClick={stopAudio}>
             ⏸ Pause/Stop
           </button>
 
-          <button className="btn" onClick={() => setCurrentAndMaybePlay("next", true)} disabled={lineupIds.length === 0}>
+          <button className="btn btn-sm" onClick={() => setCurrentAndMaybePlay("next", true)} disabled={lineupIds.length === 0}>
             ⏭ Next + Play
+          </button>
+
+          <button className="btn-secondary btn-sm" onClick={() => setCurrentAndMaybePlay(currentIndex - 1, false)} disabled={lineupIds.length === 0}>
+            ◀️ Back
+          </button>
+          <button className="btn-secondary btn-sm" onClick={() => setCurrentAndMaybePlay("next", false)} disabled={lineupIds.length === 0}>
+            Next ▶️
           </button>
 
           <div style={{ marginLeft: "auto", fontSize: 12, opacity: 0.8 }}>
