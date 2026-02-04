@@ -608,6 +608,15 @@ export default function Coach() {
               {saving ? "Saving…" : "Save lineup"}
             </button>
           </div>
+
+          <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+            <button className="btn-secondary" onClick={() => setCurrentAndMaybePlay(currentIndex - 1, false)} disabled={lineupIds.length === 0}>
+              ◀️ Back
+            </button>
+            <button className="btn-secondary" onClick={() => setCurrentAndMaybePlay("next", false)} disabled={lineupIds.length === 0}>
+              Next ▶️
+            </button>
+          </div>
         </div>
 
         <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
