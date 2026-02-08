@@ -569,11 +569,11 @@ export default function Coach() {
               onClick={() => setCurrentAndMaybePlay("next", true)}
               disabled={lineupIds.length === 0}
               style={{
-                padding: "20px 22px",
-                fontSize: 20,
+                padding: "22px 24px",
+                fontSize: 26,
                 fontWeight: 900,
                 width: "100%",
-                height: 80,
+                height: 92,
                 borderRadius: 12,
               }}
             >
