@@ -30,6 +30,7 @@ export default function ParentLogin() {
   const [teams, setTeams] = useState([]);
   const [teamSlug, setTeamSlug] = useState((getTeamSlug() || "default").trim().toLowerCase());
   const [key, setKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const [loadingTeams, setLoadingTeams] = useState(false);
   const [err, setErr] = useState("");
 
@@ -142,13 +143,23 @@ export default function ParentLogin() {
           Parent Key
         </label>
         <input
-          type="password"
+          type={showKey ? "text" : "password"}
           value={key}
           onChange={(e) => setKey(e.target.value)}
           placeholder="Enter parent key…"
           style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
           onKeyDown={(e) => (e.key === "Enter" ? login() : null)}
         />
+        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, opacity: 0.85 }}>
+            <input
+              type="checkbox"
+              checked={showKey}
+              onChange={() => setShowKey((s) => !s)}
+            />
+            Show key
+          </label>
+        </div>
       </div>
 
       <button

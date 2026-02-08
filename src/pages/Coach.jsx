@@ -67,6 +67,7 @@ function clampIndex(idx, length) {
 
 export default function Coach() {
   const [loginKey, setLoginKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const [coachKey, setCoachKey] = useState(getSavedCoachKey());
   const [isAuthed, setIsAuthed] = useState(false);
 
@@ -485,13 +486,19 @@ export default function Coach() {
           <div style={{ marginTop: 14 }}>
             <label className="label">Coach Key</label>
             <input
-              type="password"
+              type={showKey ? "text" : "password"}
               value={loginKey}
               onChange={(e) => setLoginKey(e.target.value)}
               placeholder="Enter coach key…"
               className="input"
               onKeyDown={(e) => (e.key === "Enter" ? tryLogin(loginKey) : null)}
             />
+            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, opacity: 0.85 }}>
+                <input type="checkbox" checked={showKey} onChange={() => setShowKey((s) => !s)} />
+                Show key
+              </label>
+            </div>
           </div>
 
           <button className="btn" onClick={() => tryLogin(loginKey)} disabled={!loginKey || loading} style={{ marginTop: 12, width: "100%" }}>

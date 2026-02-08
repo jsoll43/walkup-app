@@ -52,6 +52,7 @@ function slugify(s) {
 
 export default function Admin() {
   const [loginKey, setLoginKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const [adminKey, setAdminKey] = useState(getSavedAdminKey());
   const [isAuthed, setIsAuthed] = useState(false);
 
@@ -539,13 +540,20 @@ export default function Admin() {
             Admin Key
           </label>
           <input
-            type="password"
+            type={showKey ? "text" : "password"}
             value={loginKey}
             onChange={(e) => setLoginKey(e.target.value)}
             placeholder="Enter admin key…"
             className="input"
             onKeyDown={(e) => (e.key === "Enter" ? tryLogin(loginKey) : null)}
           />
+
+          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, opacity: 0.85 }}>
+              <input type="checkbox" checked={showKey} onChange={() => setShowKey((s) => !s)} />
+              Show key
+            </label>
+          </div>
 
           <button
             className="btn"
