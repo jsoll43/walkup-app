@@ -563,28 +563,28 @@ export default function Coach() {
         </div>
 
         <div style={{ marginTop: 14, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
             <button
               className="btn"
               onClick={() => setCurrentAndMaybePlay("next", true)}
               disabled={lineupIds.length === 0}
               style={{
-                padding: "18px 22px",
-                fontSize: 18,
+                padding: "20px 22px",
+                fontSize: 20,
                 fontWeight: 900,
-                width: 280,
-                height: 64,
+                width: "100%",
+                height: 80,
                 borderRadius: 12,
               }}
             >
               ⏭ Next + Play
             </button>
 
-            <button className="btn btn-sm" onClick={() => (nowId ? playForPlayerId(nowId) : null)} disabled={!nowId}>
+            <button className="btn btn-sm" onClick={() => (nowId ? playForPlayerId(nowId) : null)} disabled={!nowId} style={{ width: "100%" }}>
               ▶️ Play Now
             </button>
 
-            <button className="btn-secondary btn-sm" onClick={stopAudio}>
+            <button className="btn-secondary btn-sm" onClick={stopAudio} style={{ width: "100%" }}>
               ⏸ Pause/Stop
             </button>
           </div>
@@ -597,11 +597,11 @@ export default function Coach() {
           {/* logout moved below Back/Next */}
         </div>
 
-        <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
-          <button className="btn-secondary btn-sm" onClick={() => setCurrentAndMaybePlay(currentIndex - 1, false)} disabled={lineupIds.length === 0}>
+        <div style={{ marginTop: 8, display: "flex", gap: 0, alignItems: "center" }}>
+          <button className="btn-secondary btn-sm" onClick={() => setCurrentAndMaybePlay(currentIndex - 1, false)} disabled={lineupIds.length === 0} style={{ width: "50%" }}>
             ◀️ Back
           </button>
-          <button className="btn-secondary btn-sm" onClick={() => setCurrentAndMaybePlay("next", false)} disabled={lineupIds.length === 0}>
+          <button className="btn-secondary btn-sm" onClick={() => setCurrentAndMaybePlay("next", false)} disabled={lineupIds.length === 0} style={{ width: "50%" }}>
             Next ▶️
           </button>
         </div>
