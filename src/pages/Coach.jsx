@@ -563,15 +563,29 @@ export default function Coach() {
         </div>
 
         <div style={{ marginTop: 14, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <button
+              className="btn"
+              onClick={() => setCurrentAndMaybePlay("next", true)}
+              disabled={lineupIds.length === 0}
+              style={{
+                padding: "18px 22px",
+                fontSize: 18,
+                fontWeight: 900,
+                width: 280,
+                height: 64,
+                borderRadius: 12,
+              }}
+            >
+              ⏭ Next + Play
+            </button>
+
             <button className="btn btn-sm" onClick={() => (nowId ? playForPlayerId(nowId) : null)} disabled={!nowId}>
               ▶️ Play Now
             </button>
+
             <button className="btn-secondary btn-sm" onClick={stopAudio}>
               ⏸ Pause/Stop
-            </button>
-            <button className="btn btn-sm" onClick={() => setCurrentAndMaybePlay("next", true)} disabled={lineupIds.length === 0}>
-              ⏭ Next + Play
             </button>
           </div>
 
