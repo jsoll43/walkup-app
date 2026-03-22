@@ -76,6 +76,7 @@ export default function Admin() {
   const [showManageKeysModal, setShowManageKeysModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTeamSlug, setDeleteTeamSlug] = useState(sessionStorage.getItem("ADMIN_TEAM_SLUG") || "default");
+  const [manageKeysTeamSlug, setManageKeysTeamSlug] = useState(sessionStorage.getItem("ADMIN_TEAM_SLUG") || "default");
   // Separate selector for which team we are modifying players/finals for
   const [playersTeamSlug, setPlayersTeamSlug] = useState(sessionStorage.getItem("ADMIN_TEAM_SLUG") || "default");
 
@@ -103,6 +104,10 @@ export default function Admin() {
     () => teams.find((t) => t.slug === manageTeamSlug) || null,
     [teams, manageTeamSlug]
   );
+  const manageKeysTeam = useMemo(
+    () => teams.find((t) => t.slug === manageKeysTeamSlug) || null,
+    [teams, manageKeysTeamSlug]
+  );
   const playersTeam = useMemo(() => teams.find((t) => t.slug === playersTeamSlug) || null, [teams, playersTeamSlug]);
 
   // Edit keys for selected team
@@ -110,12 +115,12 @@ export default function Admin() {
   const [editCoachKey, setEditCoachKey] = useState("");
   useEffect(() => {
     setEditParentKey(
-      manageTeam ? (manageTeam.parent_key || manageTeam.parentKey || "") : ""
+      manageKeysTeam ? (manageKeysTeam.parent_key || manageKeysTeam.parentKey || "") : ""
     );
     setEditCoachKey(
-      manageTeam ? (manageTeam.coach_key || manageTeam.coachKey || "") : ""
+      manageKeysTeam ? (manageKeysTeam.coach_key || manageKeysTeam.coachKey || "") : ""
     );
-  }, [manageTeam]);
+  }, [manageKeysTeam]);
 
   function teamHeaders(teamSlug, keyOverride) {
     const base = keyOverride ? adminHeadersFor(keyOverride) : adminHeaders;
@@ -393,14 +398,14 @@ export default function Admin() {
 
   async function saveTeamUpdate() {
     setErr("");
-    if (!manageTeamSlug) return;
+    if (!manageKeysTeamSlug) return;
     setLoading(true);
     try {
       const res = await fetch("/api/admin/teams", {
         method: "PUT",
         headers: { "content-type": "application/json", ...adminHeaders },
         body: JSON.stringify({
-          slug: manageTeamSlug,
+          slug: manageKeysTeamSlug,
           parentKey: editParentKey.trim(),
           coachKey: editCoachKey.trim(),
         }),
@@ -890,6 +895,18 @@ export default function Admin() {
             <div style={{ background: "white", padding: 20, borderRadius: 12, width: 520, maxWidth: "95%", color: "#111" }}>
               <h3 style={{ marginTop: 0 }}>Manage team keys</h3>
               <div style={{ display: "grid", gap: 8 }}>
+                <div>
+                  <label className="label">Team to manage</label>
+                  <select className="input" value={manageKeysTeamSlug} onChange={(e) => setManageKeysTeamSlug(e.target.value)}>
+                    {teams.length === 0 ? (
+                      <option value="default">No teams</option>
+                    ) : (
+                      teams.map((t) => (
+                        <option key={t.slug} value={t.slug}>{t.name}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
                 <div>
                   <label className="label">Parent Key</label>
                   <input className="input" value={editParentKey} onChange={(e) => setEditParentKey(e.target.value)} placeholder="Parent key" />

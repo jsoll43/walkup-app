@@ -33,6 +33,7 @@ export const onRequestGet = async ({ request, env }) => {
     const res = await env.DB.prepare(
       `SELECT id, name, slug, status, created_at, deleted_at
        FROM teams
+       WHERE status = 'active'
        ORDER BY created_at DESC`
     ).all();
 
@@ -64,8 +65,8 @@ export const onRequestPost = async ({ request, env }) => {
     const now = new Date().toISOString();
     const id = makeIdFromSlug(slug);
 
-    // Prevent overwriting an existing team
-    const existing = await env.DB.prepare(`SELECT id FROM teams WHERE slug = ?`).bind(slug).first();
+    // Prevent overwriting an existing active team (allow re-using deleted team slugs)
+    const existing = await env.DB.prepare(`SELECT id FROM teams WHERE slug = ? AND status = 'active'`).bind(slug).first();
     if (existing) return json({ ok: false, error: "That team slug already exists." }, 409);
 
     await env.DB.prepare(
