@@ -63,11 +63,20 @@ export const onRequestPost = async ({ request, env }) => {
     if (!coachKey || coachKey.length < 4) return json({ ok: false, error: "Coach key is required (min 4 chars)" }, 400);
 
     const now = new Date().toISOString();
-    const id = makeIdFromSlug(slug);
+    let id = makeIdFromSlug(slug);
 
     // Prevent overwriting an existing active team (allow re-using deleted team slugs)
     const existing = await env.DB.prepare(`SELECT id FROM teams WHERE slug = ? AND status = 'active'`).bind(slug).first();
     if (existing) return json({ ok: false, error: "That team slug already exists." }, 409);
+
+    // Check if this ID already exists (even in deleted teams), and generate a unique one if needed
+    let idExists = await env.DB.prepare(`SELECT id FROM teams WHERE id = ?`).bind(id).first();
+    let counter = 1;
+    while (idExists) {
+      id = `${makeIdFromSlug(slug)}_${counter}`;
+      idExists = await env.DB.prepare(`SELECT id FROM teams WHERE id = ?`).bind(id).first();
+      counter++;
+    }
 
     await env.DB.prepare(
       `INSERT INTO teams (id, name, slug, parent_key, coach_key, status, created_at)
