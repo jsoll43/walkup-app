@@ -264,7 +264,22 @@ export default function Coach() {
         setErr("No final walk-up clip has been uploaded. Ask the admin to upload.");
         return;
       }
-      if (!res.ok) throw new Error(await res.text());
+      if (res.status === 401) {
+        setErr("Unauthorized. Please log in again as coach.");
+        setIsAuthed(false);
+        return;
+      }
+      if (!res.ok) {
+        let msg = "Could not load final clip.";
+        try {
+          const body = await res.json();
+          if (body && body.error) msg = body.error;
+        } catch {
+          const text = await res.text();
+          if (text) msg = text;
+        }
+        throw new Error(msg);
+      }
 
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
