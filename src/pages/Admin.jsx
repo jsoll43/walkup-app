@@ -528,12 +528,25 @@ export default function Admin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // When the selected players team changes, refresh roster + final status for that team
+  // Keep selected players team in sync with active teams.
   useEffect(() => {
-    if (!playersTeamSlug) return;
+    if (!teams || teams.length === 0) return;
+
+    const validPlayersTeam = teams.some((t) => t.slug === playersTeamSlug);
+    if (!validPlayersTeam) {
+      const fallbackTeam = teams.find((t) => t.slug === "default") || teams[0];
+      const fallbackSlug = fallbackTeam ? fallbackTeam.slug : "";
+      if (fallbackSlug && fallbackSlug !== playersTeamSlug) {
+        setPlayersTeamSlug(fallbackSlug);
+        sessionStorage.setItem("ADMIN_TEAM_SLUG", fallbackSlug);
+      }
+      return;
+    }
+
+    // And fetch roster + final status for the selected players team.
     fetchRosterForTeam(playersTeamSlug).catch(() => {});
     fetchFinalStatusForTeam(playersTeamSlug).catch(() => {});
-  }, [playersTeamSlug]);
+  }, [playersTeamSlug, teams]);
 
   if (!isAuthed) {
     return (

@@ -26,7 +26,7 @@ export async function onRequest(context) {
 
   try {
     const key = getBearer(request);
-    if (!key || key !== env.COACH_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
+    if (!key) return json({ ok: false, error: "Missing coach key" }, 401);
 
     if (request.method !== "GET") return json({ ok: false, error: "Method not allowed" }, 405);
 
@@ -34,10 +34,20 @@ export async function onRequest(context) {
     const playerId = (url.searchParams.get("playerId") || "").trim();
     if (!playerId) return json({ ok: false, error: "Missing playerId" }, 400);
 
+    const teamSlug = getTeamSlug(request) || "";
+    if (!teamSlug) return json({ ok: false, error: "Missing team (x-team-slug)" }, 400);
+
+    const team = await env.DB.prepare(
+      `SELECT id, name, slug, coach_key, status FROM teams WHERE slug = ?`
+    )
+      .bind(teamSlug)
+      .first();
+
+    if (!team || team.status !== "active") return json({ ok: false, error: "Unknown team" }, 404);
+    if (team.coach_key !== key && key !== env.COACH_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
+
     const bucket = env.WALKUP_VOICE;
     if (!bucket) return json({ ok: false, error: "R2 binding WALKUP_VOICE not configured" }, 500);
-
-    const teamSlug = getTeamSlug(request) || "";
 
     // Prefer team-scoped key (new layout): final/<teamSlug>/<playerId>
     let obj = null;
