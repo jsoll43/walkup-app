@@ -137,11 +137,11 @@ export default function ParentHome() {
         </div>
 
         <div style={{ marginTop: 14 }}>
-          <label className="label">Song Request (optional)</label>
+          <label className="label">Song Request (please indicate the spot in the song you want)</label>
           <input
             value={songRequest}
             onChange={(e) => setSongRequest(e.target.value)}
-            placeholder="example: Taylor Swift - Shake it Off"
+            placeholder="example: Taylor Swift - Shake it Off (begin at 15 seconds)"
             className="input"
           />
         </div>
