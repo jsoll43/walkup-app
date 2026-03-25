@@ -137,7 +137,7 @@ export default function ParentHome() {
         </div>
 
         <div style={{ marginTop: 14 }}>
-          <label className="label">Song Request (please indicate the spot in the song you want)</label>
+          <label className="label">Song Request (indicate the spot in the song you want)</label>
           <input
             value={songRequest}
             onChange={(e) => setSongRequest(e.target.value)}
