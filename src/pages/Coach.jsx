@@ -421,7 +421,10 @@ export default function Coach() {
         const json = await safeJsonOrText(res);
         if (!res.ok || json?.ok === false) return;
         if (!mounted) return;
-        setAvailableTeams(Array.isArray(json.teams) ? json.teams : []);
+        const teams = Array.isArray(json.teams) ? json.teams : [];
+        // Sort teams alphabetically by name
+        const sortedTeams = teams.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+        setAvailableTeams(sortedTeams);
       } catch {}
     })();
     return () => (mounted = false);

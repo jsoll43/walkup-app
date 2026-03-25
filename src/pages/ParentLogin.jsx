@@ -48,7 +48,9 @@ export default function ParentLogin() {
         if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || "Failed to load teams.");
 
         const list = Array.isArray(data.teams) ? data.teams : [];
-        setTeams(list);
+        // Sort teams alphabetically by name
+        const sortedList = [...list].sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+        setTeams(sortedList);
 
         // Resolve initial team selection
         if (list.length > 0) {
