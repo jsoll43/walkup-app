@@ -93,9 +93,43 @@ export default function Admin() {
   const [finalFile, setFinalFile] = useState({});
   const [finalRowError, setFinalRowError] = useState({});
 
+  // Auth logs
+  const [authLogs, setAuthLogs] = useState([]);
+  const [authLogsLoading, setAuthLogsLoading] = useState(false);
+  const [showAuthLogsModal, setShowAuthLogsModal] = useState(false);
+
   function adminHeadersFor(key) {
     const k = (key || "").trim();
     return { "x-admin-key": k, Authorization: `Bearer ${k}` };
+  }
+
+  async function fetchAuthLogs() {
+    setAuthLogsLoading(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/auth-logs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...adminHeadersFor(adminKey),
+        },
+        body: JSON.stringify({
+          teamSlug: inboxFilterSlug === "all" ? "" : inboxFilterSlug,
+          limit: 100,
+          offset: 0,
+        }),
+      });
+
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false)
+        throw new Error(data?.error || "Failed to fetch auth logs");
+
+      setAuthLogs(data.logs || []);
+    } catch (e) {
+      setErr(e?.message || String(e));
+    } finally {
+      setAuthLogsLoading(false);
+    }
   }
 
   const adminHeaders = useMemo(() => adminHeadersFor(adminKey), [adminKey]);
@@ -639,6 +673,7 @@ export default function Admin() {
           <button className="btn" onClick={() => setShowCreateModal(true)}>Create a New Team</button>
           <button className="btn-danger" onClick={() => setShowDeleteModal(true)} disabled={deletingTeam}>Delete a Team</button>
           <button className="btn" onClick={() => setShowManageKeysModal(true)}>Manage Team Keys</button>
+          <button className="btn" onClick={() => { fetchAuthLogs(); setShowAuthLogsModal(true); }}>View Auth Logs</button>
         </div>
       </div>
 
@@ -936,6 +971,65 @@ export default function Admin() {
                     Save
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {showAuthLogsModal ? (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
+            <div style={{ background: "white", borderRadius: 12, padding: 20, maxWidth: 800, maxHeight: "80vh", overflow: "auto", width: "95%" }}>
+              <h2 style={{ marginTop: 0 }}>Authorization Errors Log</h2>
+              
+              <div style={{ marginBottom: 12 }}>
+                <label className="label">Filter by Team</label>
+                <select
+                  className="input"
+                  value={inboxFilterSlug}
+                  onChange={(e) => setInboxFilterSlug(e.target.value)}
+                  style={{ marginBottom: 8 }}
+                >
+                  <option value="all">All Teams</option>
+                  {teams.map((t) => (
+                    <option key={t.slug} value={t.slug}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <button className="btn-secondary" onClick={() => fetchAuthLogs()} disabled={authLogsLoading}>
+                  {authLogsLoading ? "Loading…" : "Refresh"}
+                </button>
+              </div>
+
+              <div style={{ marginBottom: 12, fontSize: 13, opacity: 0.8 }}>
+                {authLogs.length === 0 ? (
+                  <div style={{ padding: "12px", background: "#f0f0f0", borderRadius: 8 }}>No authorization errors found</div>
+                ) : (
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "2px solid #ddd" }}>
+                        <th style={{ textAlign: "left", padding: 8, fontWeight: 900 }}>Team</th>
+                        <th style={{ textAlign: "left", padding: 8, fontWeight: 900 }}>Timestamp</th>
+                        <th style={{ textAlign: "left", padding: 8, fontWeight: 900 }}>Error</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {authLogs.map((log) => (
+                        <tr key={log.id} style={{ borderBottom: "1px solid #eee" }}>
+                          <td style={{ padding: 8 }}>{log.team_slug}</td>
+                          <td style={{ padding: 8, fontSize: 12 }}>{formatET(log.timestamp)}</td>
+                          <td style={{ padding: 8, fontSize: 12, color: "crimson", wordBreak: "break-word" }}>{log.error_message}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button className="btn-secondary" onClick={() => setShowAuthLogsModal(false)}>
+                  Close
+                </button>
               </div>
             </div>
           </div>

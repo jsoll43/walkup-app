@@ -20,6 +20,20 @@ function uuid() {
   return crypto.randomUUID();
 }
 
+async function logAuthError(env, teamSlug, teamId, error) {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO auth_logs
+       (id, team_id, team_slug, error_type, error_message, timestamp)
+       VALUES (?, ?, ?, 'parent_unauthorized', ?, ?)`
+    )
+      .bind(uuid(), teamId || null, teamSlug, error, new Date().toISOString())
+      .run();
+  } catch (e) {
+    console.error("Failed to log auth error:", e);
+  }
+}
+
 export const onRequestPost = async ({ request, env }) => {
   try {
     const teamSlug = getTeamSlug(request);
@@ -37,7 +51,11 @@ export const onRequestPost = async ({ request, env }) => {
       .first();
 
     if (!team || team.status !== "active") return json({ ok: false, error: "Unknown team" }, 404);
-    if (team.parent_key !== parentKey) return json({ ok: false, error: "Unauthorized" }, 401);
+    
+    if (team.parent_key !== parentKey) {
+      await logAuthError(env, teamSlug, team.id, `Invalid parent key provided (expected: ${team.parent_key.substring(0, 3)}..., got: ${parentKey.substring(0, 3)}...)`);
+      return json({ ok: false, error: "Unauthorized" }, 401);
+    }
 
     const ct = request.headers.get("content-type") || "";
     if (!ct.toLowerCase().includes("multipart/form-data")) {
