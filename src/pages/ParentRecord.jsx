@@ -223,7 +223,7 @@ export default function ParentRecord({ onBlob, disabled = false, playerName = ""
   }
 
   const namePart = (playerName || "").trim() || "player name";
-  const scriptText = `Please record: “Now batting, (jersey #), ${namePart}” — keep it under ${MAX_SECONDS} seconds.`;
+  const scriptText = `Please record: “Now batting, ${namePart}” — keep it under ${MAX_SECONDS} seconds.`;
 
   return (
     <div className="card">
