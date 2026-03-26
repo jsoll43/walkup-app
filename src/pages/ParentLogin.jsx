@@ -96,19 +96,37 @@ export default function ParentLogin() {
     }
   }
 
-  function login() {
+  async function login() {
     setErr("");
     if (!selectedTeam) return setErr("Please select a team.");
     if (!key) return setErr("Please enter the Parent key.");
 
-    const slug = String(selectedTeam.slug || "default").toLowerCase();
-    const name = String(selectedTeam.name || slug);
+    try {
+      // Validate the key against the backend
+      const res = await fetch("/api/parent/validate-key", {
+        method: "POST",
+        headers: {
+          "x-team-slug": String(selectedTeam.slug || "").toLowerCase(),
+          "x-parent-key": key.trim(),
+        },
+      });
 
-    setTeam({ slug, name });
-    writeTeamToSessionStorage(slug, name);
-    setParentKey(key);
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        return setErr(data?.error || "Invalid parent key for this team.");
+      }
 
-    nav(redirectTo, { replace: true });
+      const slug = String(selectedTeam.slug || "default").toLowerCase();
+      const name = String(selectedTeam.name || slug);
+
+      setTeam({ slug, name });
+      writeTeamToSessionStorage(slug, name);
+      setParentKey(key);
+
+      nav(redirectTo, { replace: true });
+    } catch (e) {
+      setErr(e?.message || "Failed to validate key. Please try again.");
+    }
   }
 
   return (
