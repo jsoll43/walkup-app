@@ -673,7 +673,7 @@ export default function Admin() {
           <button className="btn" onClick={() => setShowCreateModal(true)}>Create a New Team</button>
           <button className="btn-danger" onClick={() => setShowDeleteModal(true)} disabled={deletingTeam}>Delete a Team</button>
           <button className="btn" onClick={() => setShowManageKeysModal(true)}>Manage Team Keys</button>
-          <button className="btn" onClick={() => { fetchAuthLogs(); setShowAuthLogsModal(true); }}>View Auth Logs</button>
+          <button className="btn" onClick={() => { fetchAuthLogs(); setShowAuthLogsModal(true); }}>View Auth Errors</button>
         </div>
       </div>
 
