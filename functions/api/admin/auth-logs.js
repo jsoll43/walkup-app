@@ -17,11 +17,7 @@ export const onRequestPost = async ({ request, env }) => {
     if (!adminKey) return json({ ok: false, error: "Missing admin key" }, 401);
 
     // Verify admin access
-    const admin = await env.DB.prepare(`SELECT id FROM admin_users WHERE api_key = ?`)
-      .bind(adminKey)
-      .first();
-
-    if (!admin) return json({ ok: false, error: "Unauthorized" }, 401);
+    if (adminKey !== env.ADMIN_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
 
     // Parse request body for filters
     const body = await request.json().catch(() => ({}));
