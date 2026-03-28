@@ -35,7 +35,7 @@ export const onRequestPost = async ({ request, env }) => {
     try {
       body = textBody ? JSON.parse(textBody) : {};
     } catch {
-      return json({ ok: false, error: `Invalid JSON body: ${textBody}` }, 400);
+      return json({ ok: false, error: `Invalid JSON body: ${textBody}`, textBody }, 400);
     }
 
     const email = (body.email || "").trim();
@@ -46,6 +46,8 @@ export const onRequestPost = async ({ request, env }) => {
       return json({
         ok: false,
         error: `Invalid email address or email is missing (received email=${JSON.stringify(email)})`,
+        body,
+        textBody,
       },
       400);
     }
