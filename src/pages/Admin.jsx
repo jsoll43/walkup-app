@@ -1,5 +1,5 @@
 // src/pages/Admin.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 function getSavedAdminKey() {
   return sessionStorage.getItem("ADMIN_KEY") || "";
@@ -25,6 +25,10 @@ function formatET(ts) {
     second: "2-digit",
     timeZoneName: "short",
   }).format(d);
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
 }
 
 async function safeJsonOrText(res) {
@@ -88,6 +92,10 @@ export default function Admin() {
   // Data
   const [roster, setRoster] = useState([]);
   const [inbox, setInbox] = useState([]);
+  const [inboxNotificationEnabled, setInboxNotificationEnabled] = useState(() => localStorage.getItem("PARENT_INBOX_NOTIFY_ENABLED") === "true");
+  const [inboxNotificationEmail, setInboxNotificationEmail] = useState(() => localStorage.getItem("PARENT_INBOX_NOTIFY_EMAIL") || "");
+  const [inboxNotificationStatus, setInboxNotificationStatus] = useState("");
+  const inboxPendingCountRef = useRef(0);
   const [finalStatus, setFinalStatus] = useState({});
   const [finalUploading, setFinalUploading] = useState({});
   const [finalFile, setFinalFile] = useState({});
@@ -229,6 +237,34 @@ export default function Admin() {
     setRoster(Array.isArray(data.roster) ? data.roster : []);
   }
 
+  async function sendParentInboxNotification(newCount, currentPending) {
+    if (!inboxNotificationEnabled || !inboxNotificationEmail || !isValidEmail(inboxNotificationEmail)) return;
+
+    try {
+      const res = await fetch("/api/admin/parent-inbox-notify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...adminHeaders,
+        },
+        body: JSON.stringify({
+          email: inboxNotificationEmail,
+          newSubmissions: newCount,
+          currentPending,
+        }),
+      });
+
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || `Notification failed (HTTP ${res.status})`);
+      }
+
+      setInboxNotificationStatus(`Sent email notification to ${inboxNotificationEmail} (${newCount} new)`);
+    } catch (e) {
+      setInboxNotificationStatus(`Email notification failed: ${e?.message || String(e)}`);
+    }
+  }
+
   async function fetchInbox(keyOverride) {
     const res = await fetch("/api/admin/parent-inbox", {
       headers: keyOverride ? adminHeadersFor(keyOverride) : adminHeaders,
@@ -242,7 +278,21 @@ export default function Admin() {
       : Array.isArray(data.items)
       ? data.items
       : [];
+
+    const previousCount = inboxPendingCountRef.current;
+    const currentCount = list.length;
+
     setInbox(list);
+    inboxPendingCountRef.current = currentCount;
+
+    if (
+      inboxNotificationEnabled &&
+      isValidEmail(inboxNotificationEmail) &&
+      previousCount > 0 &&
+      currentCount > previousCount
+    ) {
+      await sendParentInboxNotification(currentCount - previousCount, currentCount);
+    }
   }
 
   async function fetchFinalStatusForTeam(teamSlug, keyOverride) {
@@ -562,6 +612,11 @@ export default function Admin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    localStorage.setItem("PARENT_INBOX_NOTIFY_ENABLED", inboxNotificationEnabled ? "true" : "false");
+    localStorage.setItem("PARENT_INBOX_NOTIFY_EMAIL", inboxNotificationEmail || "");
+  }, [inboxNotificationEnabled, inboxNotificationEmail]);
+
   // Keep selected players team in sync with active teams.
   useEffect(() => {
     if (!teams || teams.length === 0) return;
@@ -699,6 +754,52 @@ export default function Admin() {
               Reload inbox
             </button>
           </div>
+        </div>
+
+        <div style={{ marginTop: 12, borderTop: "1px solid rgba(0,0,0,0.12)", paddingTop: 12 }}>
+          <h3 style={{ margin: "0 0 8px" }}>Inbox email alert</h3>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={inboxNotificationEnabled}
+                onChange={(e) => setInboxNotificationEnabled(e.target.checked)}
+              />
+              Enable email notifications for new submissions
+            </label>
+
+            <input
+              type="email"
+              className="input"
+              style={{ minWidth: 240 }}
+              placeholder="notification@example.com"
+              value={inboxNotificationEmail}
+              onChange={(e) => setInboxNotificationEmail(e.target.value)}
+              disabled={!inboxNotificationEnabled}
+            />
+
+            <button
+              className="btn-secondary"
+              onClick={() => fetchInbox()}
+              disabled={loading}
+            >
+              Check now
+            </button>
+          </div>
+
+          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
+            {inboxNotificationEnabled
+              ? isValidEmail(inboxNotificationEmail)
+                ? `Alerts will be attempted to ${inboxNotificationEmail}`
+                : "Enter a valid email to send alerts."
+              : "Notifications are currently turned off."}
+          </div>
+
+          {inboxNotificationStatus ? (
+            <div style={{ marginTop: 6, fontSize: 12, color: "#065f46" }}>
+              {inboxNotificationStatus}
+            </div>
+          ) : null}
         </div>
 
         {filteredInbox.length === 0 ? (
