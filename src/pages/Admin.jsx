@@ -261,7 +261,9 @@ export default function Admin() {
 
       setInboxNotificationStatus(`Sent email notification to ${inboxNotificationEmail} (${newCount} new)`);
     } catch (e) {
-      setInboxNotificationStatus(`Email notification failed: ${e?.message || String(e)}`);
+      const raw = e?.message || String(e);
+      const clean = raw && raw.includes("<html") ? "Bad gateway / host error from server (502). Check deployment logs." : raw;
+      setInboxNotificationStatus(`Email notification failed: ${clean}`);
     }
   }
 
@@ -293,7 +295,9 @@ export default function Admin() {
 
       setInboxNotificationStatus(`Test email sent to ${inboxNotificationEmail}`);
     } catch (e) {
-      setInboxNotificationStatus(`Test email failed: ${e?.message || String(e)}`);
+      const raw = e?.message || String(e);
+      const clean = raw && raw.includes("<html") ? "Bad gateway / host error from server (502). Check deployment logs." : raw;
+      setInboxNotificationStatus(`Test email failed: ${clean}`);
     }
   }
 
