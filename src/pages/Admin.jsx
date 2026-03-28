@@ -265,6 +265,38 @@ export default function Admin() {
     }
   }
 
+  async function sendParentInboxTestEmail() {
+    if (!inboxNotificationEnabled || !inboxNotificationEmail || !isValidEmail(inboxNotificationEmail)) {
+      setInboxNotificationStatus("Enter a valid email and enable notifications first.");
+      return;
+    }
+
+    setInboxNotificationStatus("Sending test email...");
+    try {
+      const res = await fetch("/api/admin/parent-inbox-notify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...adminHeaders,
+        },
+        body: JSON.stringify({
+          email: inboxNotificationEmail,
+          newSubmissions: 1,
+          currentPending: inbox.length,
+        }),
+      });
+
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || `Test failed (HTTP ${res.status})`);
+      }
+
+      setInboxNotificationStatus(`Test email sent to ${inboxNotificationEmail}`);
+    } catch (e) {
+      setInboxNotificationStatus(`Test email failed: ${e?.message || String(e)}`);
+    }
+  }
+
   async function fetchInbox(keyOverride) {
     const res = await fetch("/api/admin/parent-inbox", {
       headers: keyOverride ? adminHeadersFor(keyOverride) : adminHeaders,
@@ -784,6 +816,14 @@ export default function Admin() {
               disabled={loading}
             >
               Check now
+            </button>
+
+            <button
+              className="btn"
+              onClick={sendParentInboxTestEmail}
+              disabled={!inboxNotificationEnabled || !isValidEmail(inboxNotificationEmail) || loading}
+            >
+              Send test email
             </button>
           </div>
 
