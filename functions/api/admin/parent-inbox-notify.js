@@ -30,13 +30,24 @@ export const onRequestPost = async ({ request, env }) => {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
 
-    const body = await request.json().catch(() => ({}));
+    const textBody = await request.text().catch(() => "");
+    let body;
+    try {
+      body = textBody ? JSON.parse(textBody) : {};
+    } catch {
+      return json({ ok: false, error: `Invalid JSON body: ${textBody}` }, 400);
+    }
+
     const email = (body.email || "").trim();
     const newSubmissions = Number(body.newSubmissions || 0);
     const currentPending = Number(body.currentPending || 0);
 
     if (!email || !isValidEmail(email)) {
-      return json({ ok: false, error: "Invalid email address." }, 400);
+      return json({
+        ok: false,
+        error: `Invalid email address or email is missing (received email=${JSON.stringify(email)})`,
+      },
+      400);
     }
     if (!newSubmissions || newSubmissions <= 0) {
       return json({ ok: false, error: "No new submissions to notify." }, 400);
