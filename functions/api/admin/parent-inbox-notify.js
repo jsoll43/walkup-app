@@ -17,6 +17,12 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
 }
 
+function encodeForm(fields) {
+  return Object.entries(fields)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v || ""))}`)
+    .join("&");
+}
+
 export const onRequestPost = async ({ request, env }) => {
   try {
     const key = getAdminKey(request);
@@ -36,35 +42,41 @@ export const onRequestPost = async ({ request, env }) => {
       return json({ ok: false, error: "No new submissions to notify." }, 400);
     }
 
-    const sendgridKey = env.SENDGRID_API_KEY;
-    const sendgridFrom = env.SENDGRID_FROM || env.EMAIL_FROM;
-    if (!sendgridKey || !sendgridFrom) {
-      return json({ ok: false, error: "SendGrid is not configured (SENDGRID_API_KEY/SENDGRID_FROM)." }, 500);
+    const mgKey = env.MAILGUN_API_KEY;
+    const mgDomain = env.MAILGUN_DOMAIN;
+    const mgFrom = env.MAILGUN_FROM;
+    if (!mgKey || !mgDomain || !mgFrom) {
+      return json({
+        ok: false,
+        error: "Mailgun is not configured (MAILGUN_API_KEY/MAILGUN_DOMAIN/MAILGUN_FROM).",
+      }, 500);
     }
 
-    const subject = `New Parent Inbox submissions: ${newSubmissions} new`; 
+    const subject = `New Parent Inbox submissions: ${newSubmissions} new`;
     const text = `There are ${currentPending} pending submission(s) in the Parent Inbox. ${newSubmissions} new since last check.`;
     const html = `<p>${text}</p><p>Visit your admin panel to review.</p>`;
 
-    const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    const mgRes = await fetch(`https://api.mailgun.net/v3/${encodeURIComponent(mgDomain)}/messages`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${sendgridKey}`,
+        "Authorization": `Basic ${btoa(`api:${mgKey}`)}`,
+        "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: JSON.stringify({
-        personalizations: [{ to: [{ email }], subject }],
-        from: { email: sendgridFrom },
-        content: [
-          { type: "text/plain", value: text },
-          { type: "text/html", value: html },
-        ],
+      body: encodeForm({
+        from: mgFrom,
+        to: email,
+        subject,
+        text,
+        html,
       }),
     });
 
-    if (!res.ok) {
-      const responseText = await res.text();
-      return json({ ok: false, error: `Notify email failed: ${res.status} ${responseText}` }, 502);
+    if (!mgRes.ok) {
+      const msg = await mgRes.text();
+      return json({
+        ok: false,
+        error: `Mailgun failed: ${mgRes.status} ${mgRes.statusText} ${msg}`,
+      }, 502);
     }
 
     return json({ ok: true, sentTo: email });
