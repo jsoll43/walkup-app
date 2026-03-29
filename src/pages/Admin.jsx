@@ -96,6 +96,7 @@ export default function Admin() {
   const [inboxNotificationEmail, setInboxNotificationEmail] = useState(() => localStorage.getItem("PARENT_INBOX_NOTIFY_EMAIL") || "");
   const [inboxNotificationStatus, setInboxNotificationStatus] = useState("");
   const inboxPendingCountRef = useRef(0);
+  const inboxCountBaselineReadyRef = useRef(false);
   const [finalStatus, setFinalStatus] = useState({});
   const [finalUploading, setFinalUploading] = useState({});
   const [finalFile, setFinalFile] = useState({});
@@ -317,16 +318,17 @@ export default function Admin() {
 
     const previousCount = inboxPendingCountRef.current;
     const currentCount = list.length;
+    const shouldNotify =
+      inboxCountBaselineReadyRef.current &&
+      inboxNotificationEnabled &&
+      isValidEmail(inboxNotificationEmail) &&
+      currentCount > previousCount;
 
     setInbox(list);
     inboxPendingCountRef.current = currentCount;
+    inboxCountBaselineReadyRef.current = true;
 
-    if (
-      inboxNotificationEnabled &&
-      isValidEmail(inboxNotificationEmail) &&
-      previousCount > 0 &&
-      currentCount > previousCount
-    ) {
+    if (shouldNotify) {
       await sendParentInboxNotification(currentCount - previousCount, currentCount);
     }
   }
@@ -652,6 +654,16 @@ export default function Admin() {
     localStorage.setItem("PARENT_INBOX_NOTIFY_ENABLED", inboxNotificationEnabled ? "true" : "false");
     localStorage.setItem("PARENT_INBOX_NOTIFY_EMAIL", inboxNotificationEmail || "");
   }, [inboxNotificationEnabled, inboxNotificationEmail]);
+
+  useEffect(() => {
+    if (!isAuthed) return;
+
+    const intervalId = window.setInterval(() => {
+      fetchInbox().catch(() => {});
+    }, 30000);
+
+    return () => window.clearInterval(intervalId);
+  }, [isAuthed, adminKey, inboxNotificationEnabled, inboxNotificationEmail]);
 
   // Keep selected players team in sync with active teams.
   useEffect(() => {
