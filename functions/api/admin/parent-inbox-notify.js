@@ -24,9 +24,6 @@ function encodeForm(fields) {
 }
 
 export const onRequestPost = async ({ request, env }) => {
-  // DEBUG mode: confirm the function executes and routing is correct
-  return json({ ok: true, debug: "parent-inbox-notify reached" }, 200);
-
   try {
     const key = getAdminKey(request);
     if (!key || key !== env.ADMIN_KEY) {
