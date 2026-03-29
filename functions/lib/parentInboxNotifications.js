@@ -76,10 +76,39 @@ export function getMailgunEnvStatus(env) {
   };
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function describeLatestSubmission(latestSubmission) {
+  if (!latestSubmission || typeof latestSubmission !== "object") {
+    return "";
+  }
+
+  const playerName = String(latestSubmission.playerName || "").trim();
+  const teamName = String(latestSubmission.teamName || "").trim();
+  const songRequest = String(latestSubmission.songRequest || "").trim();
+  const createdAt = String(latestSubmission.createdAt || "").trim();
+
+  const details = [];
+  if (playerName) details.push(`Player: ${playerName}`);
+  if (teamName) details.push(`Team: ${teamName}`);
+  if (songRequest) details.push(`Song request: ${songRequest}`);
+  if (createdAt) details.push(`Submitted at: ${createdAt}`);
+
+  return details.join("\n");
+}
+
 export async function sendParentInboxEmail(env, payload) {
   const email = String(payload?.email || "").trim();
   const newSubmissions = Number(payload?.newSubmissions || 0);
   const currentPending = Number(payload?.currentPending || 0);
+  const latestSubmissionText = describeLatestSubmission(payload?.latestSubmission);
 
   if (!email || !isValidEmail(email)) {
     throw makeError(
@@ -104,8 +133,27 @@ export async function sendParentInboxEmail(env, payload) {
   }
 
   const subject = `New Parent Inbox submissions: ${newSubmissions} new`;
-  const text = `There are ${currentPending} pending submission(s) in the Parent Inbox. ${newSubmissions} new since last check.`;
-  const html = `<p>${text}</p><p>Visit your admin panel to review.</p>`;
+  const lines = [
+    `There are ${currentPending} pending submission(s) in the Parent Inbox.`,
+    `${newSubmissions} new since last check.`,
+  ];
+  if (latestSubmissionText) {
+    lines.push("", "Most recent submission:", latestSubmissionText);
+  }
+  lines.push("", "Visit your admin panel to review.");
+
+  const text = lines.join("\n");
+  const htmlParts = [
+    `<p>There are ${currentPending} pending submission(s) in the Parent Inbox.</p>`,
+    `<p>${newSubmissions} new since last check.</p>`,
+  ];
+  if (latestSubmissionText) {
+    htmlParts.push(
+      `<p><strong>Most recent submission</strong><br />${escapeHtml(latestSubmissionText).replace(/\n/g, "<br />")}</p>`
+    );
+  }
+  htmlParts.push(`<p>Visit your admin panel to review.</p>`);
+  const html = htmlParts.join("");
 
   const mgRes = await fetch(`https://api.mailgun.net/v3/${encodeURIComponent(mgDomain)}/messages`, {
     method: "POST",

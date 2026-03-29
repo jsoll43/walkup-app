@@ -298,6 +298,8 @@ export default function Admin() {
       return;
     }
 
+    const latestInboxItem = inbox[0] || null;
+
     setInboxNotificationStatus("Sending test email...");
     try {
       const res = await fetch("/api/admin/parent-inbox-notify", {
@@ -310,6 +312,18 @@ export default function Admin() {
           email: inboxNotificationEmail,
           newSubmissions: 1,
           currentPending: inbox.length,
+          latestSubmission: latestInboxItem
+            ? {
+                playerName: latestInboxItem.player_name || latestInboxItem.playerName || "",
+                teamName: latestInboxItem.team_name || latestInboxItem.teamName || "",
+                songRequest: latestInboxItem.song_request || latestInboxItem.songRequest || "",
+                createdAt: latestInboxItem.created_at || latestInboxItem.createdAt || "",
+              }
+            : {
+                playerName: "Test Parent Submission",
+                teamName: "Admin Preview",
+                songRequest: "Test email preview",
+              },
         }),
       });
 

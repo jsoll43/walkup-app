@@ -109,6 +109,12 @@ export const onRequestPost = async ({ request, env }) => {
           email: notificationSettings.email,
           newSubmissions: 1,
           currentPending: Number(pendingRow?.cnt || 0),
+          latestSubmission: {
+            playerName,
+            teamName: team.name,
+            songRequest,
+            createdAt: now,
+          },
         });
       }
     } catch (notificationError) {
