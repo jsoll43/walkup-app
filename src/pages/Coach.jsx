@@ -598,7 +598,12 @@ export default function Coach() {
               ⏭ Next + Play
             </button>
 
-            <button className="btn btn-sm" onClick={() => (nowId ? playForPlayerId(nowId) : null)} disabled={!nowId} style={{ width: "100%" }}>
+            <button
+              className="btn btn-sm"
+              onClick={() => (nowId ? playForPlayerId(nowId) : null)}
+              disabled={!nowId}
+              style={{ width: "100%", minHeight: 48 }}
+            >
               ▶️ Play Now
             </button>
 

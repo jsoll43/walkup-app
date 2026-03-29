@@ -867,21 +867,6 @@ export default function Admin() {
               disabled={!inboxNotificationEnabled}
             />
 
-            <button
-              className="btn-secondary"
-              onClick={() => fetchInbox()}
-              disabled={loading}
-            >
-              Check now
-            </button>
-
-            <button
-              className="btn"
-              onClick={sendParentInboxTestEmail}
-              disabled={!inboxNotificationEnabled || !isValidEmail(inboxNotificationEmail) || loading}
-            >
-              Send test email
-            </button>
           </div>
 
           <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
