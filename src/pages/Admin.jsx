@@ -877,10 +877,6 @@ export default function Admin() {
               : "Notifications are currently turned off."}
           </div>
 
-          <div style={{ marginTop: 4, fontSize: 12, opacity: 0.65 }}>
-            Test emails use the address currently entered above.
-          </div>
-
           {inboxNotificationStatus ? (
             <div style={{ marginTop: 6, fontSize: 12, color: "#065f46" }}>
               {inboxNotificationStatus}
