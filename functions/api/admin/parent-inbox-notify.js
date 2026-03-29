@@ -1,4 +1,9 @@
 // functions/api/admin/parent-inbox-notify.js
+import {
+  getMailgunEnvStatus,
+  sendParentInboxEmail,
+} from "../../lib/parentInboxNotifications.js";
+
 function getAdminKey(req) {
   const h = req.headers;
   const bearer = (h.get("authorization") || "").trim();
@@ -11,16 +16,6 @@ function json(obj, status = 200) {
     status,
     headers: { "content-type": "application/json; charset=utf-8" },
   });
-}
-
-function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
-}
-
-function encodeForm(fields) {
-  return Object.entries(fields)
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v || ""))}`)
-    .join("&");
 }
 
 export const onRequestPost = async ({ request, env }) => {
@@ -38,12 +33,7 @@ export const onRequestPost = async ({ request, env }) => {
       {
         ok: true,
         debug: "SKIP_MAILGUN",
-        env: {
-          MAILGUN_API_KEY: !!env.MAILGUN_API_KEY,
-          MAILGUN_DOMAIN: !!env.MAILGUN_DOMAIN,
-          MAILGUN_FROM: !!env.MAILGUN_FROM,
-          ADMIN_KEY: !!env.ADMIN_KEY,
-        },
+        env: getMailgunEnvStatus(env),
         requestBody: body,
       },
       200
@@ -64,62 +54,17 @@ export const onRequestPost = async ({ request, env }) => {
       return json({ ok: false, error: `Invalid JSON body: ${textBody}`, textBody }, 400);
     }
 
-    const email = (body.email || "").trim();
-    const newSubmissions = Number(body.newSubmissions || 0);
-    const currentPending = Number(body.currentPending || 0);
-
-    if (!email || !isValidEmail(email)) {
-      return json({
-        ok: false,
-        error: `Invalid email address or email is missing (received email=${JSON.stringify(email)})`,
-        body,
-        textBody,
-      },
-      400);
-    }
-    if (!newSubmissions || newSubmissions <= 0) {
-      return json({ ok: false, error: "No new submissions to notify." }, 400);
-    }
-
-    const mgKey = env.MAILGUN_API_KEY;
-    const mgDomain = env.MAILGUN_DOMAIN;
-    const mgFrom = env.MAILGUN_FROM;
-    if (!mgKey || !mgDomain || !mgFrom) {
-      return json({
-        ok: false,
-        error: "Mailgun is not configured (MAILGUN_API_KEY/MAILGUN_DOMAIN/MAILGUN_FROM).",
-      }, 500);
-    }
-
-    const subject = `New Parent Inbox submissions: ${newSubmissions} new`;
-    const text = `There are ${currentPending} pending submission(s) in the Parent Inbox. ${newSubmissions} new since last check.`;
-    const html = `<p>${text}</p><p>Visit your admin panel to review.</p>`;
-
-    const mgRes = await fetch(`https://api.mailgun.net/v3/${encodeURIComponent(mgDomain)}/messages`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Basic ${btoa(`api:${mgKey}`)}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: encodeForm({
-        from: mgFrom,
-        to: email,
-        subject,
-        text,
-        html,
-      }),
+    await sendParentInboxEmail(env, {
+      email: body.email,
+      newSubmissions: body.newSubmissions,
+      currentPending: body.currentPending,
     });
 
-    if (!mgRes.ok) {
-      const msg = await mgRes.text();
-      return json({
-        ok: false,
-        error: `Mailgun failed: ${mgRes.status} ${mgRes.statusText} ${msg}`,
-      }, 502);
-    }
-
-    return json({ ok: true, sentTo: email });
+    return json({ ok: true, sentTo: String(body.email || "").trim() });
   } catch (e) {
-    return json({ ok: false, error: e?.message || String(e) }, 500);
+    return json(
+      { ok: false, error: e?.message || String(e) },
+      Number(e?.statusCode || 500)
+    );
   }
 };

@@ -95,8 +95,7 @@ export default function Admin() {
   const [inboxNotificationEnabled, setInboxNotificationEnabled] = useState(() => localStorage.getItem("PARENT_INBOX_NOTIFY_ENABLED") === "true");
   const [inboxNotificationEmail, setInboxNotificationEmail] = useState(() => localStorage.getItem("PARENT_INBOX_NOTIFY_EMAIL") || "");
   const [inboxNotificationStatus, setInboxNotificationStatus] = useState("");
-  const inboxPendingCountRef = useRef(0);
-  const inboxCountBaselineReadyRef = useRef(false);
+  const inboxNotificationSyncReadyRef = useRef(false);
   const [finalStatus, setFinalStatus] = useState({});
   const [finalUploading, setFinalUploading] = useState({});
   const [finalFile, setFinalFile] = useState({});
@@ -238,33 +237,58 @@ export default function Admin() {
     setRoster(Array.isArray(data.roster) ? data.roster : []);
   }
 
-  async function sendParentInboxNotification(newCount, currentPending) {
-    if (!inboxNotificationEnabled || !inboxNotificationEmail || !isValidEmail(inboxNotificationEmail)) return;
+  async function saveInboxNotificationSettings(enabledValue = inboxNotificationEnabled, emailValue = inboxNotificationEmail) {
+    const res = await fetch("/api/admin/notification-settings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...adminHeaders,
+      },
+      body: JSON.stringify({
+        enabled: !!enabledValue,
+        email: String(emailValue || "").trim(),
+      }),
+    });
 
+    const data = await safeJsonOrText(res);
+    if (!res.ok || data?.ok === false) {
+      throw new Error(data?.error || data?.raw || `Settings save failed (HTTP ${res.status})`);
+    }
+
+    return data.settings || { enabled: !!enabledValue, email: String(emailValue || "").trim() };
+  }
+
+  async function loadInboxNotificationSettings() {
     try {
-      const res = await fetch("/api/admin/parent-inbox-notify", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...adminHeaders,
-        },
-        body: JSON.stringify({
-          email: inboxNotificationEmail,
-          newSubmissions: newCount,
-          currentPending,
-        }),
+      const res = await fetch("/api/admin/notification-settings", {
+        headers: adminHeaders,
       });
-
       const data = await safeJsonOrText(res);
       if (!res.ok || data?.ok === false) {
-        throw new Error(data?.error || data?.raw || `Notification failed (HTTP ${res.status})`);
+        throw new Error(data?.error || data?.raw || `Settings load failed (HTTP ${res.status})`);
       }
 
-      setInboxNotificationStatus(`Sent email notification to ${inboxNotificationEmail} (${newCount} new)`);
+      const serverEnabled = !!data?.settings?.enabled;
+      const serverEmail = String(data?.settings?.email || "").trim();
+      const localEnabled = localStorage.getItem("PARENT_INBOX_NOTIFY_ENABLED") === "true";
+      const localEmail = localStorage.getItem("PARENT_INBOX_NOTIFY_EMAIL") || "";
+
+      if (serverEnabled || serverEmail) {
+        setInboxNotificationEnabled(serverEnabled);
+        setInboxNotificationEmail(serverEmail);
+        localStorage.setItem("PARENT_INBOX_NOTIFY_ENABLED", serverEnabled ? "true" : "false");
+        localStorage.setItem("PARENT_INBOX_NOTIFY_EMAIL", serverEmail);
+      } else if (localEnabled || localEmail) {
+        await saveInboxNotificationSettings(localEnabled, localEmail);
+        setInboxNotificationEnabled(localEnabled);
+        setInboxNotificationEmail(localEmail);
+      }
     } catch (e) {
       const raw = e?.message || String(e);
       const clean = raw && raw.includes("<html") ? "Bad gateway / host error from server (502). Check deployment logs." : raw;
-      setInboxNotificationStatus(`Email notification failed: ${clean}`);
+      setInboxNotificationStatus(`Notification settings sync failed: ${clean}`);
+    } finally {
+      inboxNotificationSyncReadyRef.current = true;
     }
   }
 
@@ -316,21 +340,7 @@ export default function Admin() {
       ? data.items
       : [];
 
-    const previousCount = inboxPendingCountRef.current;
-    const currentCount = list.length;
-    const shouldNotify =
-      inboxCountBaselineReadyRef.current &&
-      inboxNotificationEnabled &&
-      isValidEmail(inboxNotificationEmail) &&
-      currentCount > previousCount;
-
     setInbox(list);
-    inboxPendingCountRef.current = currentCount;
-    inboxCountBaselineReadyRef.current = true;
-
-    if (shouldNotify) {
-      await sendParentInboxNotification(currentCount - previousCount, currentCount);
-    }
   }
 
   async function fetchFinalStatusForTeam(teamSlug, keyOverride) {
@@ -653,7 +663,24 @@ export default function Admin() {
   useEffect(() => {
     localStorage.setItem("PARENT_INBOX_NOTIFY_ENABLED", inboxNotificationEnabled ? "true" : "false");
     localStorage.setItem("PARENT_INBOX_NOTIFY_EMAIL", inboxNotificationEmail || "");
-  }, [inboxNotificationEnabled, inboxNotificationEmail]);
+
+    if (!isAuthed || !inboxNotificationSyncReadyRef.current) return;
+
+    saveInboxNotificationSettings().catch((e) => {
+      const raw = e?.message || String(e);
+      const clean = raw && raw.includes("<html") ? "Bad gateway / host error from server (502). Check deployment logs." : raw;
+      setInboxNotificationStatus(`Notification settings failed: ${clean}`);
+    });
+  }, [isAuthed, adminKey, inboxNotificationEnabled, inboxNotificationEmail]);
+
+  useEffect(() => {
+    if (!isAuthed) {
+      inboxNotificationSyncReadyRef.current = false;
+      return;
+    }
+
+    loadInboxNotificationSettings().catch(() => {});
+  }, [isAuthed, adminKey]);
 
   useEffect(() => {
     if (!isAuthed) return;
@@ -663,7 +690,7 @@ export default function Admin() {
     }, 30000);
 
     return () => window.clearInterval(intervalId);
-  }, [isAuthed, adminKey, inboxNotificationEnabled, inboxNotificationEmail]);
+  }, [isAuthed, adminKey]);
 
   // Keep selected players team in sync with active teams.
   useEffect(() => {

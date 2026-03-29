@@ -1,4 +1,9 @@
 // functions/api/voice-upload.js
+import {
+  getParentInboxNotificationSettings,
+  sendParentInboxEmail,
+} from "../lib/parentInboxNotifications.js";
+
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
@@ -90,6 +95,25 @@ export const onRequestPost = async ({ request, env }) => {
     )
       .bind(id, team.id, playerName, songRequest, r2Key, contentType, buf.byteLength, now)
       .run();
+
+    try {
+      const notificationSettings = await getParentInboxNotificationSettings(env);
+      if (notificationSettings.enabled && notificationSettings.email) {
+        const pendingRow = await env.DB.prepare(
+          `SELECT COUNT(*) AS cnt
+           FROM parent_submissions
+           WHERE status = 'pending'`
+        ).first();
+
+        await sendParentInboxEmail(env, {
+          email: notificationSettings.email,
+          newSubmissions: 1,
+          currentPending: Number(pendingRow?.cnt || 0),
+        });
+      }
+    } catch (notificationError) {
+      console.error("Parent inbox notification failed:", notificationError);
+    }
 
     return json({ ok: true, id, team: { slug: team.slug, name: team.name }, createdAt: now });
   } catch (e) {
