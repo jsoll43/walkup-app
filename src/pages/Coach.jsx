@@ -72,7 +72,7 @@ export default function Coach() {
   const [isAuthed, setIsAuthed] = useState(false);
 
   const teamSlug = useMemo(() => getTeamSlug(), []);
-  const teamName = useMemo(() => getTeamName(), []);
+  const [teamName, setTeamName] = useState(getTeamName());
   const [availableTeams, setAvailableTeams] = useState([]);
 
   const [roster, setRoster] = useState([]);
@@ -126,6 +126,14 @@ export default function Coach() {
     };
   }
 
+  function syncTeamName(name) {
+    const next = String(name || "").trim();
+    if (!next) return;
+    setTeamName(next);
+    sessionStorage.setItem("TEAM_NAME", next);
+    sessionStorage.setItem("teamName", next);
+  }
+
   async function fetchRoster(key, silent = false) {
     if (!silent) setLoading(true);
     setErr("");
@@ -156,6 +164,7 @@ export default function Coach() {
       const ids = Array.isArray(json.lineupIds) ? json.lineupIds : [];
       const idx = Number.isFinite(json.currentIndex) ? json.currentIndex : 0;
 
+      syncTeamName(json?.team?.name);
       setLineupIds(ids);
       setCurrentIndex(clampIndex(idx, ids.length));
       setUpdatedAt(json.updatedAt || "");
@@ -235,6 +244,7 @@ export default function Coach() {
       const ids = Array.isArray(json.lineupIds) ? json.lineupIds : [];
       const idx = Number.isFinite(json.currentIndex) ? json.currentIndex : 0;
 
+      syncTeamName(json?.team?.name);
       setLineupIds(ids);
       setCurrentIndex(clampIndex(idx, ids.length));
       setUpdatedAt(json.updatedAt || "");

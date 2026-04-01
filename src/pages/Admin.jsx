@@ -152,10 +152,14 @@ export default function Admin() {
   );
   const playersTeam = useMemo(() => teams.find((t) => t.slug === playersTeamSlug) || null, [teams, playersTeamSlug]);
 
-  // Edit keys for selected team
+  // Edit details for selected team
+  const [editTeamName, setEditTeamName] = useState("");
   const [editParentKey, setEditParentKey] = useState("");
   const [editCoachKey, setEditCoachKey] = useState("");
   useEffect(() => {
+    setEditTeamName(
+      manageKeysTeam ? String(manageKeysTeam.name || "").trim() : ""
+    );
     setEditParentKey(
       manageKeysTeam ? (manageKeysTeam.parent_key || manageKeysTeam.parentKey || "") : ""
     );
@@ -545,6 +549,7 @@ export default function Admin() {
   async function saveTeamUpdate() {
     setErr("");
     if (!manageKeysTeamSlug) return;
+    if (!editTeamName.trim()) return setErr("Team name is required.");
     setLoading(true);
     try {
       const res = await fetch("/api/admin/teams", {
@@ -552,6 +557,7 @@ export default function Admin() {
         headers: { "content-type": "application/json", ...adminHeaders },
         body: JSON.stringify({
           slug: manageKeysTeamSlug,
+          name: editTeamName.trim(),
           parentKey: editParentKey.trim(),
           coachKey: editCoachKey.trim(),
         }),
@@ -816,7 +822,7 @@ export default function Admin() {
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
           <button className="btn" onClick={() => setShowCreateModal(true)}>Create a New Team</button>
           <button className="btn-danger" onClick={() => setShowDeleteModal(true)} disabled={deletingTeam}>Delete a Team</button>
-          <button className="btn" onClick={() => setShowManageKeysModal(true)}>Manage Team Keys</button>
+          <button className="btn" onClick={() => setShowManageKeysModal(true)}>Edit Team Details</button>
           <button className="btn" onClick={() => { fetchAuthLogs(); setShowAuthLogsModal(true); }}>View Auth Errors</button>
         </div>
       </div>
@@ -1124,7 +1130,7 @@ export default function Admin() {
             }}
           >
             <div style={{ background: "white", padding: 20, borderRadius: 12, width: 520, maxWidth: "95%", color: "#111" }}>
-              <h3 style={{ marginTop: 0 }}>Manage team keys</h3>
+              <h3 style={{ marginTop: 0 }}>Edit team details</h3>
               <div style={{ display: "grid", gap: 8 }}>
                 <div>
                   <label className="label">Team to manage</label>
@@ -1137,6 +1143,13 @@ export default function Admin() {
                       ))
                     )}
                   </select>
+                </div>
+                <div>
+                  <label className="label">Team Name</label>
+                  <input className="input" value={editTeamName} onChange={(e) => setEditTeamName(e.target.value)} placeholder="Team name" />
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.75 }}>
+                  Team slug stays fixed at <strong>{manageKeysTeamSlug || "default"}</strong> so players, lineups, and uploads keep working.
                 </div>
                 <div>
                   <label className="label">Parent Key</label>
