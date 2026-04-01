@@ -77,9 +77,11 @@ export default function Admin() {
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [deletingTeam, setDeletingTeam] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
   const [showManageKeysModal, setShowManageKeysModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTeamSlug, setDeleteTeamSlug] = useState(sessionStorage.getItem("ADMIN_TEAM_SLUG") || "default");
+  const [renameTeamSlug, setRenameTeamSlug] = useState(sessionStorage.getItem("ADMIN_TEAM_SLUG") || "default");
   const [manageKeysTeamSlug, setManageKeysTeamSlug] = useState(sessionStorage.getItem("ADMIN_TEAM_SLUG") || "default");
   // Separate selector for which team we are modifying players/finals for
   const [playersTeamSlug, setPlayersTeamSlug] = useState(sessionStorage.getItem("ADMIN_TEAM_SLUG") || "default");
@@ -150,16 +152,24 @@ export default function Admin() {
     () => teams.find((t) => t.slug === manageKeysTeamSlug) || null,
     [teams, manageKeysTeamSlug]
   );
+  const renameTeam = useMemo(
+    () => teams.find((t) => t.slug === renameTeamSlug) || null,
+    [teams, renameTeamSlug]
+  );
   const playersTeam = useMemo(() => teams.find((t) => t.slug === playersTeamSlug) || null, [teams, playersTeamSlug]);
 
-  // Edit details for selected team
+  // Rename selected team
   const [editTeamName, setEditTeamName] = useState("");
+  useEffect(() => {
+    setEditTeamName(
+      renameTeam ? String(renameTeam.name || "").trim() : ""
+    );
+  }, [renameTeam]);
+
+  // Edit keys for selected team
   const [editParentKey, setEditParentKey] = useState("");
   const [editCoachKey, setEditCoachKey] = useState("");
   useEffect(() => {
-    setEditTeamName(
-      manageKeysTeam ? String(manageKeysTeam.name || "").trim() : ""
-    );
     setEditParentKey(
       manageKeysTeam ? (manageKeysTeam.parent_key || manageKeysTeam.parentKey || "") : ""
     );
@@ -548,7 +558,7 @@ export default function Admin() {
 
   async function saveTeamUpdate() {
     setErr("");
-    if (!manageKeysTeamSlug) return;
+    if (!renameTeamSlug) return;
     if (!editTeamName.trim()) return setErr("Team name is required.");
     setLoading(true);
     try {
@@ -556,8 +566,38 @@ export default function Admin() {
         method: "PUT",
         headers: { "content-type": "application/json", ...adminHeaders },
         body: JSON.stringify({
-          slug: manageKeysTeamSlug,
+          slug: renameTeamSlug,
           name: editTeamName.trim(),
+        }),
+      });
+
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || `Rename team failed (HTTP ${res.status})`);
+      }
+
+      setShowRenameModal(false);
+      if (renameTeamSlug) {
+        sessionStorage.setItem("ADMIN_TEAM_SLUG", renameTeamSlug);
+      }
+      await fetchTeams();
+    } catch (e) {
+      setErr(e?.message || String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveTeamKeysUpdate() {
+    setErr("");
+    if (!manageKeysTeamSlug) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/teams", {
+        method: "PUT",
+        headers: { "content-type": "application/json", ...adminHeaders },
+        body: JSON.stringify({
+          slug: manageKeysTeamSlug,
           parentKey: editParentKey.trim(),
           coachKey: editCoachKey.trim(),
         }),
@@ -821,8 +861,9 @@ export default function Admin() {
         <h2 style={{ marginTop: 0 }}>Team Management</h2>
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
           <button className="btn" onClick={() => setShowCreateModal(true)}>Create a New Team</button>
+          <button className="btn" onClick={() => setShowRenameModal(true)}>Rename a Team</button>
+          <button className="btn" onClick={() => setShowManageKeysModal(true)}>Manage Team Keys</button>
           <button className="btn-danger" onClick={() => setShowDeleteModal(true)} disabled={deletingTeam}>Delete a Team</button>
-          <button className="btn" onClick={() => setShowManageKeysModal(true)}>Edit Team Details</button>
           <button className="btn" onClick={() => { fetchAuthLogs(); setShowAuthLogsModal(true); }}>View Auth Errors</button>
         </div>
       </div>
@@ -1075,6 +1116,54 @@ export default function Admin() {
           </div>
         ) : null}
 
+        {/* Rename Team Modal */}
+        {showRenameModal ? (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.4)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 9999,
+            }}
+          >
+            <div style={{ background: "white", padding: 20, borderRadius: 12, width: 520, maxWidth: "95%", color: "#111" }}>
+              <h3 style={{ marginTop: 0 }}>Rename team</h3>
+              <div style={{ display: "grid", gap: 8 }}>
+                <div>
+                  <label className="label">Team to rename</label>
+                  <select className="input" value={renameTeamSlug} onChange={(e) => setRenameTeamSlug(e.target.value)}>
+                    {teams.length === 0 ? (
+                      <option value="default">No teams</option>
+                    ) : (
+                      teams.map((t) => (
+                        <option key={t.slug} value={t.slug}>{t.name}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">New Team Name</label>
+                  <input className="input" value={editTeamName} onChange={(e) => setEditTeamName(e.target.value)} placeholder="Team name" />
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.75 }}>
+                  Only the visible name changes. The team slug stays fixed at <strong>{renameTeamSlug || "default"}</strong>, so players, lineups, and uploads keep working.
+                </div>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button className="btn-secondary" onClick={() => setShowRenameModal(false)}>
+                    Cancel
+                  </button>
+                  <button className="btn" onClick={saveTeamUpdate} disabled={loading}>
+                    Save Name
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {/* Delete Team Modal */}
         {showDeleteModal ? (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
@@ -1130,7 +1219,7 @@ export default function Admin() {
             }}
           >
             <div style={{ background: "white", padding: 20, borderRadius: 12, width: 520, maxWidth: "95%", color: "#111" }}>
-              <h3 style={{ marginTop: 0 }}>Edit team details</h3>
+              <h3 style={{ marginTop: 0 }}>Manage team keys</h3>
               <div style={{ display: "grid", gap: 8 }}>
                 <div>
                   <label className="label">Team to manage</label>
@@ -1144,12 +1233,8 @@ export default function Admin() {
                     )}
                   </select>
                 </div>
-                <div>
-                  <label className="label">Team Name</label>
-                  <input className="input" value={editTeamName} onChange={(e) => setEditTeamName(e.target.value)} placeholder="Team name" />
-                </div>
                 <div style={{ fontSize: 12, opacity: 0.75 }}>
-                  Team slug stays fixed at <strong>{manageKeysTeamSlug || "default"}</strong> so players, lineups, and uploads keep working.
+                  This screen only updates the parent and coach keys for <strong>{manageKeysTeam?.name || manageKeysTeamSlug || "this team"}</strong>.
                 </div>
                 <div>
                   <label className="label">Parent Key</label>
@@ -1163,8 +1248,8 @@ export default function Admin() {
                   <button className="btn-secondary" onClick={() => setShowManageKeysModal(false)}>
                     Cancel
                   </button>
-                  <button className="btn" onClick={saveTeamUpdate} disabled={loading}>
-                    Save
+                  <button className="btn" onClick={saveTeamKeysUpdate} disabled={loading}>
+                    Save Keys
                   </button>
                 </div>
               </div>
