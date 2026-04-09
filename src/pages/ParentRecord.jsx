@@ -53,6 +53,21 @@ function mergeFloat32(chunks) {
   return result;
 }
 
+function getFriendlyRecordingError(error) {
+  const raw = String(error?.message || error || "").trim();
+  const name = String(error?.name || "").trim();
+
+  if (
+    name === "NotAllowedError" ||
+    name === "SecurityError" ||
+    /not allowed|permission|denied/i.test(raw)
+  ) {
+    return "We could not start the microphone. If you see a microphone prompt, please tap Allow. If you already denied it, try again in another browser so you can be asked for microphone access again.";
+  }
+
+  return "We could not start the microphone on this device. Please try again, and if it still does not work, try another browser so you can be prompted for microphone access again.";
+}
+
 export default function ParentRecord({ onBlob, disabled = false, playerName = "" }) {
   const MAX_SECONDS = 5;
 
@@ -160,7 +175,7 @@ export default function ParentRecord({ onBlob, disabled = false, playerName = ""
         stop();
       }, MAX_SECONDS * 1000);
     } catch (e) {
-      setErr(e?.message || String(e));
+      setErr(getFriendlyRecordingError(e));
       cleanup();
     }
   }
