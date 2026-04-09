@@ -233,6 +233,20 @@ export default function ParentRecord({ onBlob, disabled = false, playerName = ""
         {scriptText}
       </div>
 
+      <div
+        style={{
+          marginTop: 10,
+          padding: "10px 12px",
+          borderRadius: 10,
+          background: "rgba(234, 179, 8, 0.12)",
+          border: "1px solid rgba(202, 138, 4, 0.28)",
+          fontSize: 12,
+          lineHeight: 1.45,
+        }}
+      >
+        If your phone asks for microphone access, tap <strong>Allow</strong> so recording can start.
+      </div>
+
       <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
         <button className="btn" onClick={start} disabled={disabled || isRecording}>
           {isRecording ? "Recording…" : "Start recording"}
