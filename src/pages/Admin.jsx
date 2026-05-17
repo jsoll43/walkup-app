@@ -1,5 +1,6 @@
 // src/pages/Admin.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import SchedulingAdminSection from "../components/SchedulingAdminSection.jsx";
 
 function getSavedAdminKey() {
   return sessionStorage.getItem("ADMIN_KEY") || "";
@@ -867,6 +868,8 @@ export default function Admin() {
           <button className="btn" onClick={() => { fetchAuthLogs(); setShowAuthLogsModal(true); }}>View Auth Errors</button>
         </div>
       </div>
+
+      <SchedulingAdminSection isAuthed={isAuthed} adminHeaders={adminHeaders} />
 
       {/* Inbox */}
       <div className="card" style={{ marginBottom: 12 }}>

@@ -6,6 +6,7 @@ import ParentLogin from "./pages/ParentLogin.jsx";
 import ParentHome from "./pages/ParentHome.jsx";
 import Coach from "./pages/Coach.jsx";
 import Admin from "./pages/Admin.jsx";
+import Scheduling from "./pages/Scheduling.jsx";
 
 import { getParentKey, getTeamSlug } from "./auth/parentAuth";
 
@@ -16,6 +17,7 @@ function TopNav() {
   const isParent = pathname === "/parent" || pathname === "/parent-login";
   const isCoach = pathname === "/coach";
   const isAdmin = pathname === "/admin";
+  const isScheduling = pathname === "/scheduling";
 
   // ✅ If parent already selected team + key, go straight to /parent.
   // Otherwise, go to /parent-login (matches what you’re seeing in prod).
@@ -54,6 +56,13 @@ function TopNav() {
           >
             Admin
           </NavLink>
+
+          <NavLink
+            to="/scheduling"
+            className={() => `bgsl-link ${isScheduling ? "active" : ""}`}
+          >
+            Scheduling
+          </NavLink>
         </nav>
       </div>
     </header>
@@ -78,6 +87,7 @@ export default function App() {
 
           <Route path="/coach" element={<Coach />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/scheduling" element={<Scheduling />} />
 
           <Route path="*" element={<Navigate to="/parent-login" replace />} />
         </Routes>
