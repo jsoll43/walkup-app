@@ -296,6 +296,12 @@ button:disabled {
   gap: 10px;
   flex-wrap: wrap;
   align-items: center;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .scheduling-summary-grid {
@@ -357,15 +363,15 @@ button:disabled {
 }
 
 .scheduling-pill-approved {
-  background: rgba(5, 150, 105, 0.12);
-  color: #065f46;
-  border-color: rgba(5, 150, 105, 0.22);
+  background: rgba(167, 243, 208, 0.24);
+  color: #ecfdf5;
+  border-color: rgba(167, 243, 208, 0.36);
 }
 
 .scheduling-pill-pending {
-  background: rgba(211, 165, 28, 0.18);
-  color: #6b4f00;
-  border-color: rgba(211, 165, 28, 0.32);
+  background: rgba(211, 165, 28, 0.22);
+  color: #fff7d6;
+  border-color: rgba(245, 208, 92, 0.48);
 }
 
 .scheduling-pill-conflict {
@@ -705,6 +711,16 @@ button:disabled {
 .scheduling-role-button.is-active {
   background: var(--bgsl-gold);
   color: var(--bgsl-navy-dark);
+}
+
+.scheduling-header-button {
+  background: rgba(255, 255, 255, 0.12);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.scheduling-header-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 /* Mobile */

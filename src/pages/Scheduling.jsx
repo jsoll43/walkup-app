@@ -947,10 +947,10 @@ export default function Scheduling() {
           <span className={`scheduling-pill ${authRole === "board" ? "scheduling-pill-approved" : "scheduling-pill-pending"}`}>
             {authRole === "board" ? "Board Member" : "Coach"}
           </span>
-          <button className="btn-secondary" onClick={() => refreshState(authRole, authKey, { silent: false })} disabled={loading}>
+          <button className="btn-secondary scheduling-header-button" onClick={() => refreshState(authRole, authKey, { silent: false })} disabled={loading}>
             {loading ? "Refreshing..." : "Refresh"}
           </button>
-          <button className="btn-secondary" onClick={logout}>
+          <button className="btn-secondary scheduling-header-button" onClick={logout}>
             Log out
           </button>
         </div>
