@@ -85,6 +85,13 @@ export function reservationTypeLabel(type) {
   return RESERVATION_TYPE_LABELS[normalizeReservationType(type)] || "Other";
 }
 
+export const SCHEDULING_IMPORT_SAMPLE_CSV = [
+  "date,field,team,title,reservationType,startTime,endTime,notes",
+  '2026-06-01,major,10U Blue,10U Blue Practice,practice,17:00,18:30,Regular Monday practice',
+  '2026-06-01,minor,12U Gold,12U Gold Practice,practice,17:00,18:30,Use outfield station',
+  '2026-06-06,major,BGSL,Tournament Setup,maintenance,08:00,12:00,Field closed for prep',
+].join("\n");
+
 export function normalizeDateInput(value) {
   const raw = String(value || "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return "";
@@ -154,6 +161,101 @@ function makeTitle(team, reservationType, title) {
   if (cleanTeam && typeLabel) return `${cleanTeam} ${typeLabel}`;
   if (cleanTeam) return cleanTeam;
   return typeLabel || "Field Reservation";
+}
+
+function normalizeCsvHeader(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function parseCsvLine(line) {
+  const cells = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      cells.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  cells.push(current);
+  return cells.map((cell) => String(cell || "").trim());
+}
+
+function parseCsvText(text) {
+  const lines = String(text || "")
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n");
+
+  const nonEmptyLines = lines.filter((line) => line.trim().length > 0);
+  if (nonEmptyLines.length === 0) {
+    throw new Error("CSV file is empty.");
+  }
+
+  const headerCells = parseCsvLine(nonEmptyLines[0]);
+  const headers = headerCells.map(normalizeCsvHeader);
+
+  const rows = [];
+  for (let lineIndex = 1; lineIndex < nonEmptyLines.length; lineIndex += 1) {
+    const rawCells = parseCsvLine(nonEmptyLines[lineIndex]);
+    const row = {};
+
+    headers.forEach((header, cellIndex) => {
+      row[header] = rawCells[cellIndex] || "";
+    });
+
+    rows.push({
+      rowNumber: lineIndex + 1,
+      values: row,
+    });
+  }
+
+  return { headers, rows };
+}
+
+function getCsvValue(rowValues, aliases) {
+  for (const alias of aliases) {
+    const key = normalizeCsvHeader(alias);
+    const value = rowValues[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function reservationSignature(payload) {
+  return [
+    payload.date,
+    payload.field,
+    payload.team,
+    payload.title,
+    payload.reservationType,
+    payload.startTime,
+    payload.endTime,
+  ]
+    .map((part) => String(part || "").trim().toLowerCase())
+    .join("|");
 }
 
 export function normalizeScheduleDraft(body, options = {}) {
@@ -819,4 +921,85 @@ export async function recalculateSchedulingRequestConflicts(env) {
   }
 
   return state;
+}
+
+export async function importSchedulingCsv(env, csvText, options = {}) {
+  await ensureSchedulingTables(env);
+
+  const { headers, rows } = parseCsvText(csvText);
+  const requiredHeaders = ["date", "field", "team", "starttime", "endtime"];
+  const missingHeaders = requiredHeaders.filter((header) => !headers.includes(header));
+
+  if (missingHeaders.length > 0) {
+    throw new Error(
+      `CSV is missing required column${missingHeaders.length === 1 ? "" : "s"}: ${missingHeaders.join(", ")}.`
+    );
+  }
+
+  const currentReservations = await all(
+    env,
+    `SELECT id, field, team, title, reservation_type, date, start_time, end_time, status, notes, created_by_role, created_at, updated_at
+     FROM field_reservations`
+  );
+
+  const knownSignatures = new Set(
+    currentReservations.map((row) =>
+      reservationSignature({
+        date: row.date,
+        field: row.field,
+        team: row.team,
+        title: row.title,
+        reservationType: row.reservation_type,
+        startTime: row.start_time,
+        endTime: row.end_time,
+      })
+    )
+  );
+
+  const result = {
+    importedCount: 0,
+    skippedCount: 0,
+    errorCount: 0,
+    skipped: [],
+    errors: [],
+  };
+
+  for (const row of rows) {
+    const payload = {
+      date: getCsvValue(row.values, ["date"]),
+      field: getCsvValue(row.values, ["field"]),
+      team: getCsvValue(row.values, ["team"]),
+      title: getCsvValue(row.values, ["title", "eventtitle", "name"]),
+      reservationType: getCsvValue(row.values, ["reservationType", "reservation_type", "type"]),
+      startTime: getCsvValue(row.values, ["startTime", "start_time", "start"]),
+      endTime: getCsvValue(row.values, ["endTime", "end_time", "end"]),
+      notes: getCsvValue(row.values, ["notes", "note"]),
+    };
+
+    const draft = normalizeScheduleDraft(payload, { teamRequired: true });
+    if (draft.error) {
+      result.errorCount += 1;
+      result.errors.push(`Row ${row.rowNumber}: ${draft.error}`);
+      continue;
+    }
+
+    const signature = reservationSignature(draft.value);
+    if (knownSignatures.has(signature)) {
+      result.skippedCount += 1;
+      result.skipped.push(`Row ${row.rowNumber}: duplicate reservation skipped.`);
+      continue;
+    }
+
+    await createReservation(env, {
+      ...draft.value,
+      status: draft.value.reservationType === "maintenance" ? "maintenance" : "approved",
+      createdByRole: options.createdByRole || "admin_csv_import",
+    });
+
+    knownSignatures.add(signature);
+    result.importedCount += 1;
+  }
+
+  await recalculateSchedulingRequestConflicts(env);
+  return result;
 }

@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
 
+const SAMPLE_SCHEDULING_CSV = [
+  "date,field,team,title,reservationType,startTime,endTime,notes",
+  '2026-06-01,major,10U Blue,10U Blue Practice,practice,17:00,18:30,Regular Monday practice',
+  '2026-06-01,minor,12U Gold,12U Gold Practice,practice,17:00,18:30,Use outfield station',
+  '2026-06-06,major,BGSL,Tournament Setup,maintenance,08:00,12:00,Field closed for prep',
+].join("\n");
+
 async function safeJsonOrText(res) {
   const text = await res.text();
   try {
@@ -54,6 +61,9 @@ export default function SchedulingAdminSection({ isAuthed, adminHeaders }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [csvFile, setCsvFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
 
   async function loadSettings() {
     if (!isAuthed) return;
@@ -143,6 +153,63 @@ export default function SchedulingAdminSection({ isAuthed, adminHeaders }) {
     }
   }
 
+  function downloadSampleCsv() {
+    const blob = new Blob([SAMPLE_SCHEDULING_CSV], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "schedule-import-sample.csv";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Could not read the selected CSV file."));
+      reader.readAsText(file);
+    });
+  }
+
+  async function importCsv() {
+    if (!csvFile) {
+      setError("Choose a CSV file to import.");
+      return;
+    }
+
+    setError("");
+    setStatus("");
+    setImportResult(null);
+    setImporting(true);
+    try {
+      const csvText = await readFileAsText(csvFile);
+      const res = await fetch("/api/admin/scheduling-import", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...adminHeaders,
+        },
+        body: JSON.stringify({ csvText }),
+      });
+
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || "Failed to import schedule CSV.");
+      }
+
+      setImportResult(data.result || null);
+      setStatus(data.message || "Schedule CSV imported.");
+      setCsvFile(null);
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div className="card" style={{ marginBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -195,6 +262,103 @@ export default function SchedulingAdminSection({ isAuthed, adminHeaders }) {
 
       <div style={{ marginTop: 12, fontSize: 12, opacity: 0.75 }}>
         {settings.updatedAt ? `Last updated (ET): ${formatET(settings.updatedAt)}` : "Scheduling passwords have not been set yet."}
+      </div>
+
+      <div
+        style={{
+          marginTop: 18,
+          paddingTop: 16,
+          borderTop: "1px solid rgba(0,0,0,0.12)",
+        }}
+      >
+        <h3 style={{ marginTop: 0, marginBottom: 6 }}>Bulk Schedule CSV Import</h3>
+        <div style={{ opacity: 0.8 }}>
+          Download the sample CSV, fill in a full month of field reservations, then upload it here to create approved schedule blocks in bulk.
+        </div>
+
+        <div
+          style={{
+            marginTop: 12,
+            padding: 14,
+            borderRadius: 14,
+            background: "rgba(16, 46, 79, 0.04)",
+            border: "1px solid rgba(0,0,0,0.1)",
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 1000, opacity: 0.75, textTransform: "uppercase", marginBottom: 8 }}>
+            CSV Columns
+          </div>
+          <div style={{ fontSize: 14, lineHeight: 1.5 }}>
+            Required: <strong><code>date</code>, <code>field</code>, <code>team</code>, <code>startTime</code>, <code>endTime</code></strong>
+          </div>
+          <div style={{ fontSize: 14, lineHeight: 1.5 }}>
+            Optional: <strong><code>title</code>, <code>reservationType</code>, <code>notes</code></strong>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>
+            <code>field</code> must be <code>major</code> or <code>minor</code>. <code>reservationType</code> can be <code>practice</code>, <code>game</code>, <code>tournament</code>, <code>clinic</code>, <code>maintenance</code>, or <code>other</code>. Duplicate rows are skipped automatically.
+          </div>
+        </div>
+
+        <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <button className="btn" onClick={downloadSampleCsv}>
+            Download Sample CSV
+          </button>
+
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+          />
+
+          <button className="btn-secondary" onClick={importCsv} disabled={importing || !csvFile}>
+            {importing ? "Importing..." : "Upload CSV"}
+          </button>
+        </div>
+
+        <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>
+          {csvFile ? `Selected file: ${csvFile.name}` : "No CSV selected yet."}
+        </div>
+
+        {importResult ? (
+          <div
+            style={{
+              marginTop: 14,
+              padding: 14,
+              borderRadius: 14,
+              background: "rgba(16, 46, 79, 0.04)",
+              border: "1px solid rgba(0,0,0,0.1)",
+            }}
+          >
+            <div style={{ fontWeight: 1000, marginBottom: 8 }}>Last import results</div>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 14 }}>
+              <div><strong>Imported:</strong> {importResult.importedCount || 0}</div>
+              <div><strong>Skipped:</strong> {importResult.skippedCount || 0}</div>
+              <div><strong>Errors:</strong> {importResult.errorCount || 0}</div>
+            </div>
+
+            {Array.isArray(importResult.skipped) && importResult.skipped.length > 0 ? (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontWeight: 1000, fontSize: 13 }}>Skipped rows</div>
+                <div style={{ marginTop: 6, display: "grid", gap: 4, fontSize: 13 }}>
+                  {importResult.skipped.slice(0, 10).map((message) => (
+                    <div key={message}>{message}</div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {Array.isArray(importResult.errors) && importResult.errors.length > 0 ? (
+              <div style={{ marginTop: 10, color: "#991b1b" }}>
+                <div style={{ fontWeight: 1000, fontSize: 13 }}>Row errors</div>
+                <div style={{ marginTop: 6, display: "grid", gap: 4, fontSize: 13 }}>
+                  {importResult.errors.slice(0, 12).map((message) => (
+                    <div key={message}>{message}</div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {status ? (
