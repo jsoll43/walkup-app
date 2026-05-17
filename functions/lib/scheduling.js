@@ -18,6 +18,8 @@ const RESERVATION_TYPE_LABELS = {
 };
 
 const textEncoder = new TextEncoder();
+const MAX_PBKDF2_ITERATIONS = 100000;
+const DEFAULT_PBKDF2_ITERATIONS = 100000;
 
 function nowIso() {
   return new Date().toISOString();
@@ -245,7 +247,7 @@ async function derivePasswordBytes(password, salt, iterations) {
 
 export async function hashSchedulingPassword(password) {
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iterations = 120000;
+  const iterations = DEFAULT_PBKDF2_ITERATIONS;
   const digest = await derivePasswordBytes(String(password || ""), salt, iterations);
   return `pbkdf2$sha256$${iterations}$${bytesToBase64(salt)}$${bytesToBase64(digest)}`;
 }
@@ -260,7 +262,9 @@ export async function verifySchedulingPassword(password, storedHash) {
   }
 
   const iterations = Number(iterationsText);
-  if (!Number.isInteger(iterations) || iterations < 1000) return false;
+  if (!Number.isInteger(iterations) || iterations < 1000 || iterations > MAX_PBKDF2_ITERATIONS) {
+    return false;
+  }
 
   const salt = base64ToBytes(saltBase64);
   const expected = base64ToBytes(digestBase64);
