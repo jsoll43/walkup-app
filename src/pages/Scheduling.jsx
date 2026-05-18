@@ -1087,31 +1087,31 @@ export default function Scheduling() {
               Both desktop and mobile show the selected week with each day stacked as a compact row.
             </div>
           </div>
-
-          <div className="scheduling-toolbar-actions">
-            <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, -7))}>
-              Previous Week
-            </button>
-            <button className="btn-secondary" onClick={() => setSelectedDate(today)}>
-              This Week
-            </button>
-            <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, 7))}>
-              Next Week
-            </button>
-            <input
-              className="input scheduling-week-picker"
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              aria-label="Choose a date to jump to that week"
-            />
-          </div>
         </div>
 
         <div className="scheduling-export-controls">
           <button className="btn" onClick={openPdfExportModal} disabled={pdfExporting}>
             {pdfExporting ? "Preparing PDF..." : "Download Calendar View PDF"}
           </button>
+        </div>
+
+        <div className="scheduling-toolbar-actions">
+          <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, -7))}>
+            Previous Week
+          </button>
+          <button className="btn-secondary" onClick={() => setSelectedDate(today)}>
+            This Week
+          </button>
+          <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, 7))}>
+            Next Week
+          </button>
+          <input
+            className="input scheduling-week-picker"
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            aria-label="Choose a date to jump to that week"
+          />
         </div>
 
         <div className="scheduling-legend">
