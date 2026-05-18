@@ -810,6 +810,15 @@ button:disabled {
   height: fit-content;
 }
 
+.scheduling-selected-mobile {
+  display: none;
+  margin-bottom: 12px;
+}
+
+.scheduling-selected-desktop {
+  display: block;
+}
+
 .scheduling-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1040,6 +1049,14 @@ button:disabled {
 
   .scheduling-panels {
     grid-template-columns: 1fr;
+  }
+
+  .scheduling-selected-mobile {
+    display: block;
+  }
+
+  .scheduling-selected-desktop {
+    display: none;
   }
 
   .scheduling-panel-card {

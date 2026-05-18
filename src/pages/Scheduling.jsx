@@ -446,16 +446,7 @@ function SelectedScheduleItemCard({
   onReviewRequest,
   actionKey,
 }) {
-  if (!item) {
-    return (
-      <div className="card scheduling-panel-card">
-        <h2 style={{ marginTop: 0 }}>Selected Schedule Item</h2>
-        <div style={{ opacity: 0.75 }}>
-          Select any reservation or pending request from the calendar to inspect its details here.
-        </div>
-      </div>
-    );
-  }
+  if (!item) return null;
 
   const status = item.kind === "request" ? normalizeRequestStatus(item) : getCalendarStatus(item);
   const isBoard = role === "board";
@@ -1146,6 +1137,19 @@ export default function Scheduling() {
         />
       </div>
 
+      {selectedItem ? (
+        <div className="scheduling-selected-mobile">
+          <SelectedScheduleItemCard
+            item={selectedItem}
+            role={authRole}
+            onRequestRemoval={requestRemoval}
+            onDeleteReservation={removeReservation}
+            onReviewRequest={reviewRequest}
+            actionKey={actionKey}
+          />
+        </div>
+      ) : null}
+
       <div className="scheduling-panels">
         <div className="scheduling-panel-stack">
           {authRole === "coach" ? (
@@ -1198,14 +1202,18 @@ export default function Scheduling() {
         </div>
 
         <div className="scheduling-panel-stack">
-          <SelectedScheduleItemCard
-            item={selectedItem}
-            role={authRole}
-            onRequestRemoval={requestRemoval}
-            onDeleteReservation={removeReservation}
-            onReviewRequest={reviewRequest}
-            actionKey={actionKey}
-          />
+          {selectedItem ? (
+            <div className="scheduling-selected-desktop">
+              <SelectedScheduleItemCard
+                item={selectedItem}
+                role={authRole}
+                onRequestRemoval={requestRemoval}
+                onDeleteReservation={removeReservation}
+                onReviewRequest={reviewRequest}
+                actionKey={actionKey}
+              />
+            </div>
+          ) : null}
 
           {authRole === "board" ? (
             <div className="card scheduling-panel-card">
