@@ -260,11 +260,12 @@ function ReservationFormCard({
   submitting,
   teams,
   includeLeagueOption,
+  hideTitle = false,
 }) {
   const sortedTeams = [...teams].sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
   return (
     <div className="card scheduling-panel-card">
-      <h2 style={{ marginTop: 0 }}>{title}</h2>
+      {!hideTitle ? <h2 style={{ marginTop: 0 }}>{title}</h2> : null}
       <div style={{ opacity: 0.8 }}>{description}</div>
 
       <div className="scheduling-form-grid" style={{ marginTop: 14 }}>
@@ -389,10 +390,11 @@ function BoardNotificationCard({
   mailgunConfigured,
   statusMessage,
   errorMessage,
+  hideTitle = false,
 }) {
   return (
     <div className="card scheduling-panel-card">
-      <h2 style={{ marginTop: 0 }}>Board Email Alerts</h2>
+      {!hideTitle ? <h2 style={{ marginTop: 0 }}>Board Email Alerts</h2> : null}
       <div style={{ opacity: 0.8 }}>
         Save an email address here to notify the board whenever a coach submits a new scheduling request.
       </div>
@@ -438,10 +440,10 @@ function BoardNotificationCard({
   );
 }
 
-function BoardActionQueueCard({ pendingRequests, actionKey, onReviewRequest }) {
+function BoardActionQueueCard({ pendingRequests, actionKey, onReviewRequest, hideTitle = false }) {
   return (
     <div className="card scheduling-panel-card">
-      <h2 style={{ marginTop: 0 }}>Board Action Queue ({pendingRequests.length})</h2>
+      {!hideTitle ? <h2 style={{ marginTop: 0 }}>Board Action Queue ({pendingRequests.length})</h2> : null}
       {pendingRequests.length === 0 ? (
         <div style={{ opacity: 0.75 }}>There are currently no pending requests.</div>
       ) : (
@@ -1223,7 +1225,7 @@ export default function Scheduling() {
       {authRole === "board" ? (
         <div className="scheduling-board-mobile-stack">
           <MobileAccordionCard title={`Board Action Queue (${pendingRequests.length})`}>
-            <BoardActionQueueCard pendingRequests={pendingRequests} actionKey={actionKey} onReviewRequest={reviewRequest} />
+            <BoardActionQueueCard pendingRequests={pendingRequests} actionKey={actionKey} onReviewRequest={reviewRequest} hideTitle />
           </MobileAccordionCard>
 
           <MobileAccordionCard title="Add Approved Reservation (Board Only)">
@@ -1237,6 +1239,7 @@ export default function Scheduling() {
               submitting={actionKey === "board-add"}
               teams={teams}
               includeLeagueOption
+              hideTitle
             />
           </MobileAccordionCard>
 
@@ -1251,6 +1254,7 @@ export default function Scheduling() {
               mailgunConfigured={boardNotificationMailgunConfigured}
               statusMessage={boardNotificationStatus}
               errorMessage={boardNotificationError}
+              hideTitle
             />
           </MobileAccordionCard>
         </div>
