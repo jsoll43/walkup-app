@@ -1177,7 +1177,7 @@ export default function Scheduling() {
           ) : (
             <>
               <ReservationFormCard
-                title="Add Approved Reservation"
+                title="Add Approved Reservation (Board Only)"
                 description="Place 90-minute reservations directly on the schedule without approval."
                 form={boardForm}
                 onChange={updateBoardForm}
