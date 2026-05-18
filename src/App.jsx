@@ -29,36 +29,21 @@ function TopNav() {
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
 
-    let lastY = window.scrollY;
-
     function handleScroll() {
       const currentY = window.scrollY;
       const isMobile = window.innerWidth <= 520;
 
       if (!isMobile) {
         setMobileHeaderHidden(false);
-        lastY = currentY;
         return;
       }
 
-      if (currentY <= 24) {
-        setMobileHeaderHidden(false);
-        lastY = currentY;
-        return;
-      }
-
-      const delta = currentY - lastY;
-      if (delta > 8) {
-        setMobileHeaderHidden(true);
-      } else if (delta < -8) {
-        setMobileHeaderHidden(false);
-      }
-
-      lastY = currentY;
+      setMobileHeaderHidden(currentY > 24);
     }
 
     window.addEventListener("scroll", handleScroll, { passive: true });
     window.addEventListener("resize", handleScroll);
+    handleScroll();
     return () => {
       window.removeEventListener("scroll", handleScroll);
       window.removeEventListener("resize", handleScroll);
@@ -85,7 +70,7 @@ function TopNav() {
             to="/coach"
             className={() => `bgsl-link ${isCoach ? "active" : ""}`}
           >
-            Coach
+            Play Walkup Songs
           </NavLink>
 
           <NavLink
