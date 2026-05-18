@@ -490,18 +490,8 @@ button:disabled {
   flex-wrap: wrap;
 }
 
-.scheduling-mobile-date-picker {
-  display: none;
-}
-
-.scheduling-mobile-date-bar {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-}
-
-.scheduling-mobile-date-input {
+.scheduling-week-picker {
+  width: 170px;
   min-width: 0;
 }
 
@@ -705,18 +695,6 @@ button:disabled {
   display: none;
 }
 
-.schedule-mobile-columns {
-  padding: 0;
-}
-
-.schedule-mobile-view .schedule-day-body-group {
-  border-right: none;
-}
-
-.schedule-mobile-view .schedule-field-cell {
-  min-height: 96px;
-}
-
 .schedule-mobile-header {
   padding: 10px 10px 0;
   background: rgba(255, 255, 255, 0.84);
@@ -746,6 +724,31 @@ button:disabled {
   text-transform: uppercase;
   letter-spacing: 0.35px;
   text-align: center;
+}
+
+.schedule-mobile-week-list {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
+.schedule-mobile-day-card {
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.schedule-mobile-columns {
+  padding: 0;
+}
+
+.schedule-mobile-view .schedule-day-body-group {
+  border-right: none;
+}
+
+.schedule-mobile-view .schedule-field-cell {
+  min-height: 96px;
 }
 
 .scheduling-panels {
@@ -885,7 +888,6 @@ button:disabled {
   .scheduling-page-subtitle,
   .scheduling-summary-grid,
   .scheduling-toolbar-subtitle,
-  .scheduling-toolbar-actions,
   .scheduling-legend {
     display: none;
   }
@@ -894,17 +896,24 @@ button:disabled {
     padding: 10px;
   }
 
-  .scheduling-mobile-date-picker {
-    display: block;
-    margin-bottom: 10px;
-  }
-
   .scheduling-toolbar {
     margin-bottom: 10px;
+    display: grid;
+    gap: 8px;
   }
 
   .scheduling-toolbar-copy h2 {
     font-size: 18px;
+  }
+
+  .scheduling-toolbar-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .scheduling-week-picker {
+    width: 100%;
   }
 
   .schedule-desktop-view {
@@ -914,6 +923,11 @@ button:disabled {
   .schedule-mobile-view {
     display: block;
     border-radius: 14px;
+  }
+
+  .schedule-mobile-week-list {
+    padding: 0;
+    gap: 8px;
   }
 
   .scheduling-panels {

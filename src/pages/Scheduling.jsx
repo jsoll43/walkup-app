@@ -205,34 +205,41 @@ function DesktopScheduleView({ weekDates, calendarItems, selectedItemKey, onSele
   );
 }
 
-function MobileScheduleView({ date, calendarItems, selectedItemKey, onSelect, expandedCells, onToggleExpand }) {
-  const dayItems = calendarItems.filter((item) => item.date === date);
-
+function MobileScheduleView({ weekDates, calendarItems, selectedItemKey, onSelect, expandedCells, onToggleExpand }) {
   return (
-    <div className="schedule-mobile-view">
-      <div className="schedule-mobile-header">
-        <div className="schedule-mobile-title">{formatLongDate(date)}</div>
-        <div className="schedule-field-header-row is-mobile">
-          <div className="schedule-field-header">Major Field</div>
-          <div className="schedule-field-header">Minor Field</div>
-        </div>
-      </div>
+    <div className="schedule-mobile-view schedule-mobile-week-view">
+      <div className="schedule-mobile-week-list">
+        {weekDates.map((date) => {
+          const dayItems = calendarItems.filter((item) => item.date === date);
+          return (
+            <div key={`mobile-${date}`} className="schedule-mobile-day-card">
+              <div className="schedule-mobile-header">
+                <div className="schedule-mobile-title">{formatDayHeader(date)}</div>
+                <div className="schedule-field-header-row is-mobile">
+                  <div className="schedule-field-header">Major Field</div>
+                  <div className="schedule-field-header">Minor Field</div>
+                </div>
+              </div>
 
-      <div className="schedule-mobile-columns">
-        <div className="schedule-day-body-group is-mobile">
-          {FIELD_OPTIONS.map((field) => (
-            <CompactFieldCell
-              key={`${date}-${field.value}`}
-              cellKey={getCellKey(date, field.value)}
-              items={dayItems.filter((item) => item.field === field.value)}
-              selectedItemKey={selectedItemKey}
-              onSelect={onSelect}
-              expanded={!!expandedCells[getCellKey(date, field.value)]}
-              onToggleExpand={onToggleExpand}
-              blankLabel="No events"
-            />
-          ))}
-        </div>
+              <div className="schedule-mobile-columns">
+                <div className="schedule-day-body-group is-mobile">
+                  {FIELD_OPTIONS.map((field) => (
+                    <CompactFieldCell
+                      key={`${date}-${field.value}`}
+                      cellKey={getCellKey(date, field.value)}
+                      items={dayItems.filter((item) => item.field === field.value)}
+                      selectedItemKey={selectedItemKey}
+                      onSelect={onSelect}
+                      expanded={!!expandedCells[getCellKey(date, field.value)]}
+                      onToggleExpand={onToggleExpand}
+                      blankLabel="No events"
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1018,23 +1025,11 @@ export default function Scheduling() {
       </div>
 
       <div className="card scheduling-calendar-card">
-        <div className="scheduling-mobile-date-picker">
-          <div className="scheduling-mobile-date-bar">
-            <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
-              Previous Day
-            </button>
-            <input className="input scheduling-mobile-date-input" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
-            <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
-              Next Day
-            </button>
-          </div>
-        </div>
-
         <div className="scheduling-toolbar">
           <div className="scheduling-toolbar-copy">
             <h2 style={{ margin: 0 }}>Schedule</h2>
             <div className="scheduling-toolbar-subtitle" style={{ marginTop: 4, opacity: 0.75 }}>
-              Desktop shows the week as stacked day rows. Mobile keeps both fields visible on a single selected day.
+              Both desktop and mobile show the selected week with each day stacked as a compact row.
             </div>
           </div>
 
@@ -1043,14 +1038,18 @@ export default function Scheduling() {
               Previous Week
             </button>
             <button className="btn-secondary" onClick={() => setSelectedDate(today)}>
-              Today
-            </button>
-            <button className="btn-secondary" onClick={() => setSelectedDate(today)}>
               This Week
             </button>
             <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, 7))}>
               Next Week
             </button>
+            <input
+              className="input scheduling-week-picker"
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              aria-label="Choose a date to jump to that week"
+            />
           </div>
         </div>
 
@@ -1072,7 +1071,7 @@ export default function Scheduling() {
         />
 
         <MobileScheduleView
-          date={selectedDate}
+          weekDates={weekDates}
           calendarItems={calendarItems}
           selectedItemKey={selectedItemKey}
           onSelect={(item) => setSelectedItemKey(item.uniqueKey)}
