@@ -20,6 +20,7 @@ const RESERVATION_TYPE_LABELS = {
 const textEncoder = new TextEncoder();
 const MAX_PBKDF2_ITERATIONS = 100000;
 const DEFAULT_PBKDF2_ITERATIONS = 100000;
+export const RESERVATION_DURATION_MINUTES = 90;
 
 function nowIso() {
   return new Date().toISOString();
@@ -105,10 +106,10 @@ export function reservationTypeLabel(type) {
 }
 
 export const SCHEDULING_IMPORT_SAMPLE_CSV = [
-  "date,field,team,title,reservationType,startTime,endTime,notes",
-  '2026-06-01,major,10U Blue,10U Blue Practice,practice,17:00,18:30,Regular Monday practice',
-  '2026-06-01,minor,12U Gold,12U Gold Practice,practice,17:00,18:30,Use outfield station',
-  '2026-06-06,major,BGSL,Tournament Setup,maintenance,08:00,12:00,Field closed for prep',
+  "date,field,team,title,startTime",
+  "2026-06-01,major,10U Blue,10U Blue Practice,17:00",
+  "2026-06-01,minor,12U Gold,12U Gold Practice,17:00",
+  "2026-06-06,major,BGSL,Tournament Setup,08:00",
 ].join("\n");
 
 export function normalizeDateInput(value) {
@@ -154,6 +155,19 @@ export function timeToMinutes(value) {
   return Number(hourText) * 60 + Number(minuteText);
 }
 
+function minutesToTime(totalMinutes) {
+  const safeMinutes = Math.max(0, Math.min(Number(totalMinutes) || 0, (24 * 60) - 1));
+  const hour = Math.floor(safeMinutes / 60);
+  const minute = safeMinutes % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+export function deriveReservationEndTime(startTime) {
+  const startMinutes = timeToMinutes(startTime);
+  if (!Number.isFinite(startMinutes)) return "";
+  return minutesToTime(startMinutes + RESERVATION_DURATION_MINUTES);
+}
+
 export function intervalsOverlap(startA, endA, startB, endB) {
   return startA < endB && endA > startB;
 }
@@ -163,23 +177,21 @@ export function scheduleEntriesOverlap(a, b) {
   if (a.date !== b.date || a.field !== b.field) return false;
 
   const startA = timeToMinutes(a.startTime);
-  const endA = timeToMinutes(a.endTime);
+  const endA = startA + RESERVATION_DURATION_MINUTES;
   const startB = timeToMinutes(b.startTime);
-  const endB = timeToMinutes(b.endTime);
+  const endB = startB + RESERVATION_DURATION_MINUTES;
 
   if (![startA, endA, startB, endB].every(Number.isFinite)) return false;
   return intervalsOverlap(startA, endA, startB, endB);
 }
 
-function makeTitle(team, reservationType, title) {
+function makeTitle(team, title) {
   const cleanTitle = String(title || "").trim();
   if (cleanTitle) return cleanTitle;
 
   const cleanTeam = String(team || "").trim();
-  const typeLabel = reservationTypeLabel(reservationType);
-  if (cleanTeam && typeLabel) return `${cleanTeam} ${typeLabel}`;
   if (cleanTeam) return cleanTeam;
-  return typeLabel || "Field Reservation";
+  return "Field Reservation";
 }
 
 function normalizeCsvHeader(value) {
@@ -269,12 +281,22 @@ function reservationSignature(payload) {
     payload.field,
     payload.team,
     payload.title,
-    payload.reservationType,
     payload.startTime,
-    payload.endTime,
   ]
     .map((part) => String(part || "").trim().toLowerCase())
     .join("|");
+}
+
+function normalizeSchedulingTeamName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+function slugifySchedulingTeamName(value) {
+  return normalizeSchedulingTeamName(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
 }
 
 export function normalizeScheduleDraft(body, options = {}) {
@@ -282,37 +304,37 @@ export function normalizeScheduleDraft(body, options = {}) {
   const fallbackTeam = String(options.fallbackTeam || "League").trim() || "League";
 
   const field = normalizeField(body?.field);
-  const reservationType = normalizeReservationType(body?.reservationType || body?.reservation_type);
   const date = normalizeDateInput(body?.date);
   const startTime = normalizeTimeInput(body?.startTime || body?.start_time);
-  const endTime = normalizeTimeInput(body?.endTime || body?.end_time);
   const teamRaw = String(body?.team || "").trim();
   const team = teamRaw || fallbackTeam;
-  const title = makeTitle(team, reservationType, body?.title);
-  const notes = String(body?.notes || "").trim();
+  const title = makeTitle(team, body?.title);
 
   if (!field) return { error: "Choose a valid field." };
   if (teamRequired && !teamRaw) return { error: "Team is required." };
   if (!date) return { error: "Choose a valid date." };
   if (!startTime) return { error: "Choose a valid start time." };
-  if (!endTime) return { error: "Choose a valid end time." };
 
   const startMinutes = timeToMinutes(startTime);
-  const endMinutes = timeToMinutes(endTime);
-  if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || endMinutes <= startMinutes) {
-    return { error: "End time must be after start time." };
+  if (!Number.isFinite(startMinutes)) {
+    return { error: "Choose a valid start time." };
   }
+  if (startMinutes + RESERVATION_DURATION_MINUTES > 24 * 60) {
+    return { error: "Start time must allow a full 90-minute reservation before midnight." };
+  }
+
+  const endTime = deriveReservationEndTime(startTime);
 
   return {
     value: {
       field,
       team,
       title,
-      reservationType,
+      reservationType: "other",
       date,
       startTime,
       endTime,
-      notes,
+      notes: "",
     },
   };
 }
@@ -434,12 +456,12 @@ function rowToReservation(row) {
     field: row.field,
     team: row.team,
     title: row.title,
-    reservationType: row.reservation_type,
+    reservationType: row.reservation_type || "other",
     date: row.date,
     startTime: row.start_time,
-    endTime: row.end_time,
+    endTime: deriveReservationEndTime(row.start_time),
     status: row.status,
-    notes: row.notes || "",
+    notes: "",
     createdByRole: row.created_by_role || "",
     createdAt: row.created_at || "",
     updatedAt: row.updated_at || "",
@@ -454,11 +476,11 @@ function rowToRequest(row) {
     field: row.field,
     team: row.team,
     title: row.title,
-    reservationType: row.reservation_type,
+    reservationType: row.reservation_type || "other",
     date: row.date,
     startTime: row.start_time,
-    endTime: row.end_time,
-    notes: row.notes || "",
+    endTime: deriveReservationEndTime(row.start_time),
+    notes: "",
     status: row.status,
     hasConflict: !!row.has_conflict,
     conflictDetails: parseConflictDetails(row.conflict_details),
@@ -657,6 +679,15 @@ export async function ensureSchedulingTables(env) {
       ON field_requests(status, requested_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_field_requests_schedule
       ON field_requests(date, field, start_time, end_time)`,
+    `CREATE TABLE IF NOT EXISTS scheduling_teams (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_scheduling_teams_name
+      ON scheduling_teams(name ASC)`,
   ];
 
   for (const sql of statements) {
@@ -710,6 +741,137 @@ export async function getSchedulingNotificationSettings(env) {
   };
 }
 
+export async function listSchedulingTeams(env) {
+  await ensureSchedulingTables(env);
+
+  const rows = await all(
+    env,
+    `SELECT id, name, slug, created_at, updated_at
+     FROM scheduling_teams
+     ORDER BY name ASC, created_at ASC`
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+  }));
+}
+
+export async function createSchedulingTeam(env, name) {
+  await ensureSchedulingTables(env);
+
+  const cleanName = normalizeSchedulingTeamName(name);
+  if (!cleanName) {
+    throw new Error("Team name is required.");
+  }
+
+  const slug = slugifySchedulingTeamName(cleanName);
+  if (!slug) {
+    throw new Error("Team name must include letters or numbers.");
+  }
+
+  const existing = await first(
+    env,
+    `SELECT id
+     FROM scheduling_teams
+     WHERE lower(name) = lower(?)
+        OR slug = ?`,
+    [cleanName, slug]
+  );
+  if (existing) {
+    throw new Error("That scheduling team already exists.");
+  }
+
+  const now = nowIso();
+  const id = `sched_team_${crypto.randomUUID()}`;
+  await run(
+    env,
+    `INSERT INTO scheduling_teams (id, name, slug, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    [id, cleanName, slug, now, now]
+  );
+
+  return listSchedulingTeams(env);
+}
+
+export async function updateSchedulingTeam(env, teamId, name) {
+  await ensureSchedulingTables(env);
+
+  const id = String(teamId || "").trim();
+  if (!id) {
+    throw new Error("Team id is required.");
+  }
+
+  const cleanName = normalizeSchedulingTeamName(name);
+  if (!cleanName) {
+    throw new Error("Team name is required.");
+  }
+
+  const slug = slugifySchedulingTeamName(cleanName);
+  if (!slug) {
+    throw new Error("Team name must include letters or numbers.");
+  }
+
+  const current = await first(
+    env,
+    `SELECT id
+     FROM scheduling_teams
+     WHERE id = ?`,
+    [id]
+  );
+  if (!current) {
+    throw new Error("Scheduling team not found.");
+  }
+
+  const duplicate = await first(
+    env,
+    `SELECT id
+     FROM scheduling_teams
+     WHERE id <> ?
+       AND (lower(name) = lower(?) OR slug = ?)`,
+    [id, cleanName, slug]
+  );
+  if (duplicate) {
+    throw new Error("Another scheduling team already uses that name.");
+  }
+
+  await run(
+    env,
+    `UPDATE scheduling_teams
+     SET name = ?, slug = ?, updated_at = ?
+     WHERE id = ?`,
+    [cleanName, slug, nowIso(), id]
+  );
+
+  return listSchedulingTeams(env);
+}
+
+export async function deleteSchedulingTeam(env, teamId) {
+  await ensureSchedulingTables(env);
+
+  const id = String(teamId || "").trim();
+  if (!id) {
+    throw new Error("Team id is required.");
+  }
+
+  const current = await first(
+    env,
+    `SELECT id
+     FROM scheduling_teams
+     WHERE id = ?`,
+    [id]
+  );
+  if (!current) {
+    throw new Error("Scheduling team not found.");
+  }
+
+  await run(env, `DELETE FROM scheduling_teams WHERE id = ?`, [id]);
+  return listSchedulingTeams(env);
+}
+
 export async function setSchedulingNotificationSettings(env, settings) {
   await ensureSchedulingTables(env);
 
@@ -754,12 +916,10 @@ export async function sendSchedulingRequestNotification(env, requestItem) {
     `Field: ${fieldLabel(requestItem?.field)}`,
     `Date: ${requestItem?.date || ""}`,
     `Time: ${requestItem?.startTime || ""} - ${requestItem?.endTime || ""}`,
-    `Reservation type: ${reservationTypeLabel(requestItem?.reservationType)}`,
     `Requested by: ${requestItem?.requestedBy || "Coach shared login"}`,
   ];
 
   if (requestItem?.title) details.push(`Title: ${requestItem.title}`);
-  if (requestItem?.notes) details.push(`Notes: ${requestItem.notes}`);
   if (requestItem?.hasConflict) details.push("Conflict warning: This request overlaps existing field use or another pending request.");
   if (Array.isArray(requestItem?.conflictDetails) && requestItem.conflictDetails.length > 0) {
     details.push("", "Conflict details:", ...requestItem.conflictDetails);
@@ -770,9 +930,8 @@ export async function sendSchedulingRequestNotification(env, requestItem) {
   const text = details.join("\n");
   const html = [
     `<p><strong>${escapeHtml(requestTypeLabel)}</strong></p>`,
-    `<p>${escapeHtml(details.slice(0, 7).join("\n")).replace(/\n/g, "<br />")}</p>`,
+    `<p>${escapeHtml(details.slice(0, 6).join("\n")).replace(/\n/g, "<br />")}</p>`,
     requestItem?.title ? `<p><strong>Title:</strong> ${escapeHtml(requestItem.title)}</p>` : "",
-    requestItem?.notes ? `<p><strong>Notes:</strong> ${escapeHtml(requestItem.notes)}</p>` : "",
     requestItem?.hasConflict ? `<p><strong>Conflict warning:</strong> This request overlaps existing field use or another pending request.</p>` : "",
     Array.isArray(requestItem?.conflictDetails) && requestItem.conflictDetails.length > 0
       ? `<p><strong>Conflict details</strong><br />${escapeHtml(requestItem.conflictDetails.join("\n")).replace(/\n/g, "<br />")}</p>`
@@ -1030,9 +1189,8 @@ async function getRawSchedulingRows(env) {
     ),
     all(
       env,
-      `SELECT name, slug
-       FROM teams
-       WHERE status = 'active'
+      `SELECT id, name, slug, created_at, updated_at
+       FROM scheduling_teams
        ORDER BY name ASC`
     ),
   ]);
@@ -1067,7 +1225,7 @@ export async function importSchedulingCsv(env, csvText, options = {}) {
   await ensureSchedulingTables(env);
 
   const { headers, rows } = parseCsvText(csvText);
-  const requiredHeaders = ["date", "field", "team", "starttime", "endtime"];
+  const requiredHeaders = ["date", "field", "team", "starttime"];
   const missingHeaders = requiredHeaders.filter((header) => !headers.includes(header));
 
   if (missingHeaders.length > 0) {
@@ -1089,9 +1247,7 @@ export async function importSchedulingCsv(env, csvText, options = {}) {
         field: row.field,
         team: row.team,
         title: row.title,
-        reservationType: row.reservation_type,
         startTime: row.start_time,
-        endTime: row.end_time,
       })
     )
   );
@@ -1110,10 +1266,7 @@ export async function importSchedulingCsv(env, csvText, options = {}) {
       field: getCsvValue(row.values, ["field"]),
       team: getCsvValue(row.values, ["team"]),
       title: getCsvValue(row.values, ["title", "eventtitle", "name"]),
-      reservationType: getCsvValue(row.values, ["reservationType", "reservation_type", "type"]),
       startTime: getCsvValue(row.values, ["startTime", "start_time", "start"]),
-      endTime: getCsvValue(row.values, ["endTime", "end_time", "end"]),
-      notes: getCsvValue(row.values, ["notes", "note"]),
     };
 
     const draft = normalizeScheduleDraft(payload, { teamRequired: true });
@@ -1132,7 +1285,7 @@ export async function importSchedulingCsv(env, csvText, options = {}) {
 
     await createReservation(env, {
       ...draft.value,
-      status: draft.value.reservationType === "maintenance" ? "maintenance" : "approved",
+      status: "approved",
       createdByRole: options.createdByRole || "admin_csv_import",
     });
 

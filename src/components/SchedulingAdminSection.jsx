@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 
 const SAMPLE_SCHEDULING_CSV = [
-  "date,field,team,title,reservationType,startTime,endTime,notes",
-  '2026-06-01,major,10U Blue,10U Blue Practice,practice,17:00,18:30,Regular Monday practice',
-  '2026-06-01,minor,12U Gold,12U Gold Practice,practice,17:00,18:30,Use outfield station',
-  '2026-06-06,major,BGSL,Tournament Setup,maintenance,08:00,12:00,Field closed for prep',
+  "date,field,team,title,startTime",
+  "2026-06-01,major,10U Blue,10U Blue Practice,17:00",
+  "2026-06-01,minor,12U Gold,12U Gold Practice,17:00",
+  "2026-06-06,major,BGSL,Tournament Setup,08:00",
 ].join("\n");
 
 async function safeJsonOrText(res) {
@@ -47,7 +47,7 @@ const ROLE_META = {
   },
 };
 
-export default function SchedulingAdminSection({ isAuthed, adminHeaders }) {
+export default function SchedulingAdminSection({ isAuthed, adminHeaders, embedded = false }) {
   const [settings, setSettings] = useState({
     coachPasswordConfigured: false,
     boardPasswordConfigured: false,
@@ -64,6 +64,13 @@ export default function SchedulingAdminSection({ isAuthed, adminHeaders }) {
   const [csvFile, setCsvFile] = useState(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [schedulingTeams, setSchedulingTeams] = useState([]);
+  const [teamDrafts, setTeamDrafts] = useState({});
+  const [newTeamName, setNewTeamName] = useState("");
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [teamsStatus, setTeamsStatus] = useState("");
+  const [teamsError, setTeamsError] = useState("");
+  const [teamActionKey, setTeamActionKey] = useState("");
 
   async function loadSettings() {
     if (!isAuthed) return;
@@ -85,9 +92,45 @@ export default function SchedulingAdminSection({ isAuthed, adminHeaders }) {
     }
   }
 
+  function applySchedulingTeams(nextTeams) {
+    const safeTeams = Array.isArray(nextTeams) ? nextTeams : [];
+    setSchedulingTeams(safeTeams);
+    setTeamDrafts((current) => {
+      const nextDrafts = {};
+      safeTeams.forEach((team) => {
+        nextDrafts[team.id] = current[team.id] ?? team.name;
+      });
+      return nextDrafts;
+    });
+  }
+
+  async function loadSchedulingTeams() {
+    if (!isAuthed) return;
+    setTeamsLoading(true);
+    setTeamsError("");
+    try {
+      const res = await fetch("/api/admin/scheduling-teams", {
+        headers: adminHeaders,
+      });
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || "Failed to load scheduling teams.");
+      }
+      applySchedulingTeams(data.teams || []);
+    } catch (e) {
+      setTeamsError(e?.message || String(e));
+    } finally {
+      setTeamsLoading(false);
+    }
+  }
+
+  async function reloadSchedulingAdminData() {
+    await Promise.all([loadSettings(), loadSchedulingTeams()]);
+  }
+
   useEffect(() => {
     if (!isAuthed) return;
-    loadSettings().catch(() => {});
+    reloadSchedulingAdminData().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthed, adminHeaders]);
 
@@ -210,8 +253,114 @@ export default function SchedulingAdminSection({ isAuthed, adminHeaders }) {
     }
   }
 
-  return (
-    <div className="card" style={{ marginBottom: 12 }}>
+  async function addSchedulingTeam() {
+    const cleanName = String(newTeamName || "").trim();
+    if (!cleanName) {
+      setTeamsError("Enter a team name to add.");
+      return;
+    }
+
+    setTeamsError("");
+    setTeamsStatus("");
+    setTeamActionKey("add");
+    try {
+      const res = await fetch("/api/admin/scheduling-teams", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...adminHeaders,
+        },
+        body: JSON.stringify({ name: cleanName }),
+      });
+
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || "Failed to add the scheduling team.");
+      }
+
+      applySchedulingTeams(data.teams || []);
+      setNewTeamName("");
+      setTeamsStatus(data.message || "Scheduling team added.");
+    } catch (e) {
+      setTeamsError(e?.message || String(e));
+    } finally {
+      setTeamActionKey("");
+    }
+  }
+
+  async function saveSchedulingTeam(teamId) {
+    const cleanName = String(teamDrafts[teamId] || "").trim();
+    if (!cleanName) {
+      setTeamsError("Team name cannot be blank.");
+      return;
+    }
+
+    setTeamsError("");
+    setTeamsStatus("");
+    setTeamActionKey(`save:${teamId}`);
+    try {
+      const res = await fetch("/api/admin/scheduling-teams", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...adminHeaders,
+        },
+        body: JSON.stringify({
+          id: teamId,
+          name: cleanName,
+        }),
+      });
+
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || "Failed to update the scheduling team.");
+      }
+
+      applySchedulingTeams(data.teams || []);
+      setTeamsStatus(data.message || "Scheduling team updated.");
+    } catch (e) {
+      setTeamsError(e?.message || String(e));
+    } finally {
+      setTeamActionKey("");
+    }
+  }
+
+  async function removeSchedulingTeam(team) {
+    if (!team?.id) return;
+    const confirmed = window.confirm(
+      `Remove "${team.name}" from the scheduling team list? Existing reservations will keep their saved team names.`
+    );
+    if (!confirmed) return;
+
+    setTeamsError("");
+    setTeamsStatus("");
+    setTeamActionKey(`delete:${team.id}`);
+    try {
+      const res = await fetch("/api/admin/scheduling-teams", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          ...adminHeaders,
+        },
+        body: JSON.stringify({ id: team.id }),
+      });
+
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || "Failed to remove the scheduling team.");
+      }
+
+      applySchedulingTeams(data.teams || []);
+      setTeamsStatus(data.message || "Scheduling team removed.");
+    } catch (e) {
+      setTeamsError(e?.message || String(e));
+    } finally {
+      setTeamActionKey("");
+    }
+  }
+
+  const content = (
+    <div className={embedded ? "" : "card"} style={embedded ? undefined : { marginBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <div>
           <h2 style={{ margin: 0 }}>Scheduling Admin</h2>
@@ -220,8 +369,8 @@ export default function SchedulingAdminSection({ isAuthed, adminHeaders }) {
           </div>
         </div>
 
-        <button className="btn-secondary" onClick={() => loadSettings()} disabled={loading}>
-          {loading ? "Loading..." : "Reload settings"}
+        <button className="btn-secondary" onClick={() => reloadSchedulingAdminData()} disabled={loading || teamsLoading}>
+          {loading || teamsLoading ? "Loading..." : "Reload settings"}
         </button>
       </div>
 
@@ -271,6 +420,106 @@ export default function SchedulingAdminSection({ isAuthed, adminHeaders }) {
           borderTop: "1px solid rgba(0,0,0,0.12)",
         }}
       >
+        <h3 style={{ marginTop: 0, marginBottom: 6 }}>Scheduling Teams</h3>
+        <div style={{ opacity: 0.8 }}>
+          Manage the team names that appear in the field scheduling dropdowns. This list is separate from the walk-up song team setup.
+        </div>
+
+        <div
+          style={{
+            marginTop: 12,
+            padding: 14,
+            borderRadius: 14,
+            background: "rgba(16, 46, 79, 0.04)",
+            border: "1px solid rgba(0,0,0,0.1)",
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 1000, opacity: 0.75, textTransform: "uppercase", marginBottom: 8 }}>
+            Add Scheduling Team
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              className="input"
+              style={{ flex: "1 1 260px", minWidth: 220 }}
+              value={newTeamName}
+              onChange={(e) => setNewTeamName(e.target.value)}
+              placeholder="e.g. 10U Blue"
+            />
+            <button className="btn" onClick={addSchedulingTeam} disabled={teamActionKey === "add"}>
+              {teamActionKey === "add" ? "Adding..." : "Add Team"}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 1000, opacity: 0.75, textTransform: "uppercase", marginBottom: 8 }}>
+            Current Scheduling Team List
+          </div>
+
+          {teamsLoading ? (
+            <div style={{ opacity: 0.75 }}>Loading scheduling teams...</div>
+          ) : schedulingTeams.length === 0 ? (
+            <div style={{ opacity: 0.75 }}>
+              No scheduling teams have been added yet. Add the league teams here so coaches can choose them when requesting field time.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {schedulingTeams.map((team) => (
+                <div
+                  key={team.id}
+                  style={{
+                    border: "1px solid rgba(0,0,0,0.12)",
+                    borderRadius: 14,
+                    padding: 14,
+                    background: "white",
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <input
+                      className="input"
+                      style={{ flex: "1 1 240px", minWidth: 220 }}
+                      value={teamDrafts[team.id] ?? team.name}
+                      onChange={(e) =>
+                        setTeamDrafts((current) => ({
+                          ...current,
+                          [team.id]: e.target.value,
+                        }))
+                      }
+                    />
+                    <button className="btn-secondary" onClick={() => saveSchedulingTeam(team.id)} disabled={teamActionKey === `save:${team.id}`}>
+                      {teamActionKey === `save:${team.id}` ? "Saving..." : "Save Name"}
+                    </button>
+                    <button className="btn-danger" onClick={() => removeSchedulingTeam(team)} disabled={teamActionKey === `delete:${team.id}`}>
+                      {teamActionKey === `delete:${team.id}` ? "Removing..." : "Remove"}
+                    </button>
+                  </div>
+
+                  <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
+                    Scheduling team id: <code>{team.slug}</code>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {teamsStatus ? (
+          <div style={{ marginTop: 10, color: "#065f46", fontWeight: 700 }}>{teamsStatus}</div>
+        ) : null}
+
+        {teamsError ? (
+          <div style={{ marginTop: 10, color: "crimson", fontWeight: 700 }}>{teamsError}</div>
+        ) : null}
+      </div>
+
+      <div
+        style={{
+          marginTop: 18,
+          paddingTop: 16,
+          borderTop: "1px solid rgba(0,0,0,0.12)",
+        }}
+      >
         <h3 style={{ marginTop: 0, marginBottom: 6 }}>Bulk Schedule CSV Import</h3>
         <div style={{ opacity: 0.8 }}>
           Download the sample CSV, fill in a full month of field reservations, then upload it here to create approved schedule blocks in bulk.
@@ -289,13 +538,13 @@ export default function SchedulingAdminSection({ isAuthed, adminHeaders }) {
             CSV Columns
           </div>
           <div style={{ fontSize: 14, lineHeight: 1.5 }}>
-            Required: <strong><code>date</code>, <code>field</code>, <code>team</code>, <code>startTime</code>, <code>endTime</code></strong>
+            Required: <strong><code>date</code>, <code>field</code>, <code>team</code>, <code>startTime</code></strong>
           </div>
           <div style={{ fontSize: 14, lineHeight: 1.5 }}>
-            Optional: <strong><code>title</code>, <code>reservationType</code>, <code>notes</code></strong>
+            Optional: <strong><code>title</code></strong>
           </div>
           <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>
-            <code>field</code> must be <code>major</code> or <code>minor</code>. <code>reservationType</code> can be <code>practice</code>, <code>game</code>, <code>tournament</code>, <code>clinic</code>, <code>maintenance</code>, or <code>other</code>. Duplicate rows are skipped automatically.
+            <code>field</code> must be <code>major</code> or <code>minor</code>. Every imported reservation automatically creates a 90-minute block from the chosen start time. Duplicate rows are skipped automatically.
           </div>
         </div>
 
@@ -426,4 +675,6 @@ export default function SchedulingAdminSection({ isAuthed, adminHeaders }) {
       ) : null}
     </div>
   );
+
+  return content;
 }

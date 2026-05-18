@@ -50,11 +50,11 @@ export const onRequestPost = async ({ request, env }) => {
         field: reservation.field,
         team: reservation.team,
         title: reservation.title,
-        reservationType: reservation.reservationType,
         date: reservation.date,
         startTime: reservation.startTime,
         endTime: reservation.endTime,
-        notes: String(body.notes || "").trim() || reservation.notes || "",
+        reservationType: "other",
+        notes: "",
         status: "pending",
         requestedBy: auth.requestedBy,
       });

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   FIELD_OPTIONS,
-  RESERVATION_TYPE_OPTIONS,
+  RESERVATION_DURATION_MINUTES,
   STATUS_META,
   addDays,
   buildCalendarItems,
@@ -56,10 +56,6 @@ function fieldLabel(field) {
   return FIELD_OPTIONS.find((option) => option.value === field)?.label || "Field";
 }
 
-function reservationTypeLabel(type) {
-  return RESERVATION_TYPE_OPTIONS.find((option) => option.value === type)?.label || "Other";
-}
-
 function formatET(ts) {
   if (!ts) return "";
   const date = new Date(ts);
@@ -101,7 +97,7 @@ function itemSecondaryLabel(item) {
   if (item.kind === "request") return "Pending approval";
   if (item.displayStatus === "maintenance") return "Blocked time";
   if (item.displayStatus === "removal_requested") return "Removal requested";
-  return reservationTypeLabel(item.reservationType);
+  return "Scheduled reservation";
 }
 
 function StatusPill({ status }) {
@@ -280,17 +276,6 @@ function ReservationFormCard({
         </div>
 
         <div>
-          <label className="label">Reservation Type</label>
-          <select className="input" value={form.reservationType} onChange={(e) => onChange("reservationType", e.target.value)}>
-            {RESERVATION_TYPE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
           <label className="label">Field</label>
           <select className="input" value={form.field} onChange={(e) => onChange("field", e.target.value)}>
             {FIELD_OPTIONS.map((option) => (
@@ -310,28 +295,15 @@ function ReservationFormCard({
           <label className="label">Start Time</label>
           <input className="input" type="time" value={form.startTime} onChange={(e) => onChange("startTime", e.target.value)} />
         </div>
+      </div>
 
-        <div>
-          <label className="label">End Time</label>
-          <input className="input" type="time" value={form.endTime} onChange={(e) => onChange("endTime", e.target.value)} />
-        </div>
+      <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>
+        Every reservation automatically blocks a {RESERVATION_DURATION_MINUTES}-minute window from the selected start time.
       </div>
 
       <div style={{ marginTop: 12 }}>
         <label className="label">Title (optional)</label>
         <input className="input" value={form.title} onChange={(e) => onChange("title", e.target.value)} placeholder="Optional custom title" />
-      </div>
-
-      <div style={{ marginTop: 12 }}>
-        <label className="label">Notes (optional)</label>
-        <textarea
-          className="input"
-          value={form.notes}
-          onChange={(e) => onChange("notes", e.target.value)}
-          placeholder="Add extra scheduling context"
-          rows={3}
-          style={{ resize: "vertical" }}
-        />
       </div>
 
       {conflicts.length > 0 ? (
@@ -388,9 +360,6 @@ function RequestHistoryCard({ requests, heading, emptyText, children }) {
 
               <div style={{ marginTop: 10, display: "flex", gap: 14, flexWrap: "wrap", fontSize: 13 }}>
                 <div>
-                  <strong>Type:</strong> {request.requestType === "add" ? reservationTypeLabel(request.reservationType) : "Removal"}
-                </div>
-                <div>
                   <strong>Requested by:</strong> {request.requestedBy || "Coach shared login"}
                 </div>
                 {request.reviewedBy ? (
@@ -399,12 +368,6 @@ function RequestHistoryCard({ requests, heading, emptyText, children }) {
                   </div>
                 ) : null}
               </div>
-
-              {request.notes ? (
-                <div style={{ marginTop: 10, fontSize: 13 }}>
-                  <strong>Notes:</strong> {request.notes}
-                </div>
-              ) : null}
 
               {request.hasConflict && request.conflictDetails?.length ? (
                 <div className="scheduling-warning-card" style={{ marginTop: 10 }}>
@@ -486,8 +449,6 @@ function BoardNotificationCard({
 function SelectedScheduleItemCard({
   item,
   role,
-  removalNotes,
-  setRemovalNotes,
   onRequestRemoval,
   onDeleteReservation,
   onReviewRequest,
@@ -530,21 +491,10 @@ function SelectedScheduleItemCard({
           <div>{formatTimeRange(item.startTime, item.endTime)}</div>
         </div>
         <div>
-          <div className="scheduling-detail-label">Type</div>
-          <div>{item.requestType === "remove" ? "Removal Request" : reservationTypeLabel(item.reservationType)}</div>
-        </div>
-        <div>
           <div className="scheduling-detail-label">Source</div>
           <div>{isReservation ? "Reservation" : "Pending Request"}</div>
         </div>
       </div>
-
-      {item.notes ? (
-        <div style={{ marginTop: 12 }}>
-          <div className="scheduling-detail-label">Notes</div>
-          <div>{item.notes}</div>
-        </div>
-      ) : null}
 
       {item.hasConflict && item.conflictDetails?.length ? (
         <div className="scheduling-warning-card" style={{ marginTop: 12 }}>
@@ -568,16 +518,7 @@ function SelectedScheduleItemCard({
 
       {isReservation && role === "coach" && !item.hasPendingRemoval ? (
         <div style={{ marginTop: 14 }}>
-          <label className="label">Removal request notes (optional)</label>
-          <textarea
-            className="input"
-            rows={3}
-            value={removalNotes}
-            onChange={(e) => setRemovalNotes(e.target.value)}
-            placeholder="Why should this reservation be removed?"
-            style={{ resize: "vertical" }}
-          />
-          <button className="btn-danger" style={{ marginTop: 12 }} onClick={() => onRequestRemoval(item)} disabled={actionKey === removalKey}>
+          <button className="btn-danger" onClick={() => onRequestRemoval(item)} disabled={actionKey === removalKey}>
             {actionKey === removalKey ? "Submitting..." : "Request Removal"}
           </button>
         </div>
@@ -620,7 +561,6 @@ export default function Scheduling() {
   const [actionKey, setActionKey] = useState("");
   const [selectedItemKey, setSelectedItemKey] = useState("");
   const [expandedCells, setExpandedCells] = useState({});
-  const [removalNotes, setRemovalNotes] = useState("");
   const [boardNotificationEmail, setBoardNotificationEmail] = useState("");
   const [boardNotificationLoading, setBoardNotificationLoading] = useState(false);
   const [boardNotificationSaving, setBoardNotificationSaving] = useState(false);
@@ -643,22 +583,16 @@ export default function Scheduling() {
   const [coachForm, setCoachForm] = useState({
     team: "",
     title: "",
-    reservationType: "practice",
     field: "major",
     date: today,
     startTime: "17:00",
-    endTime: "18:30",
-    notes: "",
   });
   const [boardForm, setBoardForm] = useState({
     team: "League / Board",
     title: "",
-    reservationType: "practice",
     field: "major",
     date: today,
     startTime: "17:00",
-    endTime: "18:30",
-    notes: "",
   });
 
   const { teams, reservations, requests, pendingRequests, summary } = scheduleData;
@@ -684,7 +618,6 @@ export default function Scheduling() {
   useEffect(() => {
     if (selectedItemKey && !calendarItems.some((item) => item.uniqueKey === selectedItemKey)) {
       setSelectedItemKey("");
-      setRemovalNotes("");
     }
   }, [calendarItems, selectedItemKey]);
 
@@ -780,7 +713,6 @@ export default function Scheduling() {
     setLoginPassword("");
     setSelectedItemKey("");
     setExpandedCells({});
-    setRemovalNotes("");
     setError("");
     setSuccess("");
     setBoardNotificationEmail("");
@@ -835,7 +767,7 @@ export default function Scheduling() {
       }
       setSuccess("Coach request submitted for board review.");
       await refreshState(authRole, authKey, { silent: true });
-      setCoachForm((current) => ({ ...current, title: "", notes: "" }));
+      setCoachForm((current) => ({ ...current, title: "" }));
     } catch (e) {
       setError(e?.message || String(e));
     } finally {
@@ -862,7 +794,7 @@ export default function Scheduling() {
       }
       setSuccess("Board reservation added to the schedule.");
       await refreshState(authRole, authKey, { silent: true });
-      setBoardForm((current) => ({ ...current, title: "", notes: "" }));
+      setBoardForm((current) => ({ ...current, title: "" }));
     } catch (e) {
       setError(e?.message || String(e));
     } finally {
@@ -884,7 +816,6 @@ export default function Scheduling() {
         body: JSON.stringify({
           requestType: "remove",
           reservationId: item.id,
-          notes: removalNotes,
         }),
       });
       const data = await safeJsonOrText(res);
@@ -892,7 +823,6 @@ export default function Scheduling() {
         throw new Error(data?.error || data?.raw || "Failed to submit the removal request.");
       }
       setSuccess("Removal request submitted for board review.");
-      setRemovalNotes("");
       await refreshState(authRole, authKey, { silent: true });
     } catch (e) {
       setError(e?.message || String(e));
@@ -1052,7 +982,7 @@ export default function Scheduling() {
           <div className="cardTitle" style={{ color: "rgba(255,255,255,0.75)" }}>League Operations</div>
           <h1 className="scheduling-page-title">Field Scheduling</h1>
           <div className="scheduling-page-subtitle">
-            Weekly field reservations on desktop, day timeline on mobile, and a shared approval queue for coach requests.
+            Weekly field reservations on desktop, day timeline on mobile, and a shared approval queue for coach requests. Each reservation holds a fixed 90-minute block.
           </div>
         </div>
 
@@ -1161,7 +1091,7 @@ export default function Scheduling() {
             <>
               <ReservationFormCard
                 title="Request Field Time"
-                description="Coaches can submit a reservation request for board approval. Conflicts are warned, but still allowed."
+                description="Coaches can submit a 90-minute field reservation request for board approval. Conflicts are warned, but still allowed."
                 form={coachForm}
                 onChange={updateCoachForm}
                 onSubmit={submitCoachAddRequest}
@@ -1194,7 +1124,7 @@ export default function Scheduling() {
 
               <ReservationFormCard
                 title="Add Approved Reservation"
-                description="Board members can place reservations directly on the schedule and can also block off fields for maintenance."
+                description="Board members can place 90-minute reservations directly on the schedule."
                 form={boardForm}
                 onChange={updateBoardForm}
                 onSubmit={submitBoardReservation}
@@ -1222,8 +1152,6 @@ export default function Scheduling() {
           <SelectedScheduleItemCard
             item={selectedItem}
             role={authRole}
-            removalNotes={removalNotes}
-            setRemovalNotes={setRemovalNotes}
             onRequestRemoval={requestRemoval}
             onDeleteReservation={removeReservation}
             onReviewRequest={reviewRequest}
@@ -1254,12 +1182,6 @@ export default function Scheduling() {
                     <div style={{ marginTop: 10, fontSize: 13 }}>
                       <strong>Requested by:</strong> {request.requestedBy || "Coach shared login"}
                     </div>
-
-                    {request.notes ? (
-                      <div style={{ marginTop: 8, fontSize: 13 }}>
-                        <strong>Notes:</strong> {request.notes}
-                      </div>
-                    ) : null}
 
                     {request.hasConflict && request.conflictDetails?.length ? (
                       <div className="scheduling-warning-card" style={{ marginTop: 10 }}>

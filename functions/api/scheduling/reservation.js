@@ -20,7 +20,7 @@ export const onRequestPost = async ({ request, env }) => {
 
     const reservation = await createReservation(env, {
       ...draft.value,
-      status: draft.value.reservationType === "maintenance" ? "maintenance" : "approved",
+      status: "approved",
       createdByRole: auth.role,
     });
 

@@ -55,6 +55,22 @@ function slugify(s) {
     .slice(0, 48);
 }
 
+function AccordionSection({ title, subtitle, children, defaultOpen = false }) {
+  return (
+    <details className="card admin-accordion" open={defaultOpen}>
+      <summary className="admin-accordion-summary">
+        <div>
+          <h2 className="admin-accordion-title">{title}</h2>
+          {subtitle ? <div className="admin-accordion-subtitle">{subtitle}</div> : null}
+        </div>
+        <span className="admin-accordion-icon" aria-hidden="true" />
+      </summary>
+
+      <div className="admin-accordion-body">{children}</div>
+    </details>
+  );
+}
+
 export default function Admin() {
   const [loginKey, setLoginKey] = useState("");
   const [showKey, setShowKey] = useState(false);
@@ -857,9 +873,10 @@ export default function Admin() {
         </div>
       ) : null}
 
-      {/* Team Management */}
-      <div className="card" style={{ marginBottom: 12 }}>
-        <h2 style={{ marginTop: 0 }}>Team Management</h2>
+      <AccordionSection
+        title="Team Management"
+        subtitle="Create, rename, re-key, delete teams, and review authorization errors."
+      >
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
           <button className="btn" onClick={() => setShowCreateModal(true)}>Create a New Team</button>
           <button className="btn" onClick={() => setShowRenameModal(true)}>Rename a Team</button>
@@ -867,15 +884,20 @@ export default function Admin() {
           <button className="btn-danger" onClick={() => setShowDeleteModal(true)} disabled={deletingTeam}>Delete a Team</button>
           <button className="btn" onClick={() => { fetchAuthLogs(); setShowAuthLogsModal(true); }}>View Auth Errors</button>
         </div>
-      </div>
+      </AccordionSection>
 
-      <SchedulingAdminSection isAuthed={isAuthed} adminHeaders={adminHeaders} />
+      <AccordionSection
+        title="Scheduling Admin"
+        subtitle="Manage scheduling passwords and import schedule data."
+      >
+        <SchedulingAdminSection isAuthed={isAuthed} adminHeaders={adminHeaders} embedded />
+      </AccordionSection>
 
-      {/* Inbox */}
-      <div className="card" style={{ marginBottom: 12 }}>
+      <AccordionSection
+        title="Parent Inbox"
+        subtitle="Review submissions, manage alerts, preview audio, and clean up requests."
+      >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-          <h2 style={{ marginTop: 0 }}>Parent Inbox</h2>
-
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ minWidth: 220 }}>
               <label className="label">Filter inbox by team</label>
@@ -973,10 +995,12 @@ export default function Admin() {
             ))}
           </div>
         )}
-      </div>
+      </AccordionSection>
 
-      {/* Roster + Final Uploads */}
-      <div className="card">
+      <AccordionSection
+        title="Roster And Final Walk-Up Clips"
+        subtitle="Modify players by team and manage uploaded final audio files."
+      >
         <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
           <div>
             <h2 style={{ marginTop: 0, marginBottom: 4 }}>Add/Remove players and set Final Walk-Up Clips</h2>
@@ -1074,6 +1098,7 @@ export default function Admin() {
             })
           )}
         </div>
+      </AccordionSection>
 
         {/* Create Team Modal */}
         {showCreateModal ? (
@@ -1318,7 +1343,6 @@ export default function Admin() {
             </div>
           </div>
         ) : null}
-      </div>
     </div>
   );
 }

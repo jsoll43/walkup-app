@@ -3,6 +3,8 @@ export const FIELD_OPTIONS = [
   { value: "minor", label: "Minor Field" },
 ];
 
+export const RESERVATION_DURATION_MINUTES = 90;
+
 export const RESERVATION_TYPE_OPTIONS = [
   { value: "practice", label: "Practice" },
   { value: "game", label: "Game" },
@@ -117,8 +119,19 @@ export function formatTimeLabel(value) {
   return `${displayHour}:${minuteText} ${suffix}`;
 }
 
+export function deriveReservationEndTime(startTime) {
+  const startMinutes = timeToMinutes(startTime);
+  if (!Number.isFinite(startMinutes)) return "";
+
+  const endMinutes = Math.max(0, Math.min(startMinutes + RESERVATION_DURATION_MINUTES, (24 * 60) - 1));
+  const hour = Math.floor(endMinutes / 60);
+  const minute = endMinutes % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 export function formatTimeRange(startTime, endTime) {
-  return `${formatTimeLabel(startTime)} - ${formatTimeLabel(endTime)}`;
+  const resolvedEndTime = endTime || deriveReservationEndTime(startTime);
+  return `${formatTimeLabel(startTime)} - ${formatTimeLabel(resolvedEndTime)}`;
 }
 
 export function buildCalendarItems(reservations, requests) {
@@ -241,9 +254,9 @@ export function getConflictsForDraft(draft, calendarItems) {
   const date = String(draft?.date || "").trim();
   const field = String(draft?.field || "").trim();
   const startMinutes = timeToMinutes(draft?.startTime);
-  const endMinutes = timeToMinutes(draft?.endTime);
+  const endMinutes = startMinutes + RESERVATION_DURATION_MINUTES;
 
-  if (!date || !field || !Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || endMinutes <= startMinutes) {
+  if (!date || !field || !Number.isFinite(startMinutes) || endMinutes > 24 * 60) {
     return [];
   }
 
@@ -251,7 +264,7 @@ export function getConflictsForDraft(draft, calendarItems) {
     .filter((item) => item.date === date && item.field === field)
     .filter((item) => {
       const otherStart = timeToMinutes(item.startTime);
-      const otherEnd = timeToMinutes(item.endTime);
+      const otherEnd = otherStart + RESERVATION_DURATION_MINUTES;
       return Number.isFinite(otherStart) && Number.isFinite(otherEnd) && startMinutes < otherEnd && endMinutes > otherStart;
     })
     .map((item) => {

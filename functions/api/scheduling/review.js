@@ -39,12 +39,12 @@ export const onRequestPost = async ({ request, env }) => {
           field: pendingRequest.field,
           team: pendingRequest.team,
           title: pendingRequest.title,
-          reservationType: pendingRequest.reservationType,
           date: pendingRequest.date,
           startTime: pendingRequest.startTime,
           endTime: pendingRequest.endTime,
-          notes: pendingRequest.notes,
-          status: pendingRequest.reservationType === "maintenance" ? "maintenance" : "approved",
+          reservationType: "other",
+          notes: "",
+          status: "approved",
           createdByRole: "coach_request_approved",
         });
         await updateFieldRequestStatus(env, requestId, "approved", auth.requestedBy, reviewedAt);
