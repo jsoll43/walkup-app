@@ -25,6 +25,25 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
+}
+
+function encodeForm(fields) {
+  return Object.entries(fields)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value || ""))}`)
+    .join("&");
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
@@ -390,6 +409,14 @@ async function first(env, sql, binds = []) {
   return binds.length ? stmt.bind(...binds).first() : stmt.first();
 }
 
+async function ensureColumn(env, table, column, typeSql) {
+  const columns = await env.DB.prepare(`PRAGMA table_info(${table})`).all();
+  const exists = (columns?.results || []).some((entry) => entry?.name === column);
+  if (!exists) {
+    await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${typeSql}`).run();
+  }
+}
+
 function parseConflictDetails(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value.filter(Boolean).map(String);
@@ -635,6 +662,8 @@ export async function ensureSchedulingTables(env) {
   for (const sql of statements) {
     await env.DB.prepare(sql).run();
   }
+
+  await ensureColumn(env, "scheduling_settings", "board_notification_email", "TEXT NOT NULL DEFAULT ''");
 }
 
 export async function getSchedulingSettings(env) {
@@ -661,6 +690,117 @@ export async function getSchedulingSettingsSummary(env) {
     boardPasswordConfigured: !!settings.boardPasswordHash,
     updatedAt: settings.updatedAt,
   };
+}
+
+export async function getSchedulingNotificationSettings(env) {
+  await ensureSchedulingTables(env);
+
+  const row = await first(
+    env,
+    `SELECT board_notification_email, updated_at
+     FROM scheduling_settings
+     WHERE id = 'singleton'`
+  );
+
+  return {
+    email: String(row?.board_notification_email || "").trim(),
+    enabled: !!String(row?.board_notification_email || "").trim(),
+    updatedAt: row?.updated_at || "",
+    mailgunConfigured: !!env?.MAILGUN_API_KEY && !!env?.MAILGUN_DOMAIN && !!env?.MAILGUN_FROM,
+  };
+}
+
+export async function setSchedulingNotificationSettings(env, settings) {
+  await ensureSchedulingTables(env);
+
+  const email = String(settings?.email || "").trim();
+  if (email && !isValidEmail(email)) {
+    throw new Error("Enter a valid email address.");
+  }
+
+  const updatedAt = nowIso();
+  await run(
+    env,
+    `INSERT INTO scheduling_settings (id, board_notification_email, updated_at)
+     VALUES ('singleton', ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       board_notification_email = excluded.board_notification_email,
+       updated_at = excluded.updated_at`,
+    [email, updatedAt]
+  );
+
+  return getSchedulingNotificationSettings(env);
+}
+
+export async function sendSchedulingRequestNotification(env, requestItem) {
+  const settings = await getSchedulingNotificationSettings(env);
+  if (!settings.email) {
+    return { ok: false, skipped: true, reason: "No board notification email configured." };
+  }
+
+  const mgKey = env?.MAILGUN_API_KEY;
+  const mgDomain = env?.MAILGUN_DOMAIN;
+  const mgFrom = env?.MAILGUN_FROM;
+  if (!mgKey || !mgDomain || !mgFrom) {
+    return { ok: false, skipped: true, reason: "Mailgun is not configured." };
+  }
+
+  const requestTypeLabel = requestItem?.requestType === "remove" ? "Field removal request" : "Field use request";
+  const subject = `New coach scheduling request: ${requestTypeLabel}`;
+
+  const details = [
+    `Request type: ${requestItem?.requestType === "remove" ? "Remove reservation" : "Add reservation"}`,
+    `Team: ${requestItem?.team || "Unknown team"}`,
+    `Field: ${fieldLabel(requestItem?.field)}`,
+    `Date: ${requestItem?.date || ""}`,
+    `Time: ${requestItem?.startTime || ""} - ${requestItem?.endTime || ""}`,
+    `Reservation type: ${reservationTypeLabel(requestItem?.reservationType)}`,
+    `Requested by: ${requestItem?.requestedBy || "Coach shared login"}`,
+  ];
+
+  if (requestItem?.title) details.push(`Title: ${requestItem.title}`);
+  if (requestItem?.notes) details.push(`Notes: ${requestItem.notes}`);
+  if (requestItem?.hasConflict) details.push("Conflict warning: This request overlaps existing field use or another pending request.");
+  if (Array.isArray(requestItem?.conflictDetails) && requestItem.conflictDetails.length > 0) {
+    details.push("", "Conflict details:", ...requestItem.conflictDetails);
+  }
+
+  details.push("", "Visit the Board Member scheduling area to review the request.");
+
+  const text = details.join("\n");
+  const html = [
+    `<p><strong>${escapeHtml(requestTypeLabel)}</strong></p>`,
+    `<p>${escapeHtml(details.slice(0, 7).join("\n")).replace(/\n/g, "<br />")}</p>`,
+    requestItem?.title ? `<p><strong>Title:</strong> ${escapeHtml(requestItem.title)}</p>` : "",
+    requestItem?.notes ? `<p><strong>Notes:</strong> ${escapeHtml(requestItem.notes)}</p>` : "",
+    requestItem?.hasConflict ? `<p><strong>Conflict warning:</strong> This request overlaps existing field use or another pending request.</p>` : "",
+    Array.isArray(requestItem?.conflictDetails) && requestItem.conflictDetails.length > 0
+      ? `<p><strong>Conflict details</strong><br />${escapeHtml(requestItem.conflictDetails.join("\n")).replace(/\n/g, "<br />")}</p>`
+      : "",
+    `<p>Visit the Board Member scheduling area to review the request.</p>`,
+  ].join("");
+
+  const response = await fetch(`https://api.mailgun.net/v3/${encodeURIComponent(mgDomain)}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${btoa(`api:${mgKey}`)}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: encodeForm({
+      from: mgFrom,
+      to: settings.email,
+      subject,
+      text,
+      html,
+    }),
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(`Mailgun failed: ${response.status} ${response.statusText} ${message}`);
+  }
+
+  return { ok: true, sentTo: settings.email };
 }
 
 export async function setSchedulingPassword(env, role, password) {

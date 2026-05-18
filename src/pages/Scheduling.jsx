@@ -6,19 +6,14 @@ import {
   STATUS_META,
   addDays,
   buildCalendarItems,
-  buildHourMarks,
   formatDayHeader,
   formatLongDate,
-  formatTimeLabel,
   formatTimeRange,
   getConflictsForDraft,
   getTodayInEt,
-  getVisibleRange,
   getWeekDates,
-  layoutColumnItems,
 } from "../scheduling/utils.js";
 
-const PIXELS_PER_MINUTE = 1;
 const SCHEDULING_KEY_STORAGE = "SCHEDULING_KEY";
 const SCHEDULING_ROLE_STORAGE = "SCHEDULING_ROLE";
 
@@ -65,6 +60,22 @@ function reservationTypeLabel(type) {
   return RESERVATION_TYPE_OPTIONS.find((option) => option.value === type)?.label || "Other";
 }
 
+function formatET(ts) {
+  if (!ts) return "";
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return String(ts);
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  }).format(date);
+}
+
 function getStatusMeta(status) {
   return STATUS_META[status] || STATUS_META.approved;
 }
@@ -79,12 +90,6 @@ function getCalendarStatus(item) {
   if (!item) return "approved";
   if (item.kind === "request") return normalizeRequestStatus(item);
   return item.displayStatus || "approved";
-}
-
-function minutesToTimeText(totalMinutes) {
-  const hour = Math.floor(totalMinutes / 60);
-  const minute = totalMinutes % 60;
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 function itemPrimaryLabel(item) {
@@ -113,24 +118,11 @@ function StatCard({ label, value, accent }) {
   );
 }
 
-function TimeAxis({ range, totalHeight }) {
-  const hourMarks = buildHourMarks(range.start, range.end, 60);
-  return (
-    <div className="schedule-time-axis" style={{ height: totalHeight }}>
-      {hourMarks.map((minute) => (
-        <div
-          key={minute}
-          className="schedule-time-label"
-          style={{ top: (minute - range.start) * PIXELS_PER_MINUTE }}
-        >
-          {formatTimeLabel(minutesToTimeText(minute))}
-        </div>
-      ))}
-    </div>
-  );
+function getCellKey(date, field) {
+  return `${date}:${field}`;
 }
 
-function ScheduleBlock({ item, style, isSelected, onSelect }) {
+function ScheduleEventCard({ item, isSelected, onSelect }) {
   const status = getCalendarStatus(item);
   return (
     <button
@@ -141,75 +133,54 @@ function ScheduleBlock({ item, style, isSelected, onSelect }) {
         status ? `is-${status}` : "",
         isSelected ? "is-selected" : "",
       ].join(" ")}
-      style={style}
       onClick={() => onSelect(item)}
     >
-      <div className="schedule-block-eyebrow">{itemSecondaryLabel(item)}</div>
+      <div className="schedule-block-topline">
+        <div className="schedule-block-time">{formatTimeRange(item.startTime, item.endTime)}</div>
+        <StatusPill status={status} />
+      </div>
       <div className="schedule-block-title">{itemPrimaryLabel(item)}</div>
-      <div className="schedule-block-time">{formatTimeRange(item.startTime, item.endTime)}</div>
+      <div className="schedule-block-eyebrow">{itemSecondaryLabel(item)}</div>
     </button>
   );
 }
 
-function FieldColumn({ items, range, selectedItemKey, onSelect }) {
-  const laidOutItems = layoutColumnItems(items);
-  const totalHeight = Math.max((range.end - range.start) * PIXELS_PER_MINUTE, 480);
-  const hourMarks = buildHourMarks(range.start, range.end, 60);
-  const halfHourMarks = buildHourMarks(range.start + 30, range.end, 60);
-
+function CompactFieldCell({ cellKey, items, selectedItemKey, onSelect, expanded, onToggleExpand, blankLabel }) {
+  const visibleItems = expanded ? items : items.slice(0, 3);
+  const hiddenCount = Math.max(0, items.length - visibleItems.length);
   return (
-    <div className="schedule-field-column">
-      <div className="schedule-field-surface" style={{ height: totalHeight }}>
-        {hourMarks.map((minute) => (
-          <div
-            key={`hour-${minute}`}
-            className="schedule-line is-hour"
-            style={{ top: (minute - range.start) * PIXELS_PER_MINUTE }}
-          />
-        ))}
+    <div className={`schedule-field-cell ${items.length === 0 ? "is-empty" : ""}`}>
+      {items.length === 0 ? <div className="schedule-empty-cell">{blankLabel}</div> : null}
 
-        {halfHourMarks.map((minute) => (
-          <div
-            key={`half-${minute}`}
-            className="schedule-line is-half"
-            style={{ top: (minute - range.start) * PIXELS_PER_MINUTE }}
-          />
-        ))}
+      {visibleItems.map((item) => (
+        <ScheduleEventCard
+          key={item.uniqueKey}
+          item={item}
+          isSelected={selectedItemKey === item.uniqueKey}
+          onSelect={onSelect}
+        />
+      ))}
 
-        {laidOutItems.map((item) => {
-          const top = (item.startMinutes - range.start) * PIXELS_PER_MINUTE;
-          const height = Math.max((item.endMinutes - item.startMinutes) * PIXELS_PER_MINUTE, 36);
-          const widthPercent = 100 / (item.laneCount || 1);
-          const leftPercent = item.lane * widthPercent;
+      {hiddenCount > 0 ? (
+        <button type="button" className="schedule-more-button" onClick={() => onToggleExpand(cellKey)}>
+          +{hiddenCount} more
+        </button>
+      ) : null}
 
-          return (
-            <ScheduleBlock
-              key={item.uniqueKey}
-              item={item}
-              isSelected={selectedItemKey === item.uniqueKey}
-              onSelect={onSelect}
-              style={{
-                top,
-                height,
-                left: `calc(${leftPercent}% + 3px)`,
-                width: `calc(${widthPercent}% - 6px)`,
-              }}
-            />
-          );
-        })}
-      </div>
+      {expanded && items.length > 3 ? (
+        <button type="button" className="schedule-more-button is-secondary" onClick={() => onToggleExpand(cellKey)}>
+          Show less
+        </button>
+      ) : null}
     </div>
   );
 }
 
-function DesktopScheduleView({ weekDates, calendarItems, range, selectedItemKey, onSelect }) {
-  const totalHeight = Math.max((range.end - range.start) * PIXELS_PER_MINUTE, 480);
-
+function DesktopScheduleView({ weekDates, calendarItems, selectedItemKey, onSelect, expandedCells, onToggleExpand }) {
   return (
     <div className="schedule-desktop-view">
       <div className="schedule-week-scroll">
         <div className="schedule-week-header">
-          <div className="schedule-time-spacer" />
           {weekDates.map((date) => (
             <div key={date} className="schedule-day-header-group">
               <div className="schedule-day-label">{formatDayHeader(date)}</div>
@@ -222,17 +193,18 @@ function DesktopScheduleView({ weekDates, calendarItems, range, selectedItemKey,
         </div>
 
         <div className="schedule-week-body">
-          <TimeAxis range={range} totalHeight={totalHeight} />
-
           {weekDates.map((date) => (
             <div key={`body-${date}`} className="schedule-day-body-group">
               {FIELD_OPTIONS.map((field) => (
-                <FieldColumn
+                <CompactFieldCell
                   key={`${date}-${field.value}`}
+                  cellKey={getCellKey(date, field.value)}
                   items={calendarItems.filter((item) => item.date === date && item.field === field.value)}
-                  range={range}
                   selectedItemKey={selectedItemKey}
                   onSelect={onSelect}
+                  expanded={!!expandedCells[getCellKey(date, field.value)]}
+                  onToggleExpand={onToggleExpand}
+                  blankLabel=""
                 />
               ))}
             </div>
@@ -243,8 +215,7 @@ function DesktopScheduleView({ weekDates, calendarItems, range, selectedItemKey,
   );
 }
 
-function MobileScheduleView({ date, calendarItems, range, selectedItemKey, onSelect }) {
-  const totalHeight = Math.max((range.end - range.start) * PIXELS_PER_MINUTE, 480);
+function MobileScheduleView({ date, calendarItems, selectedItemKey, onSelect, expandedCells, onToggleExpand }) {
   const dayItems = calendarItems.filter((item) => item.date === date);
 
   return (
@@ -257,16 +228,18 @@ function MobileScheduleView({ date, calendarItems, range, selectedItemKey, onSel
         </div>
       </div>
 
-      <div className="schedule-week-body is-mobile">
-        <TimeAxis range={range} totalHeight={totalHeight} />
+      <div className="schedule-mobile-columns">
         <div className="schedule-day-body-group is-mobile">
           {FIELD_OPTIONS.map((field) => (
-            <FieldColumn
+            <CompactFieldCell
               key={`${date}-${field.value}`}
+              cellKey={getCellKey(date, field.value)}
               items={dayItems.filter((item) => item.field === field.value)}
-              range={range}
               selectedItemKey={selectedItemKey}
               onSelect={onSelect}
+              expanded={!!expandedCells[getCellKey(date, field.value)]}
+              onToggleExpand={onToggleExpand}
+              blankLabel="No events"
             />
           ))}
         </div>
@@ -451,6 +424,65 @@ function RequestHistoryCard({ requests, heading, emptyText, children }) {
   );
 }
 
+function BoardNotificationCard({
+  email,
+  onEmailChange,
+  onSave,
+  saving,
+  loading,
+  updatedAt,
+  mailgunConfigured,
+  statusMessage,
+  errorMessage,
+}) {
+  return (
+    <div className="card scheduling-panel-card">
+      <h2 style={{ marginTop: 0 }}>Board Email Alerts</h2>
+      <div style={{ opacity: 0.8 }}>
+        Save an email address here to notify the board whenever a coach submits a new scheduling request.
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <label className="label">Notification Email</label>
+        <input
+          className="input"
+          type="email"
+          value={email}
+          onChange={(e) => onEmailChange(e.target.value)}
+          placeholder="board-notify@example.com"
+        />
+      </div>
+
+      <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>
+        Leave the field blank and save if you want to stop board request emails.
+      </div>
+
+      <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <button className="btn" onClick={onSave} disabled={saving || loading}>
+          {saving ? "Saving..." : loading ? "Loading..." : "Save Email"}
+        </button>
+        <div style={{ fontSize: 12, opacity: 0.75 }}>
+          {updatedAt ? `Last updated (ET): ${formatET(updatedAt)}` : "No notification email saved yet."}
+        </div>
+      </div>
+
+      {!mailgunConfigured ? (
+        <div className="scheduling-warning-card">
+          Mail delivery is not configured on the server yet, so requests cannot be emailed even if an address is saved.
+        </div>
+      ) : null}
+
+      {statusMessage ? (
+        <div style={{ marginTop: 10, color: "#065f46", fontWeight: 700 }}>{statusMessage}</div>
+      ) : null}
+
+      {errorMessage ? (
+        <div style={{ marginTop: 10, color: "crimson", fontWeight: 700 }}>{errorMessage}</div>
+      ) : null}
+    </div>
+  );
+}
+
 function SelectedScheduleItemCard({
   item,
   role,
@@ -587,7 +619,15 @@ export default function Scheduling() {
   const [success, setSuccess] = useState("");
   const [actionKey, setActionKey] = useState("");
   const [selectedItemKey, setSelectedItemKey] = useState("");
+  const [expandedCells, setExpandedCells] = useState({});
   const [removalNotes, setRemovalNotes] = useState("");
+  const [boardNotificationEmail, setBoardNotificationEmail] = useState("");
+  const [boardNotificationLoading, setBoardNotificationLoading] = useState(false);
+  const [boardNotificationSaving, setBoardNotificationSaving] = useState(false);
+  const [boardNotificationUpdatedAt, setBoardNotificationUpdatedAt] = useState("");
+  const [boardNotificationMailgunConfigured, setBoardNotificationMailgunConfigured] = useState(true);
+  const [boardNotificationStatus, setBoardNotificationStatus] = useState("");
+  const [boardNotificationError, setBoardNotificationError] = useState("");
   const [scheduleData, setScheduleData] = useState({
     teams: [],
     reservations: [],
@@ -628,9 +668,6 @@ export default function Scheduling() {
     () => calendarItems.filter((item) => weekDates.includes(item.date)),
     [calendarItems, weekDates]
   );
-  const dayItems = useMemo(() => calendarItems.filter((item) => item.date === selectedDate), [calendarItems, selectedDate]);
-  const weekRange = useMemo(() => getVisibleRange(weekItems), [weekItems]);
-  const dayRange = useMemo(() => getVisibleRange(dayItems), [dayItems]);
   const selectedItem = useMemo(
     () => calendarItems.find((item) => item.uniqueKey === selectedItemKey) || null,
     [calendarItems, selectedItemKey]
@@ -650,6 +687,39 @@ export default function Scheduling() {
       setRemovalNotes("");
     }
   }, [calendarItems, selectedItemKey]);
+
+  useEffect(() => {
+    if (!isAuthed || authRole !== "board" || !authKey) return;
+    let active = true;
+
+    async function loadBoardNotificationSettings() {
+      setBoardNotificationLoading(true);
+      setBoardNotificationError("");
+      try {
+        const res = await fetch("/api/scheduling/notification-settings", {
+          headers: schedulingHeaders(authRole, authKey),
+        });
+        const data = await safeJsonOrText(res);
+        if (!res.ok || data?.ok === false) {
+          throw new Error(data?.error || data?.raw || "Failed to load board notification settings.");
+        }
+        if (!active) return;
+        setBoardNotificationEmail(String(data?.settings?.email || ""));
+        setBoardNotificationUpdatedAt(String(data?.settings?.updatedAt || ""));
+        setBoardNotificationMailgunConfigured(Boolean(data?.settings?.mailgunConfigured));
+      } catch (e) {
+        if (!active) return;
+        setBoardNotificationError(e?.message || String(e));
+      } finally {
+        if (active) setBoardNotificationLoading(false);
+      }
+    }
+
+    loadBoardNotificationSettings().catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [isAuthed, authRole, authKey]);
 
   async function refreshState(role = authRole, key = authKey, options = {}) {
     const { persist = false, silent = false } = options;
@@ -709,9 +779,21 @@ export default function Scheduling() {
     setAuthKey("");
     setLoginPassword("");
     setSelectedItemKey("");
+    setExpandedCells({});
     setRemovalNotes("");
     setError("");
     setSuccess("");
+    setBoardNotificationEmail("");
+    setBoardNotificationUpdatedAt("");
+    setBoardNotificationStatus("");
+    setBoardNotificationError("");
+  }
+
+  function toggleExpandCell(cellKey) {
+    setExpandedCells((current) => ({
+      ...current,
+      [cellKey]: !current[cellKey],
+    }));
   }
 
   async function handleLogin() {
@@ -875,6 +957,37 @@ export default function Scheduling() {
     }
   }
 
+  async function saveBoardNotificationEmail() {
+    setBoardNotificationSaving(true);
+    setBoardNotificationError("");
+    setBoardNotificationStatus("");
+    try {
+      const res = await fetch("/api/scheduling/notification-settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...schedulingHeaders(authRole, authKey),
+        },
+        body: JSON.stringify({
+          email: boardNotificationEmail,
+        }),
+      });
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || "Failed to save the board notification email.");
+      }
+
+      setBoardNotificationEmail(String(data?.settings?.email || ""));
+      setBoardNotificationUpdatedAt(String(data?.settings?.updatedAt || ""));
+      setBoardNotificationMailgunConfigured(Boolean(data?.settings?.mailgunConfigured));
+      setBoardNotificationStatus(data?.message || "Board notification email saved.");
+    } catch (e) {
+      setBoardNotificationError(e?.message || String(e));
+    } finally {
+      setBoardNotificationSaving(false);
+    }
+  }
+
   if (!isAuthed) {
     return (
       <div className="page">
@@ -1026,17 +1139,19 @@ export default function Scheduling() {
         <DesktopScheduleView
           weekDates={weekDates}
           calendarItems={weekItems}
-          range={weekRange}
           selectedItemKey={selectedItemKey}
           onSelect={(item) => setSelectedItemKey(item.uniqueKey)}
+          expandedCells={expandedCells}
+          onToggleExpand={toggleExpandCell}
         />
 
         <MobileScheduleView
           date={selectedDate}
           calendarItems={calendarItems}
-          range={dayRange}
           selectedItemKey={selectedItemKey}
           onSelect={(item) => setSelectedItemKey(item.uniqueKey)}
+          expandedCells={expandedCells}
+          onToggleExpand={toggleExpandCell}
         />
       </div>
 
@@ -1065,6 +1180,18 @@ export default function Scheduling() {
             </>
           ) : (
             <>
+              <BoardNotificationCard
+                email={boardNotificationEmail}
+                onEmailChange={setBoardNotificationEmail}
+                onSave={saveBoardNotificationEmail}
+                saving={boardNotificationSaving}
+                loading={boardNotificationLoading}
+                updatedAt={boardNotificationUpdatedAt}
+                mailgunConfigured={boardNotificationMailgunConfigured}
+                statusMessage={boardNotificationStatus}
+                errorMessage={boardNotificationError}
+              />
+
               <ReservationFormCard
                 title="Add Approved Reservation"
                 description="Board members can place reservations directly on the schedule and can also block off fields for maintenance."

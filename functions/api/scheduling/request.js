@@ -7,6 +7,7 @@ import {
   normalizeRequestType,
   normalizeScheduleDraft,
   recalculateSchedulingRequestConflicts,
+  sendSchedulingRequestNotification,
   verifySchedulingAuth,
 } from "../../lib/scheduling.js";
 
@@ -61,8 +62,15 @@ export const onRequestPost = async ({ request, env }) => {
 
     await recalculateSchedulingRequestConflicts(env);
     const createdRequest = await getFieldRequestById(env, requestId);
+    const notification = createdRequest
+      ? await sendSchedulingRequestNotification(env, createdRequest).catch((error) => ({
+          ok: false,
+          skipped: false,
+          error: error?.message || String(error),
+        }))
+      : null;
 
-    return json({ ok: true, request: createdRequest });
+    return json({ ok: true, request: createdRequest, notification });
   } catch (e) {
     return json({ ok: false, error: e?.message || String(e) }, 500);
   }
