@@ -1110,18 +1110,6 @@ export default function Scheduling() {
             </>
           ) : (
             <>
-              <BoardNotificationCard
-                email={boardNotificationEmail}
-                onEmailChange={setBoardNotificationEmail}
-                onSave={saveBoardNotificationEmail}
-                saving={boardNotificationSaving}
-                loading={boardNotificationLoading}
-                updatedAt={boardNotificationUpdatedAt}
-                mailgunConfigured={boardNotificationMailgunConfigured}
-                statusMessage={boardNotificationStatus}
-                errorMessage={boardNotificationError}
-              />
-
               <ReservationFormCard
                 title="Add Approved Reservation"
                 description="Board members can place 90-minute reservations directly on the schedule."
@@ -1135,15 +1123,17 @@ export default function Scheduling() {
                 conflicts={boardConflictPreview}
               />
 
-              <RequestHistoryCard
-                heading="Recent Scheduling Requests"
-                emptyText="No scheduling requests have been submitted yet."
-                requests={requests}
-              >
-                <div style={{ fontSize: 13, opacity: 0.75 }}>
-                  The actionable board queue is listed alongside the selected item details.
-                </div>
-              </RequestHistoryCard>
+              <BoardNotificationCard
+                email={boardNotificationEmail}
+                onEmailChange={setBoardNotificationEmail}
+                onSave={saveBoardNotificationEmail}
+                saving={boardNotificationSaving}
+                loading={boardNotificationLoading}
+                updatedAt={boardNotificationUpdatedAt}
+                mailgunConfigured={boardNotificationMailgunConfigured}
+                statusMessage={boardNotificationStatus}
+                errorMessage={boardNotificationError}
+              />
             </>
           )}
         </div>
@@ -1157,6 +1147,18 @@ export default function Scheduling() {
             onReviewRequest={reviewRequest}
             actionKey={actionKey}
           />
+
+          {authRole === "board" ? (
+            <RequestHistoryCard
+              heading="Recent Scheduling Requests"
+              emptyText="No scheduling requests have been submitted yet."
+              requests={requests}
+            >
+              <div style={{ fontSize: 13, opacity: 0.75 }}>
+                The actionable board queue is listed just below.
+              </div>
+            </RequestHistoryCard>
+          ) : null}
 
           {authRole === "board" && pendingRequests.length > 0 ? (
             <div className="card scheduling-panel-card">
