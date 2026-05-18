@@ -174,38 +174,32 @@ function CompactFieldCell({ cellKey, items, selectedItemKey, onSelect, expanded,
 
 function DesktopScheduleView({ weekDates, calendarItems, selectedItemKey, onSelect, expandedCells, onToggleExpand }) {
   return (
-    <div className="schedule-desktop-view">
-      <div className="schedule-week-scroll">
-        <div className="schedule-week-header">
-          {weekDates.map((date) => (
-            <div key={date} className="schedule-day-header-group">
-              <div className="schedule-day-label">{formatDayHeader(date)}</div>
-              <div className="schedule-field-header-row">
-                <div className="schedule-field-header">Major Field</div>
-                <div className="schedule-field-header">Minor Field</div>
-              </div>
-            </div>
-          ))}
-        </div>
+    <div className="schedule-desktop-view schedule-list-view">
+      <div className="schedule-list-header">
+        <div className="schedule-list-date-header">Date</div>
+        <div className="schedule-list-field-header">Major Field</div>
+        <div className="schedule-list-field-header">Minor Field</div>
+      </div>
 
-        <div className="schedule-week-body">
-          {weekDates.map((date) => (
-            <div key={`body-${date}`} className="schedule-day-body-group">
-              {FIELD_OPTIONS.map((field) => (
-                <CompactFieldCell
-                  key={`${date}-${field.value}`}
-                  cellKey={getCellKey(date, field.value)}
-                  items={calendarItems.filter((item) => item.date === date && item.field === field.value)}
-                  selectedItemKey={selectedItemKey}
-                  onSelect={onSelect}
-                  expanded={!!expandedCells[getCellKey(date, field.value)]}
-                  onToggleExpand={onToggleExpand}
-                  blankLabel=""
-                />
-              ))}
-            </div>
-          ))}
-        </div>
+      <div className="schedule-list-body">
+        {weekDates.map((date) => (
+          <div key={`row-${date}`} className="schedule-list-row">
+            <div className="schedule-list-date">{formatDayHeader(date)}</div>
+
+            {FIELD_OPTIONS.map((field) => (
+              <CompactFieldCell
+                key={`${date}-${field.value}`}
+                cellKey={getCellKey(date, field.value)}
+                items={calendarItems.filter((item) => item.date === date && item.field === field.value)}
+                selectedItemKey={selectedItemKey}
+                onSelect={onSelect}
+                expanded={!!expandedCells[getCellKey(date, field.value)]}
+                onToggleExpand={onToggleExpand}
+                blankLabel=""
+              />
+            ))}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1028,7 +1022,7 @@ export default function Scheduling() {
           <div>
             <h2 style={{ margin: 0 }}>Schedule</h2>
             <div style={{ marginTop: 4, opacity: 0.75 }}>
-              Desktop shows the full week. Mobile keeps both fields visible on a single selected day.
+              Desktop shows the week as stacked day rows. Mobile keeps both fields visible on a single selected day.
             </div>
           </div>
 
