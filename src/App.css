@@ -527,6 +527,10 @@ button:disabled {
   margin: 0;
 }
 
+.scheduling-export-label-mobile {
+  display: none;
+}
+
 .scheduling-month-picker {
   width: 180px;
   min-width: 0;
@@ -1056,6 +1060,34 @@ button:disabled {
 }
 
 @media (max-width: 980px) {
+  .scheduling-shell,
+  .scheduling-shell > *,
+  .scheduling-calendar-card,
+  .scheduling-toolbar,
+  .scheduling-toolbar-copy,
+  .scheduling-toolbar-actions,
+  .scheduling-export-controls,
+  .scheduling-panels,
+  .scheduling-panel-stack,
+  .scheduling-board-mobile-stack,
+  .scheduling-mobile-accordion,
+  .scheduling-mobile-accordion-summary,
+  .scheduling-mobile-accordion-body,
+  .scheduling-mobile-accordion-body .scheduling-panel-card,
+  .scheduling-selected-mobile,
+  .schedule-mobile-view,
+  .schedule-mobile-week-list,
+  .schedule-mobile-day-card,
+  .schedule-mobile-columns,
+  .schedule-day-body-group,
+  .schedule-day-body-group.is-mobile,
+  .schedule-field-cell {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
   .scheduling-header-row {
     gap: 10px;
     margin-bottom: 10px;
@@ -1079,12 +1111,19 @@ button:disabled {
 
   .scheduling-toolbar {
     margin-bottom: 8px;
-    display: grid;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: space-between;
     gap: 8px;
   }
 
   .scheduling-toolbar-copy h2 {
     font-size: 18px;
+  }
+
+  .scheduling-toolbar-copy {
+    flex: 1 1 auto;
   }
 
   .scheduling-toolbar-actions {
@@ -1098,17 +1137,30 @@ button:disabled {
   }
 
   .scheduling-export-controls {
-    align-items: stretch;
-    justify-content: stretch;
-    width: 100%;
+    align-items: center;
+    justify-content: flex-end;
+    width: auto;
+    flex: 0 0 auto;
   }
 
   .scheduling-export-controls .btn {
-    width: 100%;
+    width: auto;
+    max-width: 100%;
+    white-space: nowrap;
+    padding: 9px 12px;
+    font-size: 13px;
   }
 
   .scheduling-month-picker {
     width: 100%;
+  }
+
+  .scheduling-export-label-desktop {
+    display: none;
+  }
+
+  .scheduling-export-label-mobile {
+    display: inline;
   }
 
   .scheduling-modal-actions {
@@ -1131,6 +1183,7 @@ button:disabled {
   .schedule-mobile-week-list {
     padding: 0;
     gap: 8px;
+    overflow-x: clip;
   }
 
   .scheduling-panels {
@@ -1165,6 +1218,22 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .scheduling-form-grid > *,
+  .scheduling-panel-card .input,
+  .scheduling-panel-card select.input,
+  .scheduling-panel-card input[type="date"].input,
+  .scheduling-panel-card input[type="time"].input,
+  .scheduling-panel-card input[type="month"].input,
+  .scheduling-panel-card input[type="email"].input,
+  .scheduling-panel-card input[type="text"].input,
+  .schedule-mobile-view .schedule-block,
+  .schedule-mobile-view .schedule-more-button {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
   .schedule-mobile-view .schedule-block {
     padding: 8px 8px 7px;
     gap: 3px;
@@ -1190,6 +1259,7 @@ button:disabled {
   .schedule-mobile-view .schedule-more-button {
     font-size: 11px;
     padding: 5px 8px;
+    width: auto;
   }
 
   .scheduling-form-grid,

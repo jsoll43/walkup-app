@@ -1157,7 +1157,14 @@ export default function Scheduling() {
 
           <div className="scheduling-export-controls">
             <button className="btn" onClick={openPdfExportModal} disabled={pdfExporting}>
-              {pdfExporting ? "Preparing PDF..." : "Download Calendar View PDF"}
+              {pdfExporting ? (
+                "Preparing PDF..."
+              ) : (
+                <>
+                  <span className="scheduling-export-label-desktop">Download Calendar View PDF</span>
+                  <span className="scheduling-export-label-mobile">Calendar View PDF</span>
+                </>
+              )}
             </button>
           </div>
         </div>
