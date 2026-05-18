@@ -1208,64 +1208,56 @@ export default function Scheduling() {
           />
 
           {authRole === "board" ? (
-            <RequestHistoryCard
-              heading="Recent Scheduling Requests (Inbox)"
-              emptyText="No scheduling requests have been submitted yet."
-              requests={requests}
-            >
-              <div style={{ fontSize: 13, opacity: 0.75 }}>
-                The actionable board queue is listed just below.
-              </div>
-            </RequestHistoryCard>
-          ) : null}
-
-          {authRole === "board" && pendingRequests.length > 0 ? (
             <div className="card scheduling-panel-card">
               <h2 style={{ marginTop: 0 }}>Board Action Queue</h2>
-              <div className="scheduling-request-list">
-                {pendingRequests.map((request) => (
-                  <div key={request.id} className="scheduling-request-card">
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                      <div>
-                        <div style={{ fontWeight: 1000, fontSize: 16 }}>
-                          {request.requestType === "remove" ? "Removal Request" : request.title || request.team}
+              {pendingRequests.length === 0 ? (
+                <div style={{ opacity: 0.75 }}>There are currently no pending requests.</div>
+              ) : (
+                <div className="scheduling-request-list">
+                  {pendingRequests.map((request) => (
+                    <div key={request.id} className="scheduling-request-card">
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                        <div>
+                          <div style={{ fontWeight: 1000, fontSize: 16 }}>
+                            {request.requestType === "remove" ? "Removal Request" : request.title || request.team}
+                          </div>
+                          <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
+                            {request.team} - {fieldLabel(request.field)} - {formatLongDate(request.date)}
+                          </div>
+                          <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
+                            {formatTimeRange(request.startTime, request.endTime)}
+                          </div>
                         </div>
-                        <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
-                          {request.team} - {fieldLabel(request.field)} - {formatLongDate(request.date)}
-                        </div>
-                        <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
-                          {formatTimeRange(request.startTime, request.endTime)}
-                        </div>
+                        <StatusPill status={normalizeRequestStatus(request)} />
                       </div>
-                      <StatusPill status={normalizeRequestStatus(request)} />
-                    </div>
 
-                    <div style={{ marginTop: 10, fontSize: 13 }}>
-                      <strong>Requested by:</strong> {request.requestedBy || "Coach shared login"}
-                    </div>
-
-                    {request.hasConflict && request.conflictDetails?.length ? (
-                      <div className="scheduling-warning-card" style={{ marginTop: 10 }}>
-                        <div style={{ fontWeight: 1000 }}>Conflict details</div>
-                        <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
-                          {request.conflictDetails.map((detail) => (
-                            <div key={detail}>{detail}</div>
-                          ))}
-                        </div>
+                      <div style={{ marginTop: 10, fontSize: 13 }}>
+                        <strong>Requested by:</strong> {request.requestedBy || "Coach shared login"}
                       </div>
-                    ) : null}
 
-                    <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button className="btn" onClick={() => reviewRequest(request, "approve")} disabled={actionKey === `review:${request.id}:approve`}>
-                        {actionKey === `review:${request.id}:approve` ? "Approving..." : "Approve"}
-                      </button>
-                      <button className="btn-danger" onClick={() => reviewRequest(request, "deny")} disabled={actionKey === `review:${request.id}:deny`}>
-                        {actionKey === `review:${request.id}:deny` ? "Denying..." : "Deny"}
-                      </button>
+                      {request.hasConflict && request.conflictDetails?.length ? (
+                        <div className="scheduling-warning-card" style={{ marginTop: 10 }}>
+                          <div style={{ fontWeight: 1000 }}>Conflict details</div>
+                          <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
+                            {request.conflictDetails.map((detail) => (
+                              <div key={detail}>{detail}</div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button className="btn" onClick={() => reviewRequest(request, "approve")} disabled={actionKey === `review:${request.id}:approve`}>
+                          {actionKey === `review:${request.id}:approve` ? "Approving..." : "Approve"}
+                        </button>
+                        <button className="btn-danger" onClick={() => reviewRequest(request, "deny")} disabled={actionKey === `review:${request.id}:deny`}>
+                          {actionKey === `review:${request.id}:deny` ? "Denying..." : "Deny"}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           ) : null}
         </div>
