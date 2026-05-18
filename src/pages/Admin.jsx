@@ -887,13 +887,6 @@ export default function Admin() {
       </AccordionSection>
 
       <AccordionSection
-        title="Scheduling Admin"
-        subtitle="Manage scheduling passwords and import schedule data."
-      >
-        <SchedulingAdminSection isAuthed={isAuthed} adminHeaders={adminHeaders} embedded />
-      </AccordionSection>
-
-      <AccordionSection
         title="Parent Inbox"
         subtitle="Review submissions, manage alerts, preview audio, and clean up requests."
       >
@@ -1098,6 +1091,13 @@ export default function Admin() {
             })
           )}
         </div>
+      </AccordionSection>
+
+      <AccordionSection
+        title="Scheduling Admin"
+        subtitle="Manage scheduling passwords and import schedule data."
+      >
+        <SchedulingAdminSection isAuthed={isAuthed} adminHeaders={adminHeaders} embedded />
       </AccordionSection>
 
         {/* Create Team Modal */}
