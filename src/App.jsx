@@ -84,7 +84,7 @@ function TopNav() {
             to="/scheduling"
             className={() => `bgsl-link ${isScheduling ? "active" : ""}`}
           >
-            Scheduling
+            Field Scheduling
           </NavLink>
         </nav>
       </div>
