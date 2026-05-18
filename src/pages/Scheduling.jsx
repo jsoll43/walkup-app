@@ -1150,7 +1150,7 @@ export default function Scheduling() {
 
           {authRole === "board" ? (
             <RequestHistoryCard
-              heading="Recent Scheduling Requests"
+              heading="Recent Scheduling Requests (Inbox)"
               emptyText="No scheduling requests have been submitted yet."
               requests={requests}
             >
