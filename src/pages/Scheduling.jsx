@@ -216,32 +216,39 @@ function MobileScheduleView({ weekDates, calendarItems, selectedItemKey, onSelec
       <div className="schedule-mobile-week-list">
         {weekDates.map((date) => {
           const dayItems = calendarItems.filter((item) => item.date === date);
+          const isEmptyDay = dayItems.length === 0;
           return (
-            <div key={`mobile-${date}`} className="schedule-mobile-day-card">
+            <div key={`mobile-${date}`} className={`schedule-mobile-day-card ${isEmptyDay ? "is-empty-day" : ""}`}>
               <div className="schedule-mobile-header">
                 <div className="schedule-mobile-title">{formatDayHeader(date)}</div>
-                <div className="schedule-field-header-row is-mobile">
-                  <div className="schedule-field-header">Major Field</div>
-                  <div className="schedule-field-header">Minor Field</div>
-                </div>
+                {isEmptyDay ? null : (
+                  <div className="schedule-field-header-row is-mobile">
+                    <div className="schedule-field-header">Major Field</div>
+                    <div className="schedule-field-header">Minor Field</div>
+                  </div>
+                )}
               </div>
 
-              <div className="schedule-mobile-columns">
-                <div className="schedule-day-body-group is-mobile">
-                  {FIELD_OPTIONS.map((field) => (
-                    <CompactFieldCell
-                      key={`${date}-${field.value}`}
-                      cellKey={getCellKey(date, field.value)}
-                      items={dayItems.filter((item) => item.field === field.value)}
-                      selectedItemKey={selectedItemKey}
-                      onSelect={onSelect}
-                      expanded={!!expandedCells[getCellKey(date, field.value)]}
-                      onToggleExpand={onToggleExpand}
-                      blankLabel="No events"
-                    />
-                  ))}
+              {isEmptyDay ? (
+                <div className="schedule-mobile-empty-day">No events on either field.</div>
+              ) : (
+                <div className="schedule-mobile-columns">
+                  <div className="schedule-day-body-group is-mobile">
+                    {FIELD_OPTIONS.map((field) => (
+                      <CompactFieldCell
+                        key={`${date}-${field.value}`}
+                        cellKey={getCellKey(date, field.value)}
+                        items={dayItems.filter((item) => item.field === field.value)}
+                        selectedItemKey={selectedItemKey}
+                        onSelect={onSelect}
+                        expanded={!!expandedCells[getCellKey(date, field.value)]}
+                        onToggleExpand={onToggleExpand}
+                        blankLabel="No events"
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           );
         })}

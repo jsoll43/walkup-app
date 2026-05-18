@@ -800,6 +800,10 @@ button:disabled {
   background: rgba(255, 255, 255, 0.55);
 }
 
+.schedule-mobile-day-card.is-empty-day {
+  background: rgba(255, 255, 255, 0.42);
+}
+
 .schedule-mobile-columns {
   padding: 0;
 }
@@ -810,6 +814,25 @@ button:disabled {
 
 .schedule-mobile-view .schedule-field-cell {
   min-height: 96px;
+}
+
+.schedule-mobile-view .schedule-field-cell.is-empty {
+  min-height: 0;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.schedule-mobile-empty-day {
+  padding: 10px 12px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.72;
+}
+
+.schedule-mobile-view .schedule-empty-cell {
+  min-height: 0;
+  font-size: 12px;
+  opacity: 0.68;
 }
 
 .scheduling-panels {
