@@ -1037,6 +1037,9 @@ export default function Scheduling() {
               Previous Week
             </button>
             <button className="btn-secondary" onClick={() => setSelectedDate(today)}>
+              Today
+            </button>
+            <button className="btn-secondary" onClick={() => setSelectedDate(today)}>
               This Week
             </button>
             <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, 7))}>
@@ -1050,6 +1053,9 @@ export default function Scheduling() {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
               Previous Day
+            </button>
+            <button className="btn-secondary" onClick={() => setSelectedDate(today)}>
+              Today
             </button>
             <input className="input" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} style={{ maxWidth: 180 }} />
             <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
