@@ -96,10 +96,12 @@ function itemPrimaryLabel(item) {
 
 function itemSecondaryLabel(item) {
   if (!item) return "";
+  const optionalTitle = String(item?.title || "").trim();
+  if (optionalTitle) return optionalTitle;
   if (item.kind === "request") return "Pending approval";
   if (item.displayStatus === "maintenance") return "Blocked time";
   if (item.displayStatus === "removal_requested") return "Removal requested";
-  return "Scheduled reservation";
+  return "";
 }
 
 function StatusPill({ status }) {
@@ -122,6 +124,7 @@ function getCellKey(date, field) {
 
 function ScheduleEventCard({ item, isSelected, onSelect }) {
   const status = getCalendarStatus(item);
+  const secondaryLabel = itemSecondaryLabel(item);
   return (
     <button
       type="button"
@@ -138,7 +141,7 @@ function ScheduleEventCard({ item, isSelected, onSelect }) {
         <StatusPill status={status} />
       </div>
       <div className="schedule-block-title">{itemPrimaryLabel(item)}</div>
-      <div className="schedule-block-eyebrow">{itemSecondaryLabel(item)}</div>
+      {secondaryLabel ? <div className="schedule-block-eyebrow">{secondaryLabel}</div> : null}
     </button>
   );
 }
@@ -257,7 +260,6 @@ function ReservationFormCard({
   submitting,
   teams,
   includeLeagueOption,
-  conflicts,
 }) {
   const sortedTeams = [...teams].sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
   return (
@@ -309,20 +311,6 @@ function ReservationFormCard({
         <label className="label">Title (optional)</label>
         <input className="input" value={form.title} onChange={(e) => onChange("title", e.target.value)} placeholder="Optional custom title" />
       </div>
-
-      {conflicts.length > 0 ? (
-        <div className="scheduling-warning-card">
-          <div style={{ fontWeight: 1000 }}>Conflict warning</div>
-          <div style={{ marginTop: 6 }}>
-            This time overlaps existing field use or another pending request. You can still submit it, but it will be flagged.
-          </div>
-          <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
-            {conflicts.map((detail) => (
-              <div key={detail}>{detail}</div>
-            ))}
-          </div>
-        </div>
-      ) : null}
 
       <div style={{ marginTop: 14 }}>
         <button className="btn" onClick={onSubmit} disabled={submitting}>
@@ -568,6 +556,7 @@ export default function Scheduling() {
   const [pdfMonth, setPdfMonth] = useState(today.slice(0, 7));
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [pdfExporting, setPdfExporting] = useState(false);
+  const [conflictModal, setConflictModal] = useState(null);
   const [boardNotificationEmail, setBoardNotificationEmail] = useState("");
   const [boardNotificationLoading, setBoardNotificationLoading] = useState(false);
   const [boardNotificationSaving, setBoardNotificationSaving] = useState(false);
@@ -755,7 +744,15 @@ export default function Scheduling() {
     setBoardForm((current) => ({ ...current, [field]: value }));
   }
 
-  async function submitCoachAddRequest() {
+  function openConflictModal({ submitType, conflicts, title }) {
+    setConflictModal({
+      submitType,
+      conflicts,
+      title,
+    });
+  }
+
+  async function performCoachAddRequest() {
     setActionKey("coach-add");
     setError("");
     setSuccess("");
@@ -785,7 +782,7 @@ export default function Scheduling() {
     }
   }
 
-  async function submitBoardReservation() {
+  async function performBoardReservation() {
     setActionKey("board-add");
     setError("");
     setSuccess("");
@@ -809,6 +806,42 @@ export default function Scheduling() {
       setError(e?.message || String(e));
     } finally {
       setActionKey("");
+    }
+  }
+
+  async function submitCoachAddRequest() {
+    if (coachConflictPreview.length > 0) {
+      openConflictModal({
+        submitType: "coach-add",
+        conflicts: coachConflictPreview,
+        title: coachForm.title || coachForm.team || "Coach request",
+      });
+      return;
+    }
+    await performCoachAddRequest();
+  }
+
+  async function submitBoardReservation() {
+    if (boardConflictPreview.length > 0) {
+      openConflictModal({
+        submitType: "board-add",
+        conflicts: boardConflictPreview,
+        title: boardForm.title || boardForm.team || "Board reservation",
+      });
+      return;
+    }
+    await performBoardReservation();
+  }
+
+  async function confirmConflictSubmission() {
+    const submitType = conflictModal?.submitType;
+    setConflictModal(null);
+    if (submitType === "coach-add") {
+      await performCoachAddRequest();
+      return;
+    }
+    if (submitType === "board-add") {
+      await performBoardReservation();
     }
   }
 
@@ -1127,7 +1160,6 @@ export default function Scheduling() {
                 submitting={actionKey === "coach-add"}
                 teams={teams}
                 includeLeagueOption={false}
-                conflicts={coachConflictPreview}
               />
 
               <RequestHistoryCard
@@ -1148,7 +1180,6 @@ export default function Scheduling() {
                 submitting={actionKey === "board-add"}
                 teams={teams}
                 includeLeagueOption
-                conflicts={boardConflictPreview}
               />
 
               <BoardNotificationCard
@@ -1273,6 +1304,47 @@ export default function Scheduling() {
               </button>
               <button className="btn" onClick={handleDownloadMonthPdf} disabled={pdfExporting}>
                 {pdfExporting ? "Preparing PDF..." : "Download Calendar View PDF"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {conflictModal ? (
+        <div className="scheduling-modal-overlay" onClick={() => (actionKey ? null : setConflictModal(null))}>
+          <div
+            className="card scheduling-modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="scheduling-conflict-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="scheduling-conflict-modal-title" style={{ marginTop: 0, marginBottom: 8 }}>
+              Are you sure? There is a conflict.
+            </h3>
+            <div style={{ opacity: 0.78 }}>
+              {conflictModal.title
+                ? `${conflictModal.title} overlaps existing field use or another pending request on the same field.`
+                : "This selection overlaps existing field use or another pending request on the same field."}
+            </div>
+
+            {conflictModal.conflicts?.length ? (
+              <div className="scheduling-warning-card" style={{ marginTop: 14 }}>
+                <div style={{ fontWeight: 1000, marginBottom: 6 }}>Conflict details</div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  {conflictModal.conflicts.map((detail) => (
+                    <div key={detail}>{detail}</div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="scheduling-modal-actions">
+              <button className="btn-secondary" onClick={() => setConflictModal(null)} disabled={!!actionKey}>
+                Cancel
+              </button>
+              <button className="btn" onClick={confirmConflictSubmission} disabled={!!actionKey}>
+                {actionKey === "coach-add" || actionKey === "board-add" ? "Saving..." : "Yes, Submit Anyway"}
               </button>
             </div>
           </div>
