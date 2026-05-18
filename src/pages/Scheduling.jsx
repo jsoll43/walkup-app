@@ -269,7 +269,7 @@ function ReservationFormCard({
         <div>
           <label className="label">Team</label>
           <select className="input" value={form.team} onChange={(e) => onChange("team", e.target.value)}>
-            <option value="">Select team</option>
+            <option value="">Select Team</option>
             {sortedTeams.map((team) => (
               <option key={team.slug} value={team.name}>
                 {team.name}
@@ -595,7 +595,7 @@ export default function Scheduling() {
     startTime: "17:00",
   });
   const [boardForm, setBoardForm] = useState({
-    team: "League / Board",
+    team: "",
     title: "",
     field: "major",
     date: today,
@@ -615,12 +615,6 @@ export default function Scheduling() {
   );
   const coachConflictPreview = useMemo(() => getConflictsForDraft(coachForm, calendarItems), [coachForm, calendarItems]);
   const boardConflictPreview = useMemo(() => getConflictsForDraft(boardForm, calendarItems), [boardForm, calendarItems]);
-
-  useEffect(() => {
-    if (teams.length > 0 && !coachForm.team) {
-      setCoachForm((current) => ({ ...current, team: teams[0].name }));
-    }
-  }, [teams, coachForm.team]);
 
   useEffect(() => {
     if (selectedItemKey && !calendarItems.some((item) => item.uniqueKey === selectedItemKey)) {
@@ -783,7 +777,7 @@ export default function Scheduling() {
       }
       setSuccess("Coach request submitted for board review.");
       await refreshState(authRole, authKey, { silent: true });
-      setCoachForm((current) => ({ ...current, title: "" }));
+      setCoachForm((current) => ({ ...current, team: "", title: "" }));
     } catch (e) {
       setError(e?.message || String(e));
     } finally {
@@ -810,7 +804,7 @@ export default function Scheduling() {
       }
       setSuccess("Board reservation added to the schedule.");
       await refreshState(authRole, authKey, { silent: true });
-      setBoardForm((current) => ({ ...current, title: "" }));
+      setBoardForm((current) => ({ ...current, team: "", title: "" }));
     } catch (e) {
       setError(e?.message || String(e));
     } finally {
