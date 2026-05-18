@@ -1018,10 +1018,22 @@ export default function Scheduling() {
       </div>
 
       <div className="card scheduling-calendar-card">
+        <div className="scheduling-mobile-date-picker">
+          <div className="scheduling-mobile-date-bar">
+            <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
+              Previous Day
+            </button>
+            <input className="input scheduling-mobile-date-input" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
+            <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
+              Next Day
+            </button>
+          </div>
+        </div>
+
         <div className="scheduling-toolbar">
-          <div>
+          <div className="scheduling-toolbar-copy">
             <h2 style={{ margin: 0 }}>Schedule</h2>
-            <div style={{ marginTop: 4, opacity: 0.75 }}>
+            <div className="scheduling-toolbar-subtitle" style={{ marginTop: 4, opacity: 0.75 }}>
               Desktop shows the week as stacked day rows. Mobile keeps both fields visible on a single selected day.
             </div>
           </div>
@@ -1038,22 +1050,6 @@ export default function Scheduling() {
             </button>
             <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, 7))}>
               Next Week
-            </button>
-          </div>
-        </div>
-
-        <div className="scheduling-mobile-date-picker">
-          <label className="label">Mobile day view</label>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
-              Previous Day
-            </button>
-            <button className="btn-secondary" onClick={() => setSelectedDate(today)}>
-              Today
-            </button>
-            <input className="input" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} style={{ maxWidth: 180 }} />
-            <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
-              Next Day
             </button>
           </div>
         </div>
