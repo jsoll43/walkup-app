@@ -8,6 +8,7 @@ import {
   buildCalendarItems,
   formatDayHeader,
   formatLongDate,
+  formatTimeLabel,
   formatTimeRange,
   getConflictsForDraft,
   getTodayInEt,
@@ -132,7 +133,7 @@ function ScheduleEventCard({ item, isSelected, onSelect }) {
       onClick={() => onSelect(item)}
     >
       <div className="schedule-block-topline">
-        <div className="schedule-block-time">{formatTimeRange(item.startTime, item.endTime)}</div>
+        <div className="schedule-block-time">{formatTimeLabel(item.startTime)}</div>
         <StatusPill status={status} />
       </div>
       <div className="schedule-block-title">{itemPrimaryLabel(item)}</div>

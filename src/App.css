@@ -667,9 +667,11 @@ button:disabled {
 }
 
 .schedule-block-time {
-  font-size: 12px;
+  font-size: 17px;
   font-weight: 1000;
   color: var(--bgsl-navy);
+  line-height: 1;
+  letter-spacing: 0.15px;
 }
 
 .schedule-empty-cell {
@@ -953,7 +955,7 @@ button:disabled {
 
   .schedule-mobile-view .schedule-block-eyebrow,
   .schedule-mobile-view .schedule-block-time {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .schedule-mobile-view .schedule-more-button {
