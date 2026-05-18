@@ -1083,9 +1083,6 @@ export default function Scheduling() {
         <div className="scheduling-toolbar">
           <div className="scheduling-toolbar-copy">
             <h2 style={{ margin: 0 }}>Schedule</h2>
-            <div className="scheduling-toolbar-subtitle" style={{ marginTop: 4, opacity: 0.75 }}>
-              Both desktop and mobile show the selected week with each day stacked as a compact row.
-            </div>
           </div>
 
           <div className="scheduling-export-controls">
@@ -1181,7 +1178,7 @@ export default function Scheduling() {
             <>
               <ReservationFormCard
                 title="Add Approved Reservation"
-                description="Board members can place 90-minute reservations directly on the schedule."
+                description="Place 90-minute reservations directly on the schedule without approval."
                 form={boardForm}
                 onChange={updateBoardForm}
                 onSubmit={submitBoardReservation}
