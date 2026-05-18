@@ -478,11 +478,12 @@ button:disabled {
   gap: 14px;
   align-items: flex-start;
   flex-wrap: wrap;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .scheduling-toolbar-copy {
   min-width: 0;
+  flex: 1 1 420px;
 }
 
 .scheduling-toolbar-subtitle {
@@ -493,6 +494,7 @@ button:disabled {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  margin-bottom: 12px;
 }
 
 .scheduling-week-picker {
@@ -505,6 +507,15 @@ button:disabled {
   gap: 8px;
   flex-wrap: wrap;
   margin: 0 0 12px;
+  align-items: center;
+}
+
+.scheduling-legend-label {
+  font-size: 12px;
+  font-weight: 1000;
+  letter-spacing: 0.3px;
+  color: rgba(11, 31, 51, 0.72);
+  margin-right: 2px;
 }
 
 .scheduling-export-controls {
@@ -513,7 +524,7 @@ button:disabled {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  margin: 0 0 10px;
+  margin: 0;
 }
 
 .scheduling-month-picker {
@@ -994,7 +1005,7 @@ button:disabled {
   }
 
   .scheduling-toolbar {
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     display: grid;
     gap: 8px;
   }
@@ -1016,6 +1027,7 @@ button:disabled {
   .scheduling-export-controls {
     align-items: stretch;
     justify-content: stretch;
+    width: 100%;
   }
 
   .scheduling-export-controls .btn {

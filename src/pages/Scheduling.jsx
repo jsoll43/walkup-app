@@ -1087,12 +1087,12 @@ export default function Scheduling() {
               Both desktop and mobile show the selected week with each day stacked as a compact row.
             </div>
           </div>
-        </div>
 
-        <div className="scheduling-export-controls">
-          <button className="btn" onClick={openPdfExportModal} disabled={pdfExporting}>
-            {pdfExporting ? "Preparing PDF..." : "Download Calendar View PDF"}
-          </button>
+          <div className="scheduling-export-controls">
+            <button className="btn" onClick={openPdfExportModal} disabled={pdfExporting}>
+              {pdfExporting ? "Preparing PDF..." : "Download Calendar View PDF"}
+            </button>
+          </div>
         </div>
 
         <div className="scheduling-toolbar-actions">
@@ -1115,6 +1115,7 @@ export default function Scheduling() {
         </div>
 
         <div className="scheduling-legend">
+          <div className="scheduling-legend-label">Sample Statuses:</div>
           <StatusPill status="approved" />
           <StatusPill status="pending" />
           <StatusPill status="conflict" />
