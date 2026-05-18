@@ -112,14 +112,7 @@ export const SCHEDULING_IMPORT_SAMPLE_CSV = [
   "2026-06-06,major,BGSL,Tournament Setup,08:00",
 ].join("\n");
 
-export function normalizeDateInput(value) {
-  const raw = String(value || "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return "";
-
-  const [yearText, monthText, dayText] = raw.split("-");
-  const year = Number(yearText);
-  const month = Number(monthText);
-  const day = Number(dayText);
+function validateAndFormatDateParts(year, month, day) {
   const candidate = new Date(Date.UTC(year, month - 1, day));
 
   if (
@@ -131,7 +124,44 @@ export function normalizeDateInput(value) {
     return "";
   }
 
-  return raw;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+export function normalizeDateInput(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [yearText, monthText, dayText] = raw.split("-");
+    return validateAndFormatDateParts(Number(yearText), Number(monthText), Number(dayText));
+  }
+
+  const dateOnly = raw.split(/\s+/)[0];
+  const slashOrDashMatch = dateOnly.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (slashOrDashMatch) {
+    const month = Number(slashOrDashMatch[1]);
+    const day = Number(slashOrDashMatch[2]);
+    let year = Number(slashOrDashMatch[3]);
+    if (year < 100) {
+      year += 2000;
+    }
+    return validateAndFormatDateParts(year, month, day);
+  }
+
+  if (/^\d{5,6}$/.test(dateOnly)) {
+    const serial = Number(dateOnly);
+    if (Number.isFinite(serial) && serial > 0) {
+      const excelEpoch = Date.UTC(1899, 11, 30);
+      const candidate = new Date(excelEpoch + serial * 24 * 60 * 60 * 1000);
+      return validateAndFormatDateParts(
+        candidate.getUTCFullYear(),
+        candidate.getUTCMonth() + 1,
+        candidate.getUTCDate()
+      );
+    }
+  }
+
+  return "";
 }
 
 export function normalizeTimeInput(value) {
