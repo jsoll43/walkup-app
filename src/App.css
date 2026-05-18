@@ -478,6 +478,7 @@ button:disabled {
   gap: 14px;
   align-items: flex-start;
   flex-wrap: wrap;
+  margin-bottom: 8px;
 }
 
 .scheduling-toolbar-copy {
@@ -503,7 +504,7 @@ button:disabled {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  margin: 14px 0 16px;
+  margin: 0 0 12px;
 }
 
 .scheduling-export-controls {
@@ -512,7 +513,7 @@ button:disabled {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  margin: 12px 0 16px;
+  margin: 0 0 10px;
 }
 
 .scheduling-month-picker {

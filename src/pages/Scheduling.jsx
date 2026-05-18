@@ -735,6 +735,10 @@ export default function Scheduling() {
     setBoardForm((current) => ({ ...current, [field]: value }));
   }
 
+  function toggleSelectedItem(item) {
+    setSelectedItemKey((current) => (current === item.uniqueKey ? "" : item.uniqueKey));
+  }
+
   function openConflictModal({ submitType, conflicts, title }) {
     setConflictModal({
       submitType,
@@ -1122,7 +1126,7 @@ export default function Scheduling() {
           weekDates={weekDates}
           calendarItems={weekItems}
           selectedItemKey={selectedItemKey}
-          onSelect={(item) => setSelectedItemKey(item.uniqueKey)}
+          onSelect={toggleSelectedItem}
           expandedCells={expandedCells}
           onToggleExpand={toggleExpandCell}
         />
@@ -1131,7 +1135,7 @@ export default function Scheduling() {
           weekDates={weekDates}
           calendarItems={calendarItems}
           selectedItemKey={selectedItemKey}
-          onSelect={(item) => setSelectedItemKey(item.uniqueKey)}
+          onSelect={toggleSelectedItem}
           expandedCells={expandedCells}
           onToggleExpand={toggleExpandCell}
         />
