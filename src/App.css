@@ -92,6 +92,9 @@ a {
 }
 
 .bgsl-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 9px 12px;
   border-radius: 12px;
   border: 1px solid var(--bgsl-border);
@@ -502,6 +505,20 @@ button:disabled {
   margin: 14px 0 16px;
 }
 
+.scheduling-export-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+}
+
+.scheduling-month-picker {
+  width: 180px;
+  min-width: 0;
+}
+
 .schedule-desktop-view,
 .schedule-mobile-view {
   border: 1px solid rgba(0, 0, 0, 0.12);
@@ -775,6 +792,23 @@ button:disabled {
   gap: 12px;
 }
 
+.scheduling-form-grid > * {
+  min-width: 0;
+}
+
+.scheduling-panel-card .input,
+.scheduling-panel-card select.input,
+.scheduling-panel-card input[type="date"].input,
+.scheduling-panel-card input[type="time"].input,
+.scheduling-panel-card input[type="month"].input,
+.scheduling-panel-card input[type="email"].input,
+.scheduling-panel-card input[type="text"].input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
 .scheduling-warning-card {
   margin-top: 12px;
   padding: 12px;
@@ -843,22 +877,31 @@ button:disabled {
 @media (max-width: 520px) {
   .bgsl-header-inner {
     align-items: flex-start;
+    gap: 10px;
   }
 
-  /* Put brand on first row, nav on the next row */
   .bgsl-brand {
     flex: 1 1 100%;
   }
 
   .bgsl-nav {
-    flex: 1 1 100%;
-    justify-content: flex-end;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
     margin-top: 8px;
+    gap: 8px;
   }
 
-  /* Cap title to two-ish lines without ellipsis */
+  .bgsl-link {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 8px;
+    text-align: center;
+  }
+
   .bgsl-title {
     max-width: 100%;
+    font-size: 14px;
   }
 
   .coach-row {
@@ -918,6 +961,14 @@ button:disabled {
     width: 100%;
   }
 
+  .scheduling-export-controls {
+    align-items: stretch;
+  }
+
+  .scheduling-month-picker {
+    width: 100%;
+  }
+
   .schedule-desktop-view {
     display: none;
   }
@@ -933,6 +984,14 @@ button:disabled {
   }
 
   .scheduling-panels {
+    grid-template-columns: 1fr;
+  }
+
+  .scheduling-panel-card {
+    overflow: hidden;
+  }
+
+  .scheduling-form-grid {
     grid-template-columns: 1fr;
   }
 

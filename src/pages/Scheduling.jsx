@@ -14,6 +14,7 @@ import {
   getTodayInEt,
   getWeekDates,
 } from "../scheduling/utils.js";
+import { downloadSchedulingMonthPdf } from "../scheduling/pdf.js";
 
 const SCHEDULING_KEY_STORAGE = "SCHEDULING_KEY";
 const SCHEDULING_ROLE_STORAGE = "SCHEDULING_ROLE";
@@ -258,6 +259,7 @@ function ReservationFormCard({
   includeLeagueOption,
   conflicts,
 }) {
+  const sortedTeams = [...teams].sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
   return (
     <div className="card scheduling-panel-card">
       <h2 style={{ marginTop: 0 }}>{title}</h2>
@@ -268,12 +270,12 @@ function ReservationFormCard({
           <label className="label">Team</label>
           <select className="input" value={form.team} onChange={(e) => onChange("team", e.target.value)}>
             <option value="">Select team</option>
-            {includeLeagueOption ? <option value="League / Board">League / Board</option> : null}
-            {teams.map((team) => (
+            {sortedTeams.map((team) => (
               <option key={team.slug} value={team.name}>
                 {team.name}
               </option>
             ))}
+            {includeLeagueOption ? <option value="League / Board">League / Board</option> : null}
           </select>
         </div>
 
@@ -563,6 +565,8 @@ export default function Scheduling() {
   const [actionKey, setActionKey] = useState("");
   const [selectedItemKey, setSelectedItemKey] = useState("");
   const [expandedCells, setExpandedCells] = useState({});
+  const [pdfMonth, setPdfMonth] = useState(today.slice(0, 7));
+  const [pdfExporting, setPdfExporting] = useState(false);
   const [boardNotificationEmail, setBoardNotificationEmail] = useState("");
   const [boardNotificationLoading, setBoardNotificationLoading] = useState(false);
   const [boardNotificationSaving, setBoardNotificationSaving] = useState(false);
@@ -622,6 +626,10 @@ export default function Scheduling() {
       setSelectedItemKey("");
     }
   }, [calendarItems, selectedItemKey]);
+
+  useEffect(() => {
+    setPdfMonth(String(selectedDate || "").slice(0, 7));
+  }, [selectedDate]);
 
   useEffect(() => {
     if (!isAuthed || authRole !== "board" || !authKey) return;
@@ -920,6 +928,23 @@ export default function Scheduling() {
     }
   }
 
+  function handleDownloadMonthPdf() {
+    setError("");
+    setSuccess("");
+    setPdfExporting(true);
+    try {
+      downloadSchedulingMonthPdf({
+        month: pdfMonth,
+        items: calendarItems,
+      });
+      setSuccess("Scheduling PDF downloaded.");
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setPdfExporting(false);
+    }
+  }
+
   if (!isAuthed) {
     return (
       <div className="page">
@@ -1052,6 +1077,22 @@ export default function Scheduling() {
               aria-label="Choose a date to jump to that week"
             />
           </div>
+        </div>
+
+        <div className="scheduling-export-controls">
+          <div>
+            <label className="label">PDF Export Month</label>
+            <input
+              className="input scheduling-month-picker"
+              type="month"
+              value={pdfMonth}
+              onChange={(e) => setPdfMonth(e.target.value)}
+              aria-label="Choose the month to export as a PDF"
+            />
+          </div>
+          <button className="btn" onClick={handleDownloadMonthPdf} disabled={pdfExporting}>
+            {pdfExporting ? "Preparing PDF..." : "Download PDF"}
+          </button>
         </div>
 
         <div className="scheduling-legend">

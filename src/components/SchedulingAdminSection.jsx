@@ -363,8 +363,8 @@ export default function SchedulingAdminSection({ isAuthed, adminHeaders, embedde
     <div className={embedded ? "" : "card"} style={embedded ? undefined : { marginBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <div>
-          <h2 style={{ margin: 0 }}>Scheduling Admin</h2>
-          <div style={{ marginTop: 6, opacity: 0.8 }}>
+          {embedded ? null : <h2 style={{ margin: 0 }}>Scheduling Admin</h2>}
+          <div style={{ marginTop: embedded ? 0 : 6, opacity: 0.8 }}>
             Manage the shared scheduling passwords for coaches and board members.
           </div>
         </div>

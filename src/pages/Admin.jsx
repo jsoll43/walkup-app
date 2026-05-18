@@ -874,7 +874,7 @@ export default function Admin() {
       ) : null}
 
       <AccordionSection
-        title="Team Management"
+        title="Walkup Song Team Management"
         subtitle="Create, rename, re-key, delete teams, and review authorization errors."
       >
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
