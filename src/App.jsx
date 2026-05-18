@@ -1,5 +1,5 @@
 // src/App.jsx
-import { useEffect, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { Routes, Route, Navigate, NavLink, useLocation } from "react-router-dom";
 
 import ParentLogin from "./pages/ParentLogin.jsx";
@@ -12,6 +12,7 @@ import { getParentKey, getTeamSlug } from "./auth/parentAuth";
 
 function TopNav() {
   const { pathname } = useLocation();
+  const [mobileHeaderHidden, setMobileHeaderHidden] = useState(false);
 
   // ✅ Consider BOTH routes as "Parent" for highlighting
   const isParent = pathname === "/parent" || pathname === "/parent-login";
@@ -21,14 +22,51 @@ function TopNav() {
 
   // ✅ If parent already selected team + key, go straight to /parent.
   // Otherwise, go to /parent-login (matches what you’re seeing in prod).
-  const parentTo = useMemo(() => {
-    const hasKey = Boolean((getParentKey() || "").trim());
-    const hasTeam = Boolean((getTeamSlug() || "").trim());
-    return hasKey && hasTeam ? "/parent" : "/parent-login";
-  }, [pathname]); // recompute when route changes (cheap + keeps it fresh)
+  const hasKey = Boolean((getParentKey() || "").trim());
+  const hasTeam = Boolean((getTeamSlug() || "").trim());
+  const parentTo = hasKey && hasTeam ? "/parent" : "/parent-login";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    let lastY = window.scrollY;
+
+    function handleScroll() {
+      const currentY = window.scrollY;
+      const isMobile = window.innerWidth <= 520;
+
+      if (!isMobile) {
+        setMobileHeaderHidden(false);
+        lastY = currentY;
+        return;
+      }
+
+      if (currentY <= 24) {
+        setMobileHeaderHidden(false);
+        lastY = currentY;
+        return;
+      }
+
+      const delta = currentY - lastY;
+      if (delta > 8) {
+        setMobileHeaderHidden(true);
+      } else if (delta < -8) {
+        setMobileHeaderHidden(false);
+      }
+
+      lastY = currentY;
+    }
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleScroll);
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleScroll);
+    };
+  }, [pathname]);
 
   return (
-    <header className="bgsl-header">
+    <header className={`bgsl-header ${mobileHeaderHidden ? "is-mobile-hidden" : ""}`}>
       <div className="bgsl-header-inner">
         <div className="bgsl-brand">
           <img className="bgsl-logo" src="/bgsl-logo.png" alt="BGSL logo" />

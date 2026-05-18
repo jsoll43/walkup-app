@@ -566,6 +566,7 @@ export default function Scheduling() {
   const [selectedItemKey, setSelectedItemKey] = useState("");
   const [expandedCells, setExpandedCells] = useState({});
   const [pdfMonth, setPdfMonth] = useState(today.slice(0, 7));
+  const [showPdfModal, setShowPdfModal] = useState(false);
   const [pdfExporting, setPdfExporting] = useState(false);
   const [boardNotificationEmail, setBoardNotificationEmail] = useState("");
   const [boardNotificationLoading, setBoardNotificationLoading] = useState(false);
@@ -736,6 +737,11 @@ export default function Scheduling() {
       ...current,
       [cellKey]: !current[cellKey],
     }));
+  }
+
+  function openPdfExportModal() {
+    setPdfMonth(String(selectedDate || today).slice(0, 7));
+    setShowPdfModal(true);
   }
 
   async function handleLogin() {
@@ -937,7 +943,8 @@ export default function Scheduling() {
         month: pdfMonth,
         items: calendarItems,
       });
-      setSuccess("Scheduling PDF downloaded.");
+      setShowPdfModal(false);
+      setSuccess("Calendar view PDF downloaded.");
     } catch (e) {
       setError(e?.message || String(e));
     } finally {
@@ -1080,18 +1087,8 @@ export default function Scheduling() {
         </div>
 
         <div className="scheduling-export-controls">
-          <div>
-            <label className="label">PDF Export Month</label>
-            <input
-              className="input scheduling-month-picker"
-              type="month"
-              value={pdfMonth}
-              onChange={(e) => setPdfMonth(e.target.value)}
-              aria-label="Choose the month to export as a PDF"
-            />
-          </div>
-          <button className="btn" onClick={handleDownloadMonthPdf} disabled={pdfExporting}>
-            {pdfExporting ? "Preparing PDF..." : "Download PDF"}
+          <button className="btn" onClick={openPdfExportModal} disabled={pdfExporting}>
+            {pdfExporting ? "Preparing PDF..." : "Download Calendar View PDF"}
           </button>
         </div>
 
@@ -1248,6 +1245,45 @@ export default function Scheduling() {
           ) : null}
         </div>
       </div>
+
+      {showPdfModal ? (
+        <div className="scheduling-modal-overlay" onClick={() => (pdfExporting ? null : setShowPdfModal(false))}>
+          <div
+            className="card scheduling-modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="scheduling-pdf-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="scheduling-pdf-modal-title" style={{ marginTop: 0, marginBottom: 8 }}>
+              Download Calendar View PDF
+            </h3>
+            <div style={{ opacity: 0.78, marginBottom: 14 }}>
+              Choose the month to export as a single-page calendar snapshot of the schedule.
+            </div>
+
+            <div>
+              <label className="label">Month</label>
+              <input
+                className="input scheduling-month-picker"
+                type="month"
+                value={pdfMonth}
+                onChange={(e) => setPdfMonth(e.target.value)}
+                aria-label="Choose the month to export as a calendar PDF"
+              />
+            </div>
+
+            <div className="scheduling-modal-actions">
+              <button className="btn-secondary" onClick={() => setShowPdfModal(false)} disabled={pdfExporting}>
+                Cancel
+              </button>
+              <button className="btn" onClick={handleDownloadMonthPdf} disabled={pdfExporting}>
+                {pdfExporting ? "Preparing PDF..." : "Download Calendar View PDF"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

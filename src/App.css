@@ -38,6 +38,7 @@ a {
   border-bottom: 1px solid var(--bgsl-border);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  transition: transform 180ms ease, opacity 180ms ease;
 }
 
 .bgsl-header-inner {
@@ -507,16 +508,39 @@ button:disabled {
 
 .scheduling-export-controls {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
+  justify-content: flex-end;
+  align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  margin: 0 0 16px;
+  margin: 12px 0 16px;
 }
 
 .scheduling-month-picker {
   width: 180px;
   min-width: 0;
+}
+
+.scheduling-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(1, 33, 68, 0.58);
+}
+
+.scheduling-modal-card {
+  width: min(100%, 420px);
+}
+
+.scheduling-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
 }
 
 .schedule-desktop-view,
@@ -875,6 +899,12 @@ button:disabled {
 
 /* Mobile */
 @media (max-width: 520px) {
+  .bgsl-header.is-mobile-hidden {
+    transform: translateY(calc(-100% - 8px));
+    opacity: 0.01;
+    pointer-events: none;
+  }
+
   .bgsl-header-inner {
     align-items: flex-start;
     gap: 10px;
@@ -963,9 +993,22 @@ button:disabled {
 
   .scheduling-export-controls {
     align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .scheduling-export-controls .btn {
+    width: 100%;
   }
 
   .scheduling-month-picker {
+    width: 100%;
+  }
+
+  .scheduling-modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .scheduling-modal-actions button {
     width: 100%;
   }
 
