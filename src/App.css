@@ -548,7 +548,9 @@ button:disabled {
 }
 
 .scheduling-modal-card {
-  width: min(100%, 420px);
+  width: min(420px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
 }
 
 .scheduling-modal-actions {
@@ -899,6 +901,10 @@ button:disabled {
 .scheduling-mobile-accordion-body {
   padding: 0 18px 18px;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .scheduling-mobile-accordion-body .scheduling-panel-card {
@@ -906,6 +912,10 @@ button:disabled {
   border: none;
   box-shadow: none;
   padding: 14px 0 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .scheduling-form-grid {
@@ -915,7 +925,10 @@ button:disabled {
 }
 
 .scheduling-form-grid > * {
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
+  box-sizing: border-box;
 }
 
 .scheduling-panel-card .input,
@@ -929,6 +942,54 @@ button:disabled {
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
+}
+
+.scheduling-modal-card > div,
+.scheduling-modal-card .input,
+.scheduling-modal-card select.input,
+.scheduling-modal-card input[type="month"].input,
+.scheduling-modal-card input[type="date"].input,
+.scheduling-modal-card input[type="time"].input,
+.scheduling-modal-card button {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.scheduling-panel-card input[type="date"].input,
+.scheduling-panel-card input[type="time"].input,
+.scheduling-panel-card input[type="month"].input,
+.scheduling-modal-card input[type="date"].input,
+.scheduling-modal-card input[type="time"].input,
+.scheduling-modal-card input[type="month"].input {
+  display: block;
+  inline-size: 100%;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  font-size: 16px;
+}
+
+.scheduling-panel-card input[type="date"].input::-webkit-date-and-time-value,
+.scheduling-panel-card input[type="time"].input::-webkit-date-and-time-value,
+.scheduling-panel-card input[type="month"].input::-webkit-date-and-time-value,
+.scheduling-modal-card input[type="date"].input::-webkit-date-and-time-value,
+.scheduling-modal-card input[type="time"].input::-webkit-date-and-time-value,
+.scheduling-modal-card input[type="month"].input::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+.scheduling-panel-card input[type="date"].input::-webkit-datetime-edit,
+.scheduling-panel-card input[type="time"].input::-webkit-datetime-edit,
+.scheduling-panel-card input[type="month"].input::-webkit-datetime-edit,
+.scheduling-modal-card input[type="date"].input::-webkit-datetime-edit,
+.scheduling-modal-card input[type="time"].input::-webkit-datetime-edit,
+.scheduling-modal-card input[type="month"].input::-webkit-datetime-edit {
+  padding: 0;
 }
 
 .scheduling-warning-card {
@@ -1109,6 +1170,13 @@ button:disabled {
     padding: 10px;
   }
 
+  .scheduling-mobile-accordion-summary {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
   .scheduling-toolbar {
     margin-bottom: 8px;
     display: flex;
@@ -1153,6 +1221,8 @@ button:disabled {
 
   .scheduling-month-picker {
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
 
   .scheduling-export-label-desktop {
@@ -1169,6 +1239,11 @@ button:disabled {
 
   .scheduling-modal-actions button {
     width: 100%;
+  }
+
+  .scheduling-modal-card {
+    width: min(420px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
   }
 
   .schedule-desktop-view {
