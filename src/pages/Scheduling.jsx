@@ -19,13 +19,13 @@ import { downloadSchedulingMonthPdf } from "../scheduling/pdf.js";
 const SCHEDULING_KEY_STORAGE = "SCHEDULING_KEY";
 const SCHEDULING_ROLE_STORAGE = "SCHEDULING_ROLE";
 const WEEKDAY_OPTIONS = [
-  { value: 1, label: "Monday", shortLabel: "Mon" },
-  { value: 2, label: "Tuesday", shortLabel: "Tue" },
-  { value: 3, label: "Wednesday", shortLabel: "Wed" },
-  { value: 4, label: "Thursday", shortLabel: "Thu" },
-  { value: 5, label: "Friday", shortLabel: "Fri" },
-  { value: 6, label: "Saturday", shortLabel: "Sat" },
-  { value: 7, label: "Sunday", shortLabel: "Sun" },
+  { value: 1, label: "Mondays", shortLabel: "Mon" },
+  { value: 2, label: "Tuesdays", shortLabel: "Tue" },
+  { value: 3, label: "Wednesdays", shortLabel: "Wed" },
+  { value: 4, label: "Thursdays", shortLabel: "Thu" },
+  { value: 5, label: "Fridays", shortLabel: "Fri" },
+  { value: 6, label: "Saturdays", shortLabel: "Sat" },
+  { value: 7, label: "Sundays", shortLabel: "Sun" },
 ];
 
 function getSavedSchedulingKey() {
@@ -1506,23 +1506,6 @@ export default function Scheduling() {
         />
       </div>
 
-      <BubbleSchedulingSection
-        role={authRole}
-        bubbleScheduling={bubbleScheduling}
-        draftEntries={bubbleEntriesDraft}
-        draftComments={bubbleCommentsDraft}
-        entryForm={bubbleEntryForm}
-        commentText={bubbleCommentText}
-        onEntryFormChange={updateBubbleEntryForm}
-        onAddEntry={addBubbleEntry}
-        onRemoveEntry={removeBubbleEntry}
-        onCommentTextChange={setBubbleCommentText}
-        onAddComment={addBubbleComment}
-        onRemoveComment={removeBubbleComment}
-        onSave={saveBubbleSchedule}
-        saving={actionKey === "bubble-save"}
-      />
-
       {selectedItem ? (
         <div className="scheduling-selected-mobile">
           <SelectedScheduleItemCard
@@ -1646,6 +1629,23 @@ export default function Scheduling() {
           ) : null}
         </div>
       </div>
+
+      <BubbleSchedulingSection
+        role={authRole}
+        bubbleScheduling={bubbleScheduling}
+        draftEntries={bubbleEntriesDraft}
+        draftComments={bubbleCommentsDraft}
+        entryForm={bubbleEntryForm}
+        commentText={bubbleCommentText}
+        onEntryFormChange={updateBubbleEntryForm}
+        onAddEntry={addBubbleEntry}
+        onRemoveEntry={removeBubbleEntry}
+        onCommentTextChange={setBubbleCommentText}
+        onAddComment={addBubbleComment}
+        onRemoveComment={removeBubbleComment}
+        onSave={saveBubbleSchedule}
+        saving={actionKey === "bubble-save"}
+      />
 
       {showPdfModal ? (
         <div className="scheduling-modal-overlay" onClick={() => (pdfExporting ? null : setShowPdfModal(false))}>
