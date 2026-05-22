@@ -1079,6 +1079,182 @@ button:disabled {
   background: rgba(255, 255, 255, 0.18);
 }
 
+.bubble-scheduling-card {
+  margin-bottom: 12px;
+}
+
+.bubble-editor {
+  margin-bottom: 14px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(16, 46, 79, 0.05);
+  border: 1px solid rgba(16, 46, 79, 0.1);
+}
+
+.bubble-entry-form {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.75fr) minmax(96px, 0.6fr) minmax(96px, 0.6fr) minmax(160px, 1fr) minmax(160px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.bubble-entry-form > * {
+  min-width: 0;
+}
+
+.bubble-entry-notes {
+  min-width: 0;
+}
+
+.bubble-entry-submit {
+  display: flex;
+  align-items: end;
+}
+
+.bubble-week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(16, 46, 79, 0.04);
+}
+
+.bubble-day-column {
+  min-width: 0;
+  min-height: 170px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.44);
+}
+
+.bubble-day-column + .bubble-day-column {
+  border-left: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.bubble-day-column.is-empty {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.bubble-day-heading {
+  margin: -10px -10px 10px;
+  padding: 10px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 1000;
+  text-transform: uppercase;
+  letter-spacing: 0.35px;
+  color: var(--bgsl-navy);
+  background: rgba(255, 255, 255, 0.82);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.bubble-day-short {
+  display: none;
+}
+
+.bubble-empty,
+.bubble-empty-comment {
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.68;
+}
+
+.bubble-schedule-block {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(16, 46, 79, 0.16);
+  background: white;
+  color: var(--bgsl-ink);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+
+.bubble-schedule-time {
+  font-size: 13px;
+  font-weight: 1000;
+  color: var(--bgsl-navy);
+}
+
+.bubble-schedule-title {
+  font-size: 14px;
+  font-weight: 1000;
+  line-height: 1.16;
+}
+
+.bubble-schedule-notes {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.72;
+  line-height: 1.25;
+}
+
+.bubble-remove-button,
+.bubble-comment-meta button {
+  justify-self: start;
+  margin-top: 4px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(185, 28, 28, 0.22);
+  background: #fff1f2;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 1000;
+}
+
+.bubble-comments {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.bubble-comments-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.bubble-comment-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 12px;
+}
+
+.bubble-comment-textarea {
+  min-height: 78px;
+  resize: vertical;
+}
+
+.bubble-comment-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.bubble-comment-item {
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(16, 46, 79, 0.05);
+  border: 1px solid rgba(16, 46, 79, 0.1);
+  font-weight: 700;
+}
+
+.bubble-comment-meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.72;
+}
+
 /* Mobile */
 @media (max-width: 520px) {
   .bgsl-header.is-mobile-hidden {
@@ -1358,6 +1534,46 @@ button:disabled {
     font-size: 11px;
     padding: 5px 8px;
     width: auto;
+  }
+
+  .bubble-entry-form,
+  .bubble-comment-form {
+    grid-template-columns: 1fr;
+  }
+
+  .bubble-entry-submit,
+  .bubble-entry-submit .btn-secondary,
+  .bubble-comment-form .btn-secondary {
+    width: 100%;
+  }
+
+  .bubble-week-grid {
+    grid-template-columns: 1fr;
+    border-radius: 14px;
+  }
+
+  .bubble-day-column {
+    min-height: 0;
+  }
+
+  .bubble-day-column + .bubble-day-column {
+    border-left: none;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+  }
+
+  .bubble-day-full {
+    display: inline;
+  }
+
+  .bubble-day-short {
+    display: none;
+  }
+
+  .bubble-comment-textarea {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .scheduling-form-grid,

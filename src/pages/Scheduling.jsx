@@ -18,6 +18,15 @@ import { downloadSchedulingMonthPdf } from "../scheduling/pdf.js";
 
 const SCHEDULING_KEY_STORAGE = "SCHEDULING_KEY";
 const SCHEDULING_ROLE_STORAGE = "SCHEDULING_ROLE";
+const WEEKDAY_OPTIONS = [
+  { value: 1, label: "Monday", shortLabel: "Mon" },
+  { value: 2, label: "Tuesday", shortLabel: "Tue" },
+  { value: 3, label: "Wednesday", shortLabel: "Wed" },
+  { value: 4, label: "Thursday", shortLabel: "Thu" },
+  { value: 5, label: "Friday", shortLabel: "Fri" },
+  { value: 6, label: "Saturday", shortLabel: "Sat" },
+  { value: 7, label: "Sunday", shortLabel: "Sun" },
+];
 
 function getSavedSchedulingKey() {
   return sessionStorage.getItem(SCHEDULING_KEY_STORAGE) || "";
@@ -447,6 +456,154 @@ function BoardNotificationCard({
   );
 }
 
+function BubbleSchedulingSection({
+  role,
+  bubbleScheduling,
+  draftEntries,
+  draftComments,
+  entryForm,
+  commentText,
+  onEntryFormChange,
+  onAddEntry,
+  onRemoveEntry,
+  onCommentTextChange,
+  onAddComment,
+  onRemoveComment,
+  onSave,
+  saving,
+}) {
+  const isBoard = role === "board";
+  const entries = isBoard ? draftEntries : bubbleScheduling.entries || [];
+  const comments = isBoard ? draftComments : bubbleScheduling.comments || [];
+
+  return (
+    <div className="card scheduling-calendar-card bubble-scheduling-card">
+      <div className="scheduling-toolbar">
+        <div className="scheduling-toolbar-copy">
+          <h2 style={{ margin: 0 }}>Bubble Scheduling</h2>
+          <div className="scheduling-toolbar-subtitle" style={{ marginTop: 6, opacity: 0.78 }}>
+            Static weekly bubble calendar. Coaches can view it, and board members can update it when the standing schedule changes.
+          </div>
+        </div>
+        {isBoard ? (
+          <button className="btn" onClick={onSave} disabled={saving}>
+            {saving ? "Saving..." : "Save Bubble Schedule"}
+          </button>
+        ) : null}
+      </div>
+
+      {isBoard ? (
+        <div className="bubble-editor">
+          <div className="bubble-entry-form">
+            <div>
+              <label className="label">Day</label>
+              <select className="input" value={entryForm.dayOfWeek} onChange={(e) => onEntryFormChange("dayOfWeek", Number(e.target.value))}>
+                {WEEKDAY_OPTIONS.map((day) => (
+                  <option key={day.value} value={day.value}>
+                    {day.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Start</label>
+              <input className="input" type="time" value={entryForm.startTime} onChange={(e) => onEntryFormChange("startTime", e.target.value)} />
+            </div>
+            <div>
+              <label className="label">End</label>
+              <input className="input" type="time" value={entryForm.endTime} onChange={(e) => onEntryFormChange("endTime", e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Title</label>
+              <input className="input" value={entryForm.title} onChange={(e) => onEntryFormChange("title", e.target.value)} placeholder="12U practice" />
+            </div>
+            <div className="bubble-entry-notes">
+              <label className="label">Notes</label>
+              <input className="input" value={entryForm.notes} onChange={(e) => onEntryFormChange("notes", e.target.value)} placeholder="Optional" />
+            </div>
+            <div className="bubble-entry-submit">
+              <button className="btn-secondary" type="button" onClick={onAddEntry}>
+                Add Slot
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="bubble-week-grid">
+        {WEEKDAY_OPTIONS.map((day) => {
+          const dayEntries = entries.filter((entry) => Number(entry.dayOfWeek) === day.value);
+          return (
+            <div key={day.value} className={`bubble-day-column ${dayEntries.length === 0 ? "is-empty" : ""}`}>
+              <div className="bubble-day-heading">
+                <span className="bubble-day-full">{day.label}</span>
+                <span className="bubble-day-short">{day.shortLabel}</span>
+              </div>
+              {dayEntries.length === 0 ? (
+                <div className="bubble-empty">No standing bubble time.</div>
+              ) : (
+                dayEntries.map((entry) => (
+                  <div key={entry.id} className="bubble-schedule-block">
+                    <div className="bubble-schedule-time">{formatTimeRange(entry.startTime, entry.endTime)}</div>
+                    <div className="bubble-schedule-title">{entry.title}</div>
+                    {entry.notes ? <div className="bubble-schedule-notes">{entry.notes}</div> : null}
+                    {isBoard ? (
+                      <button className="bubble-remove-button" type="button" onClick={() => onRemoveEntry(entry.id)}>
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
+                ))
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="bubble-comments">
+        <div className="bubble-comments-heading">
+          <h3 style={{ margin: 0 }}>Bubble Comments</h3>
+          <div style={{ fontSize: 13, opacity: 0.72 }}>One-off township use, maintenance, or special bubble notes.</div>
+        </div>
+
+        {isBoard ? (
+          <div className="bubble-comment-form">
+            <textarea
+              className="input bubble-comment-textarea"
+              value={commentText}
+              onChange={(e) => onCommentTextChange(e.target.value)}
+              placeholder="bubble used for Barrington fun day on 5/2-5/3"
+            />
+            <button className="btn-secondary" type="button" onClick={onAddComment}>
+              Add Comment
+            </button>
+          </div>
+        ) : null}
+
+        {comments.length === 0 ? (
+          <div className="bubble-empty-comment">No bubble comments have been posted.</div>
+        ) : (
+          <div className="bubble-comment-list">
+            {comments.map((comment) => (
+              <div key={comment.id} className="bubble-comment-item">
+                <div>{comment.text}</div>
+                <div className="bubble-comment-meta">
+                  {comment.createdAt ? `Added ${formatET(comment.createdAt)}` : "Bubble note"}
+                  {isBoard ? (
+                    <button type="button" onClick={() => onRemoveComment(comment.id)}>
+                      Remove
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function BoardActionQueueCard({ pendingRequests, actionKey, onReviewRequest, hideTitle = false }) {
   return (
     <div className="card scheduling-panel-card">
@@ -637,6 +794,11 @@ export default function Scheduling() {
     reservations: [],
     requests: [],
     pendingRequests: [],
+    bubbleScheduling: {
+      entries: [],
+      comments: [],
+      updatedAt: "",
+    },
     summary: {
       approvedReservations: 0,
       pendingAddRequests: 0,
@@ -658,8 +820,18 @@ export default function Scheduling() {
     date: today,
     startTime: "17:00",
   });
+  const [bubbleEntriesDraft, setBubbleEntriesDraft] = useState([]);
+  const [bubbleCommentsDraft, setBubbleCommentsDraft] = useState([]);
+  const [bubbleEntryForm, setBubbleEntryForm] = useState({
+    dayOfWeek: 1,
+    title: "",
+    startTime: "17:00",
+    endTime: "18:00",
+    notes: "",
+  });
+  const [bubbleCommentText, setBubbleCommentText] = useState("");
 
-  const { teams, reservations, requests, pendingRequests, summary } = scheduleData;
+  const { teams, reservations, requests, pendingRequests, summary, bubbleScheduling } = scheduleData;
   const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
   const calendarItems = useMemo(() => buildCalendarItems(reservations, requests), [reservations, requests]);
   const weekItems = useMemo(
@@ -678,6 +850,11 @@ export default function Scheduling() {
       setSelectedItemKey("");
     }
   }, [calendarItems, selectedItemKey]);
+
+  useEffect(() => {
+    setBubbleEntriesDraft(Array.isArray(bubbleScheduling?.entries) ? bubbleScheduling.entries : []);
+    setBubbleCommentsDraft(Array.isArray(bubbleScheduling?.comments) ? bubbleScheduling.comments : []);
+  }, [bubbleScheduling]);
 
   useEffect(() => {
     setPdfMonth(String(selectedDate || "").slice(0, 7));
@@ -739,6 +916,11 @@ export default function Scheduling() {
         reservations: Array.isArray(data.reservations) ? data.reservations : [],
         requests: Array.isArray(data.requests) ? data.requests : [],
         pendingRequests: Array.isArray(data.pendingRequests) ? data.pendingRequests : [],
+        bubbleScheduling: {
+          entries: Array.isArray(data?.bubbleScheduling?.entries) ? data.bubbleScheduling.entries : [],
+          comments: Array.isArray(data?.bubbleScheduling?.comments) ? data.bubbleScheduling.comments : [],
+          updatedAt: String(data?.bubbleScheduling?.updatedAt || ""),
+        },
         summary: data.summary || {
           approvedReservations: 0,
           pendingAddRequests: 0,
@@ -810,6 +992,107 @@ export default function Scheduling() {
 
   function updateBoardForm(field, value) {
     setBoardForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateBubbleEntryForm(field, value) {
+    setBubbleEntryForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function sortBubbleEntries(entries) {
+    return [...entries].sort((a, b) => {
+      if (Number(a.dayOfWeek) !== Number(b.dayOfWeek)) return Number(a.dayOfWeek) - Number(b.dayOfWeek);
+      const startCompare = String(a.startTime || "").localeCompare(String(b.startTime || ""));
+      if (startCompare !== 0) return startCompare;
+      return String(a.title || "").localeCompare(String(b.title || ""));
+    });
+  }
+
+  function addBubbleEntry() {
+    const title = bubbleEntryForm.title.trim();
+    if (!title) {
+      setError("Enter a title for the bubble schedule slot.");
+      return;
+    }
+    if (!bubbleEntryForm.startTime || !bubbleEntryForm.endTime || bubbleEntryForm.endTime <= bubbleEntryForm.startTime) {
+      setError("Choose a valid bubble start and end time.");
+      return;
+    }
+
+    setError("");
+    const id = `bubble_${crypto?.randomUUID ? crypto.randomUUID() : Date.now()}`;
+    setBubbleEntriesDraft((current) =>
+      sortBubbleEntries([
+        ...current,
+        {
+          id,
+          dayOfWeek: Number(bubbleEntryForm.dayOfWeek),
+          title,
+          startTime: bubbleEntryForm.startTime,
+          endTime: bubbleEntryForm.endTime,
+          notes: bubbleEntryForm.notes.trim(),
+        },
+      ])
+    );
+    setBubbleEntryForm((current) => ({ ...current, title: "", notes: "" }));
+  }
+
+  function removeBubbleEntry(entryId) {
+    setBubbleEntriesDraft((current) => current.filter((entry) => entry.id !== entryId));
+  }
+
+  function addBubbleComment() {
+    const text = bubbleCommentText.trim();
+    if (!text) {
+      setError("Enter a bubble comment before adding it.");
+      return;
+    }
+
+    setError("");
+    const id = `bubble_comment_${crypto?.randomUUID ? crypto.randomUUID() : Date.now()}`;
+    setBubbleCommentsDraft((current) => [{ id, text, createdAt: new Date().toISOString() }, ...current]);
+    setBubbleCommentText("");
+  }
+
+  function removeBubbleComment(commentId) {
+    setBubbleCommentsDraft((current) => current.filter((comment) => comment.id !== commentId));
+  }
+
+  async function saveBubbleSchedule() {
+    setActionKey("bubble-save");
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/scheduling/bubble", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...schedulingHeaders(authRole, authKey),
+        },
+        body: JSON.stringify({
+          entries: bubbleEntriesDraft,
+          comments: bubbleCommentsDraft,
+        }),
+      });
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || "Failed to save the bubble schedule.");
+      }
+
+      const nextBubbleScheduling = {
+        entries: Array.isArray(data?.bubbleScheduling?.entries) ? data.bubbleScheduling.entries : [],
+        comments: Array.isArray(data?.bubbleScheduling?.comments) ? data.bubbleScheduling.comments : [],
+        updatedAt: String(data?.bubbleScheduling?.updatedAt || ""),
+      };
+      setScheduleData((current) => ({
+        ...current,
+        bubbleScheduling: nextBubbleScheduling,
+      }));
+      setSuccess("Bubble schedule saved.");
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setActionKey("");
+    }
   }
 
   function toggleSelectedItem(item) {
@@ -1222,6 +1505,23 @@ export default function Scheduling() {
           onToggleExpand={toggleExpandCell}
         />
       </div>
+
+      <BubbleSchedulingSection
+        role={authRole}
+        bubbleScheduling={bubbleScheduling}
+        draftEntries={bubbleEntriesDraft}
+        draftComments={bubbleCommentsDraft}
+        entryForm={bubbleEntryForm}
+        commentText={bubbleCommentText}
+        onEntryFormChange={updateBubbleEntryForm}
+        onAddEntry={addBubbleEntry}
+        onRemoveEntry={removeBubbleEntry}
+        onCommentTextChange={setBubbleCommentText}
+        onAddComment={addBubbleComment}
+        onRemoveComment={removeBubbleComment}
+        onSave={saveBubbleSchedule}
+        saving={actionKey === "bubble-save"}
+      />
 
       {selectedItem ? (
         <div className="scheduling-selected-mobile">

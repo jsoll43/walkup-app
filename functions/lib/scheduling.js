@@ -105,6 +105,70 @@ export function reservationTypeLabel(type) {
   return RESERVATION_TYPE_LABELS[normalizeReservationType(type)] || "Other";
 }
 
+function parseJsonArray(value) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(String(value));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeBubbleDay(value) {
+  const day = Number(value);
+  if (!Number.isInteger(day) || day < 1 || day > 7) return 0;
+  return day;
+}
+
+function cleanSingleLine(value, maxLength = 120) {
+  return String(value || "").trim().replace(/\s+/g, " ").slice(0, maxLength);
+}
+
+function normalizeBubbleEntry(entry) {
+  const dayOfWeek = normalizeBubbleDay(entry?.dayOfWeek ?? entry?.day_of_week);
+  const startTime = normalizeTimeInput(entry?.startTime || entry?.start_time);
+  const endTime = normalizeTimeInput(entry?.endTime || entry?.end_time);
+  const title = cleanSingleLine(entry?.title || entry?.team || entry?.name, 120);
+  const notes = cleanSingleLine(entry?.notes, 180);
+
+  if (!dayOfWeek || !title || !startTime || !endTime) return null;
+  if (timeToMinutes(endTime) <= timeToMinutes(startTime)) return null;
+
+  return {
+    id: cleanSingleLine(entry?.id, 80) || `bubble_${crypto.randomUUID()}`,
+    dayOfWeek,
+    title,
+    startTime,
+    endTime,
+    notes,
+  };
+}
+
+function normalizeBubbleComment(comment) {
+  const text = String(comment?.text || comment || "").trim().replace(/\s+/g, " ").slice(0, 500);
+  if (!text) return null;
+
+  return {
+    id: cleanSingleLine(comment?.id, 80) || `bubble_comment_${crypto.randomUUID()}`,
+    text,
+    createdAt: String(comment?.createdAt || comment?.created_at || nowIso()),
+  };
+}
+
+function sortBubbleEntries(entries) {
+  return [...entries].sort((a, b) => {
+    if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
+    const startCompare = String(a.startTime || "").localeCompare(String(b.startTime || ""));
+    if (startCompare !== 0) return startCompare;
+    return String(a.title || "").localeCompare(String(b.title || ""));
+  });
+}
+
+function sortBubbleComments(comments) {
+  return [...comments].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+}
+
 export const SCHEDULING_IMPORT_SAMPLE_CSV = [
   "date,field,team,title,startTime",
   "2026-06-01,major,10U Blue,10U Blue Practice,17:00",
@@ -725,6 +789,8 @@ export async function ensureSchedulingTables(env) {
   }
 
   await ensureColumn(env, "scheduling_settings", "board_notification_email", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(env, "scheduling_settings", "bubble_schedule_json", "TEXT NOT NULL DEFAULT '[]'");
+  await ensureColumn(env, "scheduling_settings", "bubble_comments_json", "TEXT NOT NULL DEFAULT '[]'");
 }
 
 export async function getSchedulingSettings(env) {
@@ -769,6 +835,53 @@ export async function getSchedulingNotificationSettings(env) {
     updatedAt: row?.updated_at || "",
     mailgunConfigured: !!env?.MAILGUN_API_KEY && !!env?.MAILGUN_DOMAIN && !!env?.MAILGUN_FROM,
   };
+}
+
+export async function getBubbleScheduling(env) {
+  await ensureSchedulingTables(env);
+
+  const row = await first(
+    env,
+    `SELECT bubble_schedule_json, bubble_comments_json, updated_at
+     FROM scheduling_settings
+     WHERE id = 'singleton'`
+  );
+
+  const entries = parseJsonArray(row?.bubble_schedule_json)
+    .map(normalizeBubbleEntry)
+    .filter(Boolean);
+  const comments = parseJsonArray(row?.bubble_comments_json)
+    .map(normalizeBubbleComment)
+    .filter(Boolean);
+
+  return {
+    entries: sortBubbleEntries(entries),
+    comments: sortBubbleComments(comments),
+    updatedAt: row?.updated_at || "",
+  };
+}
+
+export async function saveBubbleScheduling(env, payload) {
+  await ensureSchedulingTables(env);
+
+  const rawEntries = Array.isArray(payload?.entries) ? payload.entries : [];
+  const rawComments = Array.isArray(payload?.comments) ? payload.comments : [];
+  const entries = rawEntries.map(normalizeBubbleEntry).filter(Boolean).slice(0, 80);
+  const comments = rawComments.map(normalizeBubbleComment).filter(Boolean).slice(0, 40);
+  const updatedAt = nowIso();
+
+  await run(
+    env,
+    `INSERT INTO scheduling_settings (id, bubble_schedule_json, bubble_comments_json, updated_at)
+     VALUES ('singleton', ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       bubble_schedule_json = excluded.bubble_schedule_json,
+       bubble_comments_json = excluded.bubble_comments_json,
+       updated_at = excluded.updated_at`,
+    [JSON.stringify(sortBubbleEntries(entries)), JSON.stringify(sortBubbleComments(comments)), updatedAt]
+  );
+
+  return getBubbleScheduling(env);
 }
 
 export async function listSchedulingTeams(env) {
@@ -1206,7 +1319,7 @@ export async function getPendingRemovalRequestForReservation(env, reservationId)
 async function getRawSchedulingRows(env) {
   await ensureSchedulingTables(env);
 
-  const [rawReservations, rawRequests, teams] = await Promise.all([
+  const [rawReservations, rawRequests, teams, bubbleScheduling] = await Promise.all([
     all(
       env,
       `SELECT id, field, team, title, reservation_type, date, start_time, end_time, status, notes, created_by_role, created_at, updated_at
@@ -1223,14 +1336,18 @@ async function getRawSchedulingRows(env) {
        FROM scheduling_teams
        ORDER BY name ASC`
     ),
+    getBubbleScheduling(env),
   ]);
 
-  return { rawReservations, rawRequests, teams };
+  return { rawReservations, rawRequests, teams, bubbleScheduling };
 }
 
 export async function loadSchedulingState(env) {
   const rows = await getRawSchedulingRows(env);
-  return buildSchedulingStateFromRows(rows.rawReservations, rows.rawRequests, rows.teams);
+  return {
+    ...buildSchedulingStateFromRows(rows.rawReservations, rows.rawRequests, rows.teams),
+    bubbleScheduling: rows.bubbleScheduling,
+  };
 }
 
 export async function recalculateSchedulingRequestConflicts(env) {
