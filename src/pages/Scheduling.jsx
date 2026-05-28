@@ -471,6 +471,8 @@ function BubbleSchedulingSection({
   onRemoveComment,
   onSave,
   saving,
+  expanded,
+  onToggleExpanded,
 }) {
   const isBoard = role === "board";
   const entries = isBoard ? draftEntries : bubbleScheduling.entries || [];
@@ -480,18 +482,25 @@ function BubbleSchedulingSection({
     <div className="card scheduling-calendar-card bubble-scheduling-card">
       <div className="scheduling-toolbar">
         <div className="scheduling-toolbar-copy">
-          <h2 style={{ margin: 0 }}>Bubble Scheduling</h2>
+          <h2 style={{ margin: 0 }}>Bubble Schedule</h2>
           <div className="scheduling-toolbar-subtitle" style={{ marginTop: 6, opacity: 0.78 }}>
-            Static weekly bubble calendar. Coaches can view it, and board members can update it when the standing schedule changes.
+            Standing bubble times and bubble notes are kept below the main field scheduling tools.
           </div>
         </div>
-        {isBoard ? (
+        <div className="bubble-schedule-actions">
+          <button className={expanded ? "btn-secondary" : "btn"} type="button" onClick={onToggleExpanded}>
+            {expanded ? "Hide Bubble Schedule" : "Show Bubble Schedule"}
+          </button>
+          {isBoard && expanded ? (
           <button className="btn" onClick={onSave} disabled={saving}>
             {saving ? "Saving..." : "Save Bubble Schedule"}
           </button>
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
+      {expanded ? (
+        <>
       {isBoard ? (
         <div className="bubble-editor">
           <div className="bubble-entry-form">
@@ -600,6 +609,8 @@ function BubbleSchedulingSection({
           </div>
         )}
       </div>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -1631,36 +1642,24 @@ export default function Scheduling() {
         </div>
       </div>
 
-      <div className="card bubble-schedule-toggle-card">
-        <div>
-          <h2 style={{ margin: 0 }}>Bubble Schedule</h2>
-          <div style={{ marginTop: 6, opacity: 0.78 }}>
-            Standing bubble times and bubble notes are kept below the main field scheduling tools.
-          </div>
-        </div>
-        <button className="btn" type="button" onClick={() => setShowBubbleSchedule((value) => !value)}>
-          {showBubbleSchedule ? "Hide Bubble Schedule" : "Show Bubble Schedule"}
-        </button>
-      </div>
-
-      {showBubbleSchedule ? (
-        <BubbleSchedulingSection
-          role={authRole}
-          bubbleScheduling={bubbleScheduling}
-          draftEntries={bubbleEntriesDraft}
-          draftComments={bubbleCommentsDraft}
-          entryForm={bubbleEntryForm}
-          commentText={bubbleCommentText}
-          onEntryFormChange={updateBubbleEntryForm}
-          onAddEntry={addBubbleEntry}
-          onRemoveEntry={removeBubbleEntry}
-          onCommentTextChange={setBubbleCommentText}
-          onAddComment={addBubbleComment}
-          onRemoveComment={removeBubbleComment}
-          onSave={saveBubbleSchedule}
-          saving={actionKey === "bubble-save"}
-        />
-      ) : null}
+      <BubbleSchedulingSection
+        role={authRole}
+        bubbleScheduling={bubbleScheduling}
+        draftEntries={bubbleEntriesDraft}
+        draftComments={bubbleCommentsDraft}
+        entryForm={bubbleEntryForm}
+        commentText={bubbleCommentText}
+        onEntryFormChange={updateBubbleEntryForm}
+        onAddEntry={addBubbleEntry}
+        onRemoveEntry={removeBubbleEntry}
+        onCommentTextChange={setBubbleCommentText}
+        onAddComment={addBubbleComment}
+        onRemoveComment={removeBubbleComment}
+        onSave={saveBubbleSchedule}
+        saving={actionKey === "bubble-save"}
+        expanded={showBubbleSchedule}
+        onToggleExpanded={() => setShowBubbleSchedule((value) => !value)}
+      />
 
       {showPdfModal ? (
         <div className="scheduling-modal-overlay" onClick={() => (pdfExporting ? null : setShowPdfModal(false))}>

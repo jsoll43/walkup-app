@@ -1079,19 +1079,17 @@ button:disabled {
   background: rgba(255, 255, 255, 0.18);
 }
 
-.bubble-schedule-toggle-card {
+.bubble-schedule-actions {
   display: flex;
-  justify-content: space-between;
-  gap: 14px;
+  justify-content: flex-end;
+  gap: 10px;
   align-items: center;
-  margin: 12px 0;
-  background: #ffffff;
-  color: var(--bgsl-ink);
-  border: 1px solid rgba(16, 46, 79, 0.16);
+  flex-wrap: wrap;
 }
 
-.bubble-schedule-toggle-card .btn {
-  flex: 0 0 auto;
+.bubble-schedule-actions .btn,
+.bubble-schedule-actions .btn-secondary {
+  white-space: nowrap;
 }
 
 .bubble-scheduling-card {
@@ -1503,12 +1501,9 @@ button:disabled {
     display: none;
   }
 
-  .bubble-schedule-toggle-card {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .bubble-schedule-toggle-card .btn {
+  .bubble-schedule-actions,
+  .bubble-schedule-actions .btn,
+  .bubble-schedule-actions .btn-secondary {
     width: 100%;
   }
 
