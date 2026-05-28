@@ -1631,6 +1631,18 @@ export default function Scheduling() {
         </div>
       </div>
 
+      <div className="card bubble-schedule-toggle-card">
+        <div>
+          <h2 style={{ margin: 0 }}>Bubble Schedule</h2>
+          <div style={{ marginTop: 6, opacity: 0.78 }}>
+            Standing bubble times and bubble notes are kept below the main field scheduling tools.
+          </div>
+        </div>
+        <button className="btn" type="button" onClick={() => setShowBubbleSchedule((value) => !value)}>
+          {showBubbleSchedule ? "Hide Bubble Schedule" : "Show Bubble Schedule"}
+        </button>
+      </div>
+
       {showBubbleSchedule ? (
         <BubbleSchedulingSection
           role={authRole}
@@ -1648,11 +1660,7 @@ export default function Scheduling() {
           onSave={saveBubbleSchedule}
           saving={actionKey === "bubble-save"}
         />
-      ) : (
-        <button className="btn-secondary" type="button" onClick={() => setShowBubbleSchedule(true)}>
-          Show Bubble Schedule
-        </button>
-      )}
+      ) : null}
 
       {showPdfModal ? (
         <div className="scheduling-modal-overlay" onClick={() => (pdfExporting ? null : setShowPdfModal(false))}>

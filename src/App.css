@@ -1079,16 +1079,34 @@ button:disabled {
   background: rgba(255, 255, 255, 0.18);
 }
 
+.bubble-schedule-toggle-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  margin: 12px 0;
+  background: #ffffff;
+  color: var(--bgsl-ink);
+  border: 1px solid rgba(16, 46, 79, 0.16);
+}
+
+.bubble-schedule-toggle-card .btn {
+  flex: 0 0 auto;
+}
+
 .bubble-scheduling-card {
   margin-bottom: 12px;
+  background: #ffffff;
+  color: var(--bgsl-ink);
+  border-color: rgba(16, 46, 79, 0.16);
 }
 
 .bubble-editor {
   margin-bottom: 14px;
   padding: 12px;
   border-radius: 14px;
-  background: rgba(16, 46, 79, 0.05);
-  border: 1px solid rgba(16, 46, 79, 0.1);
+  background: #f8fafc;
+  border: 1px solid rgba(16, 46, 79, 0.14);
 }
 
 .bubble-entry-form {
@@ -1114,25 +1132,25 @@ button:disabled {
 .bubble-week-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(16, 46, 79, 0.18);
   border-radius: 16px;
   overflow: hidden;
-  background: rgba(16, 46, 79, 0.04);
+  background: #eef4f8;
 }
 
 .bubble-day-column {
   min-width: 0;
   min-height: 170px;
   padding: 10px;
-  background: rgba(255, 255, 255, 0.44);
+  background: #f8fafc;
 }
 
 .bubble-day-column + .bubble-day-column {
-  border-left: 1px solid rgba(0, 0, 0, 0.08);
+  border-left: 1px solid rgba(16, 46, 79, 0.14);
 }
 
 .bubble-day-column.is-empty {
-  background: rgba(255, 255, 255, 0.3);
+  background: #eef4f8;
 }
 
 .bubble-day-heading {
@@ -1144,8 +1162,8 @@ button:disabled {
   text-transform: uppercase;
   letter-spacing: 0.35px;
   color: var(--bgsl-navy);
-  background: rgba(255, 255, 255, 0.82);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: #ffffff;
+  border-bottom: 1px solid rgba(16, 46, 79, 0.14);
 }
 
 .bubble-day-short {
@@ -1156,7 +1174,7 @@ button:disabled {
 .bubble-empty-comment {
   font-size: 13px;
   font-weight: 700;
-  opacity: 0.68;
+  color: rgba(11, 31, 51, 0.72);
 }
 
 .bubble-schedule-block {
@@ -1206,7 +1224,7 @@ button:disabled {
 .bubble-comments {
   margin-top: 14px;
   padding-top: 14px;
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  border-top: 1px solid rgba(16, 46, 79, 0.14);
 }
 
 .bubble-comments-heading {
@@ -1410,7 +1428,8 @@ button:disabled {
     flex: 0 0 auto;
   }
 
-  .scheduling-export-controls .btn {
+  .scheduling-export-controls .btn,
+  .scheduling-export-controls .btn-secondary {
     width: auto;
     max-width: 100%;
     white-space: nowrap;
@@ -1482,6 +1501,15 @@ button:disabled {
 
   .scheduling-panels.is-board {
     display: none;
+  }
+
+  .bubble-schedule-toggle-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .bubble-schedule-toggle-card .btn {
+    width: 100%;
   }
 
   .scheduling-panel-card {
