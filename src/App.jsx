@@ -55,7 +55,7 @@ function TopNav() {
       <div className="bgsl-header-inner">
         <div className="bgsl-brand">
           <img className="bgsl-logo" src="/bgsl-logo.png" alt="BGSL logo" />
-          <div className="bgsl-title">Barrington Girls Softball Walk-up App</div>
+          <div className="bgsl-title">Barrington Girls Softball</div>
         </div>
 
         <nav className="bgsl-nav">
@@ -94,7 +94,7 @@ function TopNav() {
 
 export default function App() {
   useEffect(() => {
-    document.title = "Barrington Girls Softball Walk-up App";
+    document.title = "BGSL";
   }, []);
 
   return (

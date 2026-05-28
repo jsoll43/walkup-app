@@ -830,6 +830,7 @@ export default function Scheduling() {
     notes: "",
   });
   const [bubbleCommentText, setBubbleCommentText] = useState("");
+  const [showBubbleSchedule, setShowBubbleSchedule] = useState(false);
 
   const { teams, reservations, requests, pendingRequests, summary, bubbleScheduling } = scheduleData;
   const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
@@ -1630,22 +1631,28 @@ export default function Scheduling() {
         </div>
       </div>
 
-      <BubbleSchedulingSection
-        role={authRole}
-        bubbleScheduling={bubbleScheduling}
-        draftEntries={bubbleEntriesDraft}
-        draftComments={bubbleCommentsDraft}
-        entryForm={bubbleEntryForm}
-        commentText={bubbleCommentText}
-        onEntryFormChange={updateBubbleEntryForm}
-        onAddEntry={addBubbleEntry}
-        onRemoveEntry={removeBubbleEntry}
-        onCommentTextChange={setBubbleCommentText}
-        onAddComment={addBubbleComment}
-        onRemoveComment={removeBubbleComment}
-        onSave={saveBubbleSchedule}
-        saving={actionKey === "bubble-save"}
-      />
+      {showBubbleSchedule ? (
+        <BubbleSchedulingSection
+          role={authRole}
+          bubbleScheduling={bubbleScheduling}
+          draftEntries={bubbleEntriesDraft}
+          draftComments={bubbleCommentsDraft}
+          entryForm={bubbleEntryForm}
+          commentText={bubbleCommentText}
+          onEntryFormChange={updateBubbleEntryForm}
+          onAddEntry={addBubbleEntry}
+          onRemoveEntry={removeBubbleEntry}
+          onCommentTextChange={setBubbleCommentText}
+          onAddComment={addBubbleComment}
+          onRemoveComment={removeBubbleComment}
+          onSave={saveBubbleSchedule}
+          saving={actionKey === "bubble-save"}
+        />
+      ) : (
+        <button className="btn-secondary" type="button" onClick={() => setShowBubbleSchedule(true)}>
+          Show Bubble Schedule
+        </button>
+      )}
 
       {showPdfModal ? (
         <div className="scheduling-modal-overlay" onClick={() => (pdfExporting ? null : setShowPdfModal(false))}>
