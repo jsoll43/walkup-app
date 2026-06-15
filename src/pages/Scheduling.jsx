@@ -18,6 +18,7 @@ import { downloadSchedulingMonthPdf } from "../scheduling/pdf.js";
 
 const SCHEDULING_KEY_STORAGE = "SCHEDULING_KEY";
 const SCHEDULING_ROLE_STORAGE = "SCHEDULING_ROLE";
+const REQUEST_ARCHIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 const WEEKDAY_OPTIONS = [
   { value: 1, label: "Mondays", shortLabel: "Mon" },
   { value: 2, label: "Tuesdays", shortLabel: "Tue" },
@@ -91,6 +92,18 @@ function normalizeRequestStatus(request) {
   if (!request) return "pending";
   if (request.status === "approved" || request.status === "denied") return request.status;
   return request.displayStatus || (request.hasConflict ? "conflict" : "pending");
+}
+
+function getRequestReviewedTime(request) {
+  const timestamp = request?.reviewedAt || (request?.status !== "pending" ? request?.requestedAt : "");
+  if (!timestamp) return Number.NaN;
+  return new Date(timestamp).getTime();
+}
+
+function shouldArchiveRequest(request, nowMs = Date.now()) {
+  if (!request || request.status === "pending") return false;
+  const reviewedTime = getRequestReviewedTime(request);
+  return Number.isFinite(reviewedTime) && nowMs - reviewedTime >= REQUEST_ARCHIVE_AFTER_MS;
 }
 
 function getCalendarStatus(item) {
@@ -338,7 +351,60 @@ function ReservationFormCard({
   );
 }
 
-function RequestHistoryCard({ requests, heading, emptyText, children }) {
+function RequestCard({ request }) {
+  return (
+    <div key={request.id} className="scheduling-request-card">
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontWeight: 1000, fontSize: 16 }}>
+            {request.requestType === "remove" ? "Remove Reservation Request" : request.title || request.team}
+          </div>
+          <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
+            {request.team} - {fieldLabel(request.field)} - {formatLongDate(request.date)}
+          </div>
+          <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
+            {formatTimeRange(request.startTime, request.endTime)}
+          </div>
+        </div>
+        <StatusPill status={normalizeRequestStatus(request)} />
+      </div>
+
+      <div style={{ marginTop: 10, display: "flex", gap: 14, flexWrap: "wrap", fontSize: 13 }}>
+        <div>
+          <strong>Requested by:</strong> {request.requestedBy || "Coach shared login"}
+        </div>
+        {request.reviewedBy ? (
+          <div>
+            <strong>Reviewed by:</strong> {request.reviewedBy}
+          </div>
+        ) : null}
+      </div>
+
+      {request.hasConflict && request.conflictDetails?.length ? (
+        <div className="scheduling-warning-card" style={{ marginTop: 10 }}>
+          <div style={{ fontWeight: 1000 }}>Conflict details</div>
+          <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
+            {request.conflictDetails.map((detail) => (
+              <div key={detail}>{detail}</div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RequestList({ requests }) {
+  return (
+    <div className="scheduling-request-list" style={{ marginTop: 14 }}>
+      {requests.map((request) => (
+        <RequestCard key={request.id} request={request} />
+      ))}
+    </div>
+  );
+}
+
+function RequestHistoryCard({ requests, archivedRequests = [], heading, emptyText, children }) {
   return (
     <div className="card scheduling-panel-card">
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -349,49 +415,15 @@ function RequestHistoryCard({ requests, heading, emptyText, children }) {
       {requests.length === 0 ? (
         <div style={{ marginTop: 14, opacity: 0.75 }}>{emptyText}</div>
       ) : (
-        <div className="scheduling-request-list" style={{ marginTop: 14 }}>
-          {requests.map((request) => (
-            <div key={request.id} className="scheduling-request-card">
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                <div>
-                  <div style={{ fontWeight: 1000, fontSize: 16 }}>
-                    {request.requestType === "remove" ? "Remove Reservation Request" : request.title || request.team}
-                  </div>
-                  <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
-                    {request.team} - {fieldLabel(request.field)} - {formatLongDate(request.date)}
-                  </div>
-                  <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
-                    {formatTimeRange(request.startTime, request.endTime)}
-                  </div>
-                </div>
-                <StatusPill status={normalizeRequestStatus(request)} />
-              </div>
-
-              <div style={{ marginTop: 10, display: "flex", gap: 14, flexWrap: "wrap", fontSize: 13 }}>
-                <div>
-                  <strong>Requested by:</strong> {request.requestedBy || "Coach shared login"}
-                </div>
-                {request.reviewedBy ? (
-                  <div>
-                    <strong>Reviewed by:</strong> {request.reviewedBy}
-                  </div>
-                ) : null}
-              </div>
-
-              {request.hasConflict && request.conflictDetails?.length ? (
-                <div className="scheduling-warning-card" style={{ marginTop: 10 }}>
-                  <div style={{ fontWeight: 1000 }}>Conflict details</div>
-                  <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
-                    {request.conflictDetails.map((detail) => (
-                      <div key={detail}>{detail}</div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ))}
-        </div>
+        <RequestList requests={requests} />
       )}
+
+      {archivedRequests.length > 0 ? (
+        <details className="scheduling-archive-details">
+          <summary>Archived Requests ({archivedRequests.length})</summary>
+          <RequestList requests={archivedRequests} />
+        </details>
+      ) : null}
     </div>
   );
 }
@@ -842,6 +874,7 @@ export default function Scheduling() {
   });
   const [bubbleCommentText, setBubbleCommentText] = useState("");
   const [showBubbleSchedule, setShowBubbleSchedule] = useState(false);
+  const [archiveClock, setArchiveClock] = useState(() => Date.now());
 
   const { teams, reservations, requests, pendingRequests, summary, bubbleScheduling } = scheduleData;
   const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
@@ -850,6 +883,19 @@ export default function Scheduling() {
     () => calendarItems.filter((item) => weekDates.includes(item.date)),
     [calendarItems, weekDates]
   );
+  const coachRequestGroups = useMemo(() => {
+    return requests.reduce(
+      (groups, request) => {
+        if (shouldArchiveRequest(request, archiveClock)) {
+          groups.archived.push(request);
+        } else {
+          groups.active.push(request);
+        }
+        return groups;
+      },
+      { active: [], archived: [] }
+    );
+  }, [archiveClock, requests]);
   const selectedItem = useMemo(
     () => calendarItems.find((item) => item.uniqueKey === selectedItemKey) || null,
     [calendarItems, selectedItemKey]
@@ -871,6 +917,11 @@ export default function Scheduling() {
   useEffect(() => {
     setPdfMonth(String(selectedDate || "").slice(0, 7));
   }, [selectedDate]);
+
+  useEffect(() => {
+    const id = setInterval(() => setArchiveClock(Date.now()), 60 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!isAuthed || authRole !== "board" || !authKey) return;
@@ -1587,8 +1638,9 @@ export default function Scheduling() {
 
               <RequestHistoryCard
                 heading="Coach Requests"
-                emptyText="No coach scheduling requests have been submitted yet."
-                requests={requests}
+                emptyText="No active coach scheduling requests. Pending requests and requests reviewed in the last week will appear here."
+                requests={coachRequestGroups.active}
+                archivedRequests={coachRequestGroups.archived}
               />
             </>
           ) : (

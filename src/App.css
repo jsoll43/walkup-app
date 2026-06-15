@@ -1036,6 +1036,18 @@ button:disabled {
   background: rgba(16, 46, 79, 0.04);
 }
 
+.scheduling-archive-details {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.scheduling-archive-details > summary {
+  cursor: pointer;
+  font-weight: 1000;
+  color: var(--bgsl-navy);
+}
+
 .scheduling-detail-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
