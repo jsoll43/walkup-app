@@ -88,6 +88,12 @@ function formatRequestDate(ts) {
   return formatET(ts) || "Unknown";
 }
 
+function getReviewDateLabel(request) {
+  if (request?.status === "approved") return "Date approved";
+  if (request?.status === "denied") return "Date denied";
+  return "Date reviewed";
+}
+
 function getStatusMeta(status) {
   return STATUS_META[status] || STATUS_META.approved;
 }
@@ -383,6 +389,11 @@ function RequestCard({ request }) {
         {request.reviewedBy ? (
           <div>
             <strong>Reviewed by:</strong> {request.reviewedBy}
+          </div>
+        ) : null}
+        {request.status === "approved" || request.status === "denied" ? (
+          <div>
+            <strong>{getReviewDateLabel(request)}:</strong> {formatRequestDate(request.reviewedAt)}
           </div>
         ) : null}
       </div>
