@@ -868,6 +868,11 @@ button:disabled {
   display: block;
 }
 
+.scheduling-board-audit-stack {
+  display: grid;
+  gap: 12px;
+}
+
 .scheduling-mobile-accordion {
   padding: 0;
   overflow: hidden;
@@ -1046,6 +1051,32 @@ button:disabled {
   cursor: pointer;
   font-weight: 1000;
   color: var(--bgsl-navy);
+}
+
+.scheduling-audit-details {
+  overflow: hidden;
+}
+
+.scheduling-audit-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 1000;
+  color: var(--bgsl-navy);
+}
+
+.scheduling-audit-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.scheduling-audit-details[open] .scheduling-mobile-accordion-icon::before {
+  transform: rotate(180deg);
+}
+
+.scheduling-audit-body {
+  margin-top: 14px;
 }
 
 .scheduling-detail-grid {

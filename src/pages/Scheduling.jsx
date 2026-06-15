@@ -435,6 +435,28 @@ function RequestHistoryCard({ requests, archivedRequests = [], heading, emptyTex
   );
 }
 
+function FieldRequestAuditTrailContent({ requests }) {
+  return requests.length === 0 ? (
+    <div style={{ marginTop: 14, opacity: 0.75 }}>No field requests have been submitted yet.</div>
+  ) : (
+    <RequestList requests={requests} />
+  );
+}
+
+function FieldRequestAuditTrailCard({ requests }) {
+  return (
+    <details className="card scheduling-panel-card scheduling-audit-details">
+      <summary className="scheduling-audit-summary">
+        <span>Field Request Audit Trail ({requests.length})</span>
+        <span className="scheduling-mobile-accordion-icon" aria-hidden="true" />
+      </summary>
+      <div className="scheduling-audit-body">
+        <FieldRequestAuditTrailContent requests={requests} />
+      </div>
+    </details>
+  );
+}
+
 function BoardNotificationCard({
   email,
   onEmailChange,
@@ -1606,6 +1628,10 @@ export default function Scheduling() {
             <BoardActionQueueCard pendingRequests={pendingRequests} actionKey={actionKey} onReviewRequest={reviewRequest} hideTitle />
           </MobileAccordionCard>
 
+          <MobileAccordionCard title={`Field Request Audit Trail (${requests.length})`}>
+            <FieldRequestAuditTrailContent requests={requests} />
+          </MobileAccordionCard>
+
           <MobileAccordionCard title="Add Approved Reservation (Board Only)">
             <ReservationFormCard
               title="Add Approved Reservation (Board Only)"
@@ -1705,8 +1731,9 @@ export default function Scheduling() {
           ) : null}
 
           {authRole === "board" ? (
-            <div className="scheduling-board-desktop-only">
+            <div className="scheduling-board-desktop-only scheduling-board-audit-stack">
               <BoardActionQueueCard pendingRequests={pendingRequests} actionKey={actionKey} onReviewRequest={reviewRequest} />
+              <FieldRequestAuditTrailCard requests={requests} />
             </div>
           ) : null}
         </div>
