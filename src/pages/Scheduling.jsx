@@ -84,6 +84,10 @@ function formatET(ts) {
   }).format(date);
 }
 
+function formatRequestDate(ts) {
+  return formatET(ts) || "Unknown";
+}
+
 function getStatusMeta(status) {
   return STATUS_META[status] || STATUS_META.approved;
 }
@@ -372,6 +376,9 @@ function RequestCard({ request }) {
       <div style={{ marginTop: 10, display: "flex", gap: 14, flexWrap: "wrap", fontSize: 13 }}>
         <div>
           <strong>Requested by:</strong> {request.requestedBy || "Coach shared login"}
+        </div>
+        <div>
+          <strong>Date requested:</strong> {formatRequestDate(request.requestedAt)}
         </div>
         {request.reviewedBy ? (
           <div>
@@ -672,8 +679,13 @@ function BoardActionQueueCard({ pendingRequests, actionKey, onReviewRequest, hid
                 <StatusPill status={normalizeRequestStatus(request)} />
               </div>
 
-              <div style={{ marginTop: 10, fontSize: 13 }}>
-                <strong>Requested by:</strong> {request.requestedBy || "Coach shared login"}
+              <div style={{ marginTop: 10, display: "flex", gap: 14, flexWrap: "wrap", fontSize: 13 }}>
+                <div>
+                  <strong>Requested by:</strong> {request.requestedBy || "Coach shared login"}
+                </div>
+                <div>
+                  <strong>Date requested:</strong> {formatRequestDate(request.requestedAt)}
+                </div>
               </div>
 
               {request.hasConflict && request.conflictDetails?.length ? (
@@ -754,6 +766,12 @@ function SelectedScheduleItemCard({
           <div className="scheduling-detail-label">Source</div>
           <div>{isReservation ? "Reservation" : "Pending Request"}</div>
         </div>
+        {!isReservation ? (
+          <div>
+            <div className="scheduling-detail-label">Date Requested</div>
+            <div>{formatRequestDate(item.requestedAt)}</div>
+          </div>
+        ) : null}
       </div>
 
       {item.hasConflict && item.conflictDetails?.length ? (
