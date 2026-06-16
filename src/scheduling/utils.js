@@ -60,7 +60,7 @@ export function addDays(dateText, delta) {
 export function getWeekStart(dateText) {
   const date = makeDateFromText(dateText);
   const day = date.getDay();
-  const delta = day === 0 ? -6 : 1 - day;
+  const delta = -day;
   date.setDate(date.getDate() + delta);
   return formatDateInput(date);
 }
