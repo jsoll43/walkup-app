@@ -19,6 +19,10 @@ import { downloadSchedulingMonthPdf } from "../scheduling/pdf.js";
 const SCHEDULING_KEY_STORAGE = "SCHEDULING_KEY";
 const SCHEDULING_ROLE_STORAGE = "SCHEDULING_ROLE";
 const REQUEST_ARCHIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+const INITIAL_COACH_REQUEST_COUNT = 3;
+const COACH_REQUEST_INCREMENT = 5;
+const INITIAL_AUDIT_REQUEST_COUNT = 3;
+const AUDIT_REQUEST_INCREMENT = 5;
 const WEEKDAY_OPTIONS = [
   { value: 1, label: "Mondays", shortLabel: "Mon" },
   { value: 2, label: "Tuesdays", shortLabel: "Tue" },
@@ -422,7 +426,19 @@ function RequestList({ requests }) {
   );
 }
 
-function RequestHistoryCard({ requests, archivedRequests = [], heading, emptyText, children }) {
+function RequestHistoryCard({
+  requests,
+  archivedRequests = [],
+  heading,
+  emptyText,
+  visibleRequestCount = null,
+  onShowMoreRequests,
+  showMoreLabel,
+  children,
+}) {
+  const visibleRequests = Number.isFinite(visibleRequestCount) ? requests.slice(0, visibleRequestCount) : requests;
+  const hiddenRequestCount = Math.max(0, requests.length - visibleRequests.length);
+
   return (
     <div className="card scheduling-panel-card">
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -433,7 +449,14 @@ function RequestHistoryCard({ requests, archivedRequests = [], heading, emptyTex
       {requests.length === 0 ? (
         <div style={{ marginTop: 14, opacity: 0.75 }}>{emptyText}</div>
       ) : (
-        <RequestList requests={requests} />
+        <>
+          <RequestList requests={visibleRequests} />
+          {hiddenRequestCount > 0 && onShowMoreRequests ? (
+            <button className="btn-secondary" type="button" style={{ marginTop: 12 }} onClick={onShowMoreRequests}>
+              {showMoreLabel || `Show ${Math.min(5, hiddenRequestCount)} More`}
+            </button>
+          ) : null}
+        </>
       )}
 
       {archivedRequests.length > 0 ? (
@@ -446,15 +469,25 @@ function RequestHistoryCard({ requests, archivedRequests = [], heading, emptyTex
   );
 }
 
-function FieldRequestAuditTrailContent({ requests }) {
+function FieldRequestAuditTrailContent({ requests, visibleRequestCount = null, onShowMoreRequests, showMoreLabel }) {
+  const visibleRequests = Number.isFinite(visibleRequestCount) ? requests.slice(0, visibleRequestCount) : requests;
+  const hiddenRequestCount = Math.max(0, requests.length - visibleRequests.length);
+
   return requests.length === 0 ? (
     <div style={{ marginTop: 14, opacity: 0.75 }}>No field requests have been submitted yet.</div>
   ) : (
-    <RequestList requests={requests} />
+    <>
+      <RequestList requests={visibleRequests} />
+      {hiddenRequestCount > 0 && onShowMoreRequests ? (
+        <button className="btn-secondary" type="button" style={{ marginTop: 12 }} onClick={onShowMoreRequests}>
+          {showMoreLabel || `Show ${Math.min(5, hiddenRequestCount)} More`}
+        </button>
+      ) : null}
+    </>
   );
 }
 
-function FieldRequestAuditTrailCard({ requests }) {
+function FieldRequestAuditTrailCard({ requests, visibleRequestCount, onShowMoreRequests, showMoreLabel }) {
   return (
     <details className="card scheduling-panel-card scheduling-audit-details">
       <summary className="scheduling-audit-summary">
@@ -462,7 +495,12 @@ function FieldRequestAuditTrailCard({ requests }) {
         <span className="scheduling-mobile-accordion-icon" aria-hidden="true" />
       </summary>
       <div className="scheduling-audit-body">
-        <FieldRequestAuditTrailContent requests={requests} />
+        <FieldRequestAuditTrailContent
+          requests={requests}
+          visibleRequestCount={visibleRequestCount}
+          onShowMoreRequests={onShowMoreRequests}
+          showMoreLabel={showMoreLabel}
+        />
       </div>
     </details>
   );
@@ -926,6 +964,8 @@ export default function Scheduling() {
   const [bubbleCommentText, setBubbleCommentText] = useState("");
   const [showBubbleSchedule, setShowBubbleSchedule] = useState(false);
   const [archiveClock, setArchiveClock] = useState(() => Date.now());
+  const [visibleCoachRequestCount, setVisibleCoachRequestCount] = useState(INITIAL_COACH_REQUEST_COUNT);
+  const [visibleAuditRequestCount, setVisibleAuditRequestCount] = useState(INITIAL_AUDIT_REQUEST_COUNT);
 
   const { teams, reservations, requests, pendingRequests, summary, bubbleScheduling } = scheduleData;
   const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
@@ -973,6 +1013,18 @@ export default function Scheduling() {
     const id = setInterval(() => setArchiveClock(Date.now()), 60 * 60 * 1000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    setVisibleCoachRequestCount((current) =>
+      Math.min(Math.max(current, INITIAL_COACH_REQUEST_COUNT), Math.max(coachRequestGroups.active.length, INITIAL_COACH_REQUEST_COUNT))
+    );
+  }, [coachRequestGroups.active.length]);
+
+  useEffect(() => {
+    setVisibleAuditRequestCount((current) =>
+      Math.min(Math.max(current, INITIAL_AUDIT_REQUEST_COUNT), Math.max(requests.length, INITIAL_AUDIT_REQUEST_COUNT))
+    );
+  }, [requests.length]);
 
   useEffect(() => {
     if (!isAuthed || authRole !== "board" || !authKey) return;
@@ -1640,7 +1692,12 @@ export default function Scheduling() {
           </MobileAccordionCard>
 
           <MobileAccordionCard title={`Field Request Audit Trail (${requests.length})`}>
-            <FieldRequestAuditTrailContent requests={requests} />
+            <FieldRequestAuditTrailContent
+              requests={requests}
+              visibleRequestCount={visibleAuditRequestCount}
+              onShowMoreRequests={() => setVisibleAuditRequestCount((current) => current + AUDIT_REQUEST_INCREMENT)}
+              showMoreLabel={`Show ${Math.min(AUDIT_REQUEST_INCREMENT, Math.max(0, requests.length - visibleAuditRequestCount))} More`}
+            />
           </MobileAccordionCard>
 
           <MobileAccordionCard title="Add Approved Reservation (Board Only)">
@@ -1696,6 +1753,12 @@ export default function Scheduling() {
                 emptyText="No active coach scheduling requests. Pending requests and requests reviewed in the last week will appear here."
                 requests={coachRequestGroups.active}
                 archivedRequests={coachRequestGroups.archived}
+                visibleRequestCount={visibleCoachRequestCount}
+                onShowMoreRequests={() => setVisibleCoachRequestCount((current) => current + COACH_REQUEST_INCREMENT)}
+                showMoreLabel={`Show ${Math.min(
+                  COACH_REQUEST_INCREMENT,
+                  Math.max(0, coachRequestGroups.active.length - visibleCoachRequestCount)
+                )} More`}
               />
             </>
           ) : (
@@ -1744,7 +1807,12 @@ export default function Scheduling() {
           {authRole === "board" ? (
             <div className="scheduling-board-desktop-only scheduling-board-audit-stack">
               <BoardActionQueueCard pendingRequests={pendingRequests} actionKey={actionKey} onReviewRequest={reviewRequest} />
-              <FieldRequestAuditTrailCard requests={requests} />
+              <FieldRequestAuditTrailCard
+                requests={requests}
+                visibleRequestCount={visibleAuditRequestCount}
+                onShowMoreRequests={() => setVisibleAuditRequestCount((current) => current + AUDIT_REQUEST_INCREMENT)}
+                showMoreLabel={`Show ${Math.min(AUDIT_REQUEST_INCREMENT, Math.max(0, requests.length - visibleAuditRequestCount))} More`}
+              />
             </div>
           ) : null}
         </div>
