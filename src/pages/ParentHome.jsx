@@ -22,6 +22,8 @@ export default function ParentHome() {
   const [playerName, setPlayerName] = useState("");
   const [songRequest, setSongRequest] = useState("");
   const [wavBlob, setWavBlob] = useState(null);
+  const [recordingMaxSeconds, setRecordingMaxSeconds] = useState(5);
+  const [settingsLoading, setSettingsLoading] = useState(true);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -34,6 +36,45 @@ export default function ParentHome() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!teamSlug || !parentKey) {
+      setSettingsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadParentSettings() {
+      setSettingsLoading(true);
+      try {
+        const res = await fetch("/api/parent/settings", {
+          headers: {
+            "x-team-slug": teamSlug,
+            "x-parent-key": parentKey,
+            Authorization: `Bearer ${parentKey}`,
+          },
+        });
+        const data = await readJsonOrText(res);
+        if (!res.ok || data?.ok === false) return;
+
+        const nextMaxSeconds = Math.round(Number(data?.settings?.recordingMaxSeconds));
+        if (!cancelled && Number.isFinite(nextMaxSeconds) && nextMaxSeconds > 0) {
+          setRecordingMaxSeconds(nextMaxSeconds);
+        }
+      } catch {
+        // Keep the default 5-second limit if settings cannot be loaded.
+      } finally {
+        if (!cancelled) setSettingsLoading(false);
+      }
+    }
+
+    loadParentSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [teamSlug, parentKey]);
 
   async function submit() {
     setErr("");
@@ -147,7 +188,12 @@ export default function ParentHome() {
         </div>
 
         <div style={{ marginTop: 14 }}>
-          <ParentRecord onBlob={setWavBlob} disabled={submitting} playerName={playerName} />
+          <ParentRecord
+            onBlob={setWavBlob}
+            disabled={submitting || settingsLoading}
+            playerName={playerName}
+            maxSeconds={recordingMaxSeconds}
+          />
         </div>
 
         <button className="btn" onClick={submit} disabled={submitting} style={{ marginTop: 14, width: "100%" }}>

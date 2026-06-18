@@ -2,6 +2,19 @@ export function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
 }
 
+export const DEFAULT_PARENT_RECORDING_MAX_SECONDS = 5;
+export const MIN_PARENT_RECORDING_MAX_SECONDS = 1;
+export const MAX_PARENT_RECORDING_MAX_SECONDS = 60;
+
+export function normalizeParentRecordingMaxSeconds(value) {
+  const seconds = Math.round(Number(value));
+  if (!Number.isFinite(seconds)) return DEFAULT_PARENT_RECORDING_MAX_SECONDS;
+  return Math.max(
+    MIN_PARENT_RECORDING_MAX_SECONDS,
+    Math.min(MAX_PARENT_RECORDING_MAX_SECONDS, seconds)
+  );
+}
+
 function encodeForm(fields) {
   return Object.entries(fields)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v || ""))}`)
@@ -24,16 +37,36 @@ export async function ensureParentInboxNotificationSettingsTable(env) {
       id TEXT PRIMARY KEY,
       parent_inbox_enabled INTEGER NOT NULL DEFAULT 0,
       parent_inbox_email TEXT NOT NULL DEFAULT '',
+      parent_recording_max_seconds INTEGER NOT NULL DEFAULT 5,
       updated_at TEXT NOT NULL
     )`
   ).run();
+
+  try {
+    await env.DB.prepare(
+      `SELECT parent_recording_max_seconds
+       FROM admin_notification_settings
+       LIMIT 1`
+    ).first();
+  } catch {
+    try {
+      await env.DB.prepare(
+        `ALTER TABLE admin_notification_settings
+         ADD COLUMN parent_recording_max_seconds INTEGER NOT NULL DEFAULT 5`
+      ).run();
+    } catch (alterError) {
+      if (!/duplicate column|already exists/i.test(String(alterError?.message || alterError))) {
+        throw alterError;
+      }
+    }
+  }
 }
 
 export async function getParentInboxNotificationSettings(env) {
   await ensureParentInboxNotificationSettingsTable(env);
 
   const row = await env.DB.prepare(
-    `SELECT parent_inbox_enabled, parent_inbox_email, updated_at
+    `SELECT parent_inbox_enabled, parent_inbox_email, parent_recording_max_seconds, updated_at
      FROM admin_notification_settings
      WHERE id = 'singleton'`
   ).first();
@@ -41,6 +74,9 @@ export async function getParentInboxNotificationSettings(env) {
   return {
     enabled: !!row?.parent_inbox_enabled,
     email: String(row?.parent_inbox_email || "").trim(),
+    recordingMaxSeconds: normalizeParentRecordingMaxSeconds(
+      row?.parent_recording_max_seconds ?? DEFAULT_PARENT_RECORDING_MAX_SECONDS
+    ),
     updatedAt: row?.updated_at || "",
   };
 }
@@ -48,23 +84,29 @@ export async function getParentInboxNotificationSettings(env) {
 export async function setParentInboxNotificationSettings(env, settings) {
   await ensureParentInboxNotificationSettingsTable(env);
 
+  const current = await getParentInboxNotificationSettings(env);
   const enabled = !!settings?.enabled;
   const email = String(settings?.email || "").trim();
+  const recordingMaxSeconds =
+    settings && Object.prototype.hasOwnProperty.call(settings, "recordingMaxSeconds")
+      ? normalizeParentRecordingMaxSeconds(settings.recordingMaxSeconds)
+      : current.recordingMaxSeconds;
   const updatedAt = new Date().toISOString();
 
   await env.DB.prepare(
     `INSERT INTO admin_notification_settings
-       (id, parent_inbox_enabled, parent_inbox_email, updated_at)
-     VALUES ('singleton', ?, ?, ?)
+       (id, parent_inbox_enabled, parent_inbox_email, parent_recording_max_seconds, updated_at)
+     VALUES ('singleton', ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        parent_inbox_enabled = excluded.parent_inbox_enabled,
        parent_inbox_email = excluded.parent_inbox_email,
+       parent_recording_max_seconds = excluded.parent_recording_max_seconds,
        updated_at = excluded.updated_at`
   )
-    .bind(enabled ? 1 : 0, email, updatedAt)
+    .bind(enabled ? 1 : 0, email, recordingMaxSeconds, updatedAt)
     .run();
 
-  return { enabled, email, updatedAt };
+  return { enabled, email, recordingMaxSeconds, updatedAt };
 }
 
 export function getMailgunEnvStatus(env) {

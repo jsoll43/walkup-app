@@ -1,6 +1,9 @@
 import {
+  MAX_PARENT_RECORDING_MAX_SECONDS,
+  MIN_PARENT_RECORDING_MAX_SECONDS,
   getParentInboxNotificationSettings,
   isValidEmail,
+  normalizeParentRecordingMaxSeconds,
   setParentInboxNotificationSettings,
 } from "../../lib/parentInboxNotifications.js";
 
@@ -41,12 +44,31 @@ export const onRequestPost = async ({ request, env }) => {
     const body = await request.json().catch(() => ({}));
     const enabled = !!body?.enabled;
     const email = String(body?.email || "").trim();
+    const hasRecordingMaxSeconds = Object.prototype.hasOwnProperty.call(body, "recordingMaxSeconds");
+    const recordingMaxSeconds = normalizeParentRecordingMaxSeconds(body?.recordingMaxSeconds);
 
     if (enabled && !isValidEmail(email)) {
       return json({ ok: false, error: "Enter a valid email to enable notifications." }, 400);
     }
 
-    const settings = await setParentInboxNotificationSettings(env, { enabled, email });
+    if (
+      hasRecordingMaxSeconds &&
+      String(body?.recordingMaxSeconds ?? "").trim() !== "" &&
+      Number(body?.recordingMaxSeconds) !== recordingMaxSeconds
+    ) {
+      return json(
+        {
+          ok: false,
+          error: `Recording limit must be between ${MIN_PARENT_RECORDING_MAX_SECONDS} and ${MAX_PARENT_RECORDING_MAX_SECONDS} seconds.`,
+        },
+        400
+      );
+    }
+
+    const nextSettings = { enabled, email };
+    if (hasRecordingMaxSeconds) nextSettings.recordingMaxSeconds = recordingMaxSeconds;
+
+    const settings = await setParentInboxNotificationSettings(env, nextSettings);
     return json({ ok: true, settings });
   } catch (e) {
     return json({ ok: false, error: e?.message || String(e) }, Number(e?.statusCode || 500));

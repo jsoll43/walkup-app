@@ -32,6 +32,19 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
 }
 
+const DEFAULT_PARENT_RECORDING_MAX_SECONDS = 5;
+const MIN_PARENT_RECORDING_MAX_SECONDS = 1;
+const MAX_PARENT_RECORDING_MAX_SECONDS = 60;
+
+function normalizeParentRecordingMaxSeconds(value) {
+  const seconds = Math.round(Number(value));
+  if (!Number.isFinite(seconds)) return DEFAULT_PARENT_RECORDING_MAX_SECONDS;
+  return Math.max(
+    MIN_PARENT_RECORDING_MAX_SECONDS,
+    Math.min(MAX_PARENT_RECORDING_MAX_SECONDS, seconds)
+  );
+}
+
 async function safeJsonOrText(res) {
   const text = await res.text();
   try {
@@ -113,6 +126,7 @@ export default function Admin() {
   const [inbox, setInbox] = useState([]);
   const [inboxNotificationEnabled, setInboxNotificationEnabled] = useState(() => localStorage.getItem("PARENT_INBOX_NOTIFY_ENABLED") === "true");
   const [inboxNotificationEmail, setInboxNotificationEmail] = useState(() => localStorage.getItem("PARENT_INBOX_NOTIFY_EMAIL") || "");
+  const [parentRecordingMaxSeconds, setParentRecordingMaxSeconds] = useState(DEFAULT_PARENT_RECORDING_MAX_SECONDS);
   const [inboxNotificationStatus, setInboxNotificationStatus] = useState("");
   const inboxNotificationSyncReadyRef = useRef(false);
   const [finalStatus, setFinalStatus] = useState({});
@@ -268,7 +282,11 @@ export default function Admin() {
     setRoster(Array.isArray(data.roster) ? data.roster : []);
   }
 
-  async function saveInboxNotificationSettings(enabledValue = inboxNotificationEnabled, emailValue = inboxNotificationEmail) {
+  async function saveInboxNotificationSettings(
+    enabledValue = inboxNotificationEnabled,
+    emailValue = inboxNotificationEmail,
+    recordingMaxSecondsValue = parentRecordingMaxSeconds
+  ) {
     const res = await fetch("/api/admin/notification-settings", {
       method: "POST",
       headers: {
@@ -278,6 +296,7 @@ export default function Admin() {
       body: JSON.stringify({
         enabled: !!enabledValue,
         email: String(emailValue || "").trim(),
+        recordingMaxSeconds: normalizeParentRecordingMaxSeconds(recordingMaxSecondsValue),
       }),
     });
 
@@ -286,7 +305,11 @@ export default function Admin() {
       throw new Error(data?.error || data?.raw || `Settings save failed (HTTP ${res.status})`);
     }
 
-    return data.settings || { enabled: !!enabledValue, email: String(emailValue || "").trim() };
+    return data.settings || {
+      enabled: !!enabledValue,
+      email: String(emailValue || "").trim(),
+      recordingMaxSeconds: normalizeParentRecordingMaxSeconds(recordingMaxSecondsValue),
+    };
   }
 
   async function loadInboxNotificationSettings() {
@@ -301,8 +324,13 @@ export default function Admin() {
 
       const serverEnabled = !!data?.settings?.enabled;
       const serverEmail = String(data?.settings?.email || "").trim();
+      const serverRecordingMaxSeconds = normalizeParentRecordingMaxSeconds(
+        data?.settings?.recordingMaxSeconds
+      );
       const localEnabled = localStorage.getItem("PARENT_INBOX_NOTIFY_ENABLED") === "true";
       const localEmail = localStorage.getItem("PARENT_INBOX_NOTIFY_EMAIL") || "";
+
+      setParentRecordingMaxSeconds(serverRecordingMaxSeconds);
 
       if (serverEnabled || serverEmail) {
         setInboxNotificationEnabled(serverEnabled);
@@ -310,7 +338,7 @@ export default function Admin() {
         localStorage.setItem("PARENT_INBOX_NOTIFY_ENABLED", serverEnabled ? "true" : "false");
         localStorage.setItem("PARENT_INBOX_NOTIFY_EMAIL", serverEmail);
       } else if (localEnabled || localEmail) {
-        await saveInboxNotificationSettings(localEnabled, localEmail);
+        await saveInboxNotificationSettings(localEnabled, localEmail, serverRecordingMaxSeconds);
         setInboxNotificationEnabled(localEnabled);
         setInboxNotificationEmail(localEmail);
       }
@@ -748,7 +776,7 @@ export default function Admin() {
       const clean = raw && raw.includes("<html") ? "Bad gateway / host error from server (502). Check deployment logs." : raw;
       setInboxNotificationStatus(`Notification settings failed: ${clean}`);
     });
-  }, [isAuthed, adminKey, inboxNotificationEnabled, inboxNotificationEmail]);
+  }, [isAuthed, adminKey, inboxNotificationEnabled, inboxNotificationEmail, parentRecordingMaxSeconds]);
 
   useEffect(() => {
     if (!isAuthed) {
@@ -907,6 +935,31 @@ export default function Admin() {
             <button className="btn-secondary" onClick={() => fetchInbox()} disabled={loading}>
               Reload inbox
             </button>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12, borderTop: "1px solid rgba(0,0,0,0.12)", paddingTop: 12 }}>
+          <h3 style={{ margin: "0 0 8px" }}>Parent recording limit</h3>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              type="number"
+              className="input"
+              style={{ width: 140 }}
+              min={MIN_PARENT_RECORDING_MAX_SECONDS}
+              max={MAX_PARENT_RECORDING_MAX_SECONDS}
+              step="1"
+              value={parentRecordingMaxSeconds}
+              onChange={(e) =>
+                setParentRecordingMaxSeconds(normalizeParentRecordingMaxSeconds(e.target.value))
+              }
+            />
+            <span style={{ fontSize: 13, opacity: 0.8 }}>
+              Parents can record up to {parentRecordingMaxSeconds} seconds.
+            </span>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
+            Default is {DEFAULT_PARENT_RECORDING_MAX_SECONDS} seconds. Allowed range is{" "}
+            {MIN_PARENT_RECORDING_MAX_SECONDS}-{MAX_PARENT_RECORDING_MAX_SECONDS} seconds.
           </div>
         </div>
 

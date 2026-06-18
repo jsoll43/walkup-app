@@ -68,8 +68,8 @@ function getFriendlyRecordingError(error) {
   return "We could not start the microphone on this device. Please try again, and if it still does not work, try another browser so you can be prompted for microphone access again.";
 }
 
-export default function ParentRecord({ onBlob, disabled = false, playerName = "" }) {
-  const MAX_SECONDS = 5;
+export default function ParentRecord({ onBlob, disabled = false, playerName = "", maxSeconds = 5 }) {
+  const recordingMaxSeconds = Math.max(1, Math.round(Number(maxSeconds) || 5));
 
   const [isRecording, setIsRecording] = useState(false);
   const [previewUrl, setPreviewUrl] = useState("");
@@ -170,10 +170,10 @@ export default function ParentRecord({ onBlob, disabled = false, playerName = ""
       processor.connect(gain);
       gain.connect(ctx.destination);
 
-      // Auto-stop at MAX_SECONDS
+      // Auto-stop at the admin-configured limit.
       stopTimerRef.current = setTimeout(() => {
         stop();
-      }, MAX_SECONDS * 1000);
+      }, recordingMaxSeconds * 1000);
     } catch (e) {
       setErr(getFriendlyRecordingError(e));
       cleanup();
@@ -238,7 +238,7 @@ export default function ParentRecord({ onBlob, disabled = false, playerName = ""
   }
 
   const namePart = (playerName || "").trim() || "player name";
-  const scriptText = `Please record: “Now batting, ${namePart}” — keep it under ${MAX_SECONDS} seconds.`;
+  const scriptText = `Please record: “Now batting, ${namePart}” — keep it under ${recordingMaxSeconds} seconds.`;
 
   return (
     <div className="card">
