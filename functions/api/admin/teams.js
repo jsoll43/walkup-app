@@ -1,4 +1,12 @@
 // functions/api/admin/teams.js
+import {
+  DEFAULT_PARENT_RECORDING_MAX_SECONDS,
+  MAX_PARENT_RECORDING_MAX_SECONDS,
+  MIN_PARENT_RECORDING_MAX_SECONDS,
+  ensureTeamsRecordingLimitColumn,
+  normalizeParentRecordingMaxSeconds,
+} from "../../lib/teamSettings.js";
+
 function getAdminKey(req) {
   const h = req.headers;
   const bearer = (h.get("authorization") || "").trim();
@@ -30,8 +38,10 @@ export const onRequestGet = async ({ request, env }) => {
     const key = getAdminKey(request);
     if (!key || key !== env.ADMIN_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
 
+    await ensureTeamsRecordingLimitColumn(env);
+
     const res = await env.DB.prepare(
-      `SELECT id, name, slug, status, created_at, deleted_at
+      `SELECT id, name, slug, parent_key, coach_key, parent_recording_max_seconds, status, created_at, deleted_at
        FROM teams
        WHERE status = 'active'
        ORDER BY created_at DESC`
@@ -53,6 +63,9 @@ export const onRequestPost = async ({ request, env }) => {
     let slug = String(body.slug || "").trim().toLowerCase();
     const parentKey = String(body.parentKey || "").trim();
     const coachKey = String(body.coachKey || "").trim();
+    const recordingMaxSeconds = normalizeParentRecordingMaxSeconds(
+      body?.recordingMaxSeconds ?? DEFAULT_PARENT_RECORDING_MAX_SECONDS
+    );
 
     if (!name) return json({ ok: false, error: "Missing name" }, 400);
     if (!slug) slug = slugify(name);
@@ -61,6 +74,20 @@ export const onRequestPost = async ({ request, env }) => {
     }
     if (!parentKey || parentKey.length < 4) return json({ ok: false, error: "Parent key is required (min 4 chars)" }, 400);
     if (!coachKey || coachKey.length < 4) return json({ ok: false, error: "Coach key is required (min 4 chars)" }, 400);
+    if (
+      String(body?.recordingMaxSeconds ?? "").trim() !== "" &&
+      Number(body?.recordingMaxSeconds) !== recordingMaxSeconds
+    ) {
+      return json(
+        {
+          ok: false,
+          error: `Recording limit must be between ${MIN_PARENT_RECORDING_MAX_SECONDS} and ${MAX_PARENT_RECORDING_MAX_SECONDS} seconds.`,
+        },
+        400
+      );
+    }
+
+    await ensureTeamsRecordingLimitColumn(env);
 
     const now = new Date().toISOString();
     let id = makeIdFromSlug(slug);
@@ -79,10 +106,10 @@ export const onRequestPost = async ({ request, env }) => {
     }
 
     await env.DB.prepare(
-      `INSERT INTO teams (id, name, slug, parent_key, coach_key, status, created_at)
-       VALUES (?, ?, ?, ?, ?, 'active', ?)`
+      `INSERT INTO teams (id, name, slug, parent_key, coach_key, parent_recording_max_seconds, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`
     )
-      .bind(id, name, slug, parentKey, coachKey, now)
+      .bind(id, name, slug, parentKey, coachKey, recordingMaxSeconds, now)
       .run();
 
     // Initialize coach state row
@@ -93,7 +120,7 @@ export const onRequestPost = async ({ request, env }) => {
       .bind(id, now)
       .run();
 
-    return json({ ok: true, team: { id, name, slug, created_at: now } });
+    return json({ ok: true, team: { id, name, slug, parent_recording_max_seconds: recordingMaxSeconds, created_at: now } });
   } catch (e) {
     return json({ ok: false, error: e?.message || String(e) }, 500);
   }
@@ -110,8 +137,26 @@ export const onRequestPut = async ({ request, env }) => {
     const name = body.name ? String(body.name).trim() : null;
     const parentKey = body.parentKey ? String(body.parentKey).trim() : null;
     const coachKey = body.coachKey ? String(body.coachKey).trim() : null;
+    const hasRecordingMaxSeconds = Object.prototype.hasOwnProperty.call(body, "recordingMaxSeconds");
+    const recordingMaxSeconds = normalizeParentRecordingMaxSeconds(body?.recordingMaxSeconds);
 
     if (!slug) return json({ ok: false, error: "Missing slug" }, 400);
+    if (
+      hasRecordingMaxSeconds &&
+      String(body?.recordingMaxSeconds ?? "").trim() !== "" &&
+      Number(body?.recordingMaxSeconds) !== recordingMaxSeconds
+    ) {
+      return json(
+        {
+          ok: false,
+          error: `Recording limit must be between ${MIN_PARENT_RECORDING_MAX_SECONDS} and ${MAX_PARENT_RECORDING_MAX_SECONDS} seconds.`,
+        },
+        400
+      );
+    }
+
+    await ensureTeamsRecordingLimitColumn(env);
+
     const existing = await env.DB.prepare(`SELECT id FROM teams WHERE slug = ? AND status = 'active'`).bind(slug).first();
     if (!existing) return json({ ok: false, error: "Unknown team" }, 404);
 
@@ -128,6 +173,10 @@ export const onRequestPut = async ({ request, env }) => {
     if (coachKey !== null) {
       parts.push(`coach_key = ?`);
       binds.push(coachKey);
+    }
+    if (hasRecordingMaxSeconds) {
+      parts.push(`parent_recording_max_seconds = ?`);
+      binds.push(recordingMaxSeconds);
     }
     if (parts.length === 0) return json({ ok: false, error: "Nothing to update" }, 400);
 
@@ -171,7 +220,7 @@ export const onRequestOptions = async () =>
     status: 204,
     headers: {
       "access-control-allow-origin": "*",
-      "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
+      "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
       "access-control-allow-headers": "authorization,x-admin-key,content-type",
     },
   });

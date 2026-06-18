@@ -47,6 +47,7 @@ export const onRequestPost = async ({ request, env }) => {
           slug TEXT NOT NULL,
           parent_key TEXT NOT NULL,
           coach_key TEXT NOT NULL,
+          parent_recording_max_seconds INTEGER NOT NULL DEFAULT 5,
           status TEXT NOT NULL DEFAULT 'active',
           created_at TEXT NOT NULL,
           deleted_at TEXT

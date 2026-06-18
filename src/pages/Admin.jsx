@@ -126,7 +126,6 @@ export default function Admin() {
   const [inbox, setInbox] = useState([]);
   const [inboxNotificationEnabled, setInboxNotificationEnabled] = useState(() => localStorage.getItem("PARENT_INBOX_NOTIFY_ENABLED") === "true");
   const [inboxNotificationEmail, setInboxNotificationEmail] = useState(() => localStorage.getItem("PARENT_INBOX_NOTIFY_EMAIL") || "");
-  const [parentRecordingMaxSeconds, setParentRecordingMaxSeconds] = useState(DEFAULT_PARENT_RECORDING_MAX_SECONDS);
   const [inboxNotificationStatus, setInboxNotificationStatus] = useState("");
   const inboxNotificationSyncReadyRef = useRef(false);
   const [finalStatus, setFinalStatus] = useState({});
@@ -200,12 +199,20 @@ export default function Admin() {
   // Edit keys for selected team
   const [editParentKey, setEditParentKey] = useState("");
   const [editCoachKey, setEditCoachKey] = useState("");
+  const [editParentRecordingMaxSeconds, setEditParentRecordingMaxSeconds] = useState(DEFAULT_PARENT_RECORDING_MAX_SECONDS);
   useEffect(() => {
     setEditParentKey(
       manageKeysTeam ? (manageKeysTeam.parent_key || manageKeysTeam.parentKey || "") : ""
     );
     setEditCoachKey(
       manageKeysTeam ? (manageKeysTeam.coach_key || manageKeysTeam.coachKey || "") : ""
+    );
+    setEditParentRecordingMaxSeconds(
+      normalizeParentRecordingMaxSeconds(
+        manageKeysTeam?.parent_recording_max_seconds ||
+          manageKeysTeam?.parentRecordingMaxSeconds ||
+          DEFAULT_PARENT_RECORDING_MAX_SECONDS
+      )
     );
   }, [manageKeysTeam]);
 
@@ -284,8 +291,7 @@ export default function Admin() {
 
   async function saveInboxNotificationSettings(
     enabledValue = inboxNotificationEnabled,
-    emailValue = inboxNotificationEmail,
-    recordingMaxSecondsValue = parentRecordingMaxSeconds
+    emailValue = inboxNotificationEmail
   ) {
     const res = await fetch("/api/admin/notification-settings", {
       method: "POST",
@@ -296,7 +302,6 @@ export default function Admin() {
       body: JSON.stringify({
         enabled: !!enabledValue,
         email: String(emailValue || "").trim(),
-        recordingMaxSeconds: normalizeParentRecordingMaxSeconds(recordingMaxSecondsValue),
       }),
     });
 
@@ -308,7 +313,6 @@ export default function Admin() {
     return data.settings || {
       enabled: !!enabledValue,
       email: String(emailValue || "").trim(),
-      recordingMaxSeconds: normalizeParentRecordingMaxSeconds(recordingMaxSecondsValue),
     };
   }
 
@@ -324,13 +328,8 @@ export default function Admin() {
 
       const serverEnabled = !!data?.settings?.enabled;
       const serverEmail = String(data?.settings?.email || "").trim();
-      const serverRecordingMaxSeconds = normalizeParentRecordingMaxSeconds(
-        data?.settings?.recordingMaxSeconds
-      );
       const localEnabled = localStorage.getItem("PARENT_INBOX_NOTIFY_ENABLED") === "true";
       const localEmail = localStorage.getItem("PARENT_INBOX_NOTIFY_EMAIL") || "";
-
-      setParentRecordingMaxSeconds(serverRecordingMaxSeconds);
 
       if (serverEnabled || serverEmail) {
         setInboxNotificationEnabled(serverEnabled);
@@ -338,7 +337,7 @@ export default function Admin() {
         localStorage.setItem("PARENT_INBOX_NOTIFY_ENABLED", serverEnabled ? "true" : "false");
         localStorage.setItem("PARENT_INBOX_NOTIFY_EMAIL", serverEmail);
       } else if (localEnabled || localEmail) {
-        await saveInboxNotificationSettings(localEnabled, localEmail, serverRecordingMaxSeconds);
+        await saveInboxNotificationSettings(localEnabled, localEmail);
         setInboxNotificationEnabled(localEnabled);
         setInboxNotificationEmail(localEmail);
       }
@@ -645,12 +644,13 @@ export default function Admin() {
           slug: manageKeysTeamSlug,
           parentKey: editParentKey.trim(),
           coachKey: editCoachKey.trim(),
+          recordingMaxSeconds: editParentRecordingMaxSeconds,
         }),
       });
 
       const data = await safeJsonOrText(res);
       if (!res.ok || data?.ok === false) {
-        throw new Error(data?.error || data?.raw || `Save keys failed (HTTP ${res.status})`);
+        throw new Error(data?.error || data?.raw || `Save settings failed (HTTP ${res.status})`);
       }
 
       setShowManageKeysModal(false);
@@ -776,7 +776,7 @@ export default function Admin() {
       const clean = raw && raw.includes("<html") ? "Bad gateway / host error from server (502). Check deployment logs." : raw;
       setInboxNotificationStatus(`Notification settings failed: ${clean}`);
     });
-  }, [isAuthed, adminKey, inboxNotificationEnabled, inboxNotificationEmail, parentRecordingMaxSeconds]);
+  }, [isAuthed, adminKey, inboxNotificationEnabled, inboxNotificationEmail]);
 
   useEffect(() => {
     if (!isAuthed) {
@@ -908,7 +908,7 @@ export default function Admin() {
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
           <button className="btn" onClick={() => setShowCreateModal(true)}>Create a New Team</button>
           <button className="btn" onClick={() => setShowRenameModal(true)}>Rename a Team</button>
-          <button className="btn" onClick={() => setShowManageKeysModal(true)}>Manage Team Keys</button>
+          <button className="btn" onClick={() => setShowManageKeysModal(true)}>Manage Team Settings</button>
           <button className="btn-danger" onClick={() => setShowDeleteModal(true)} disabled={deletingTeam}>Delete a Team</button>
           <button className="btn" onClick={() => { fetchAuthLogs(); setShowAuthLogsModal(true); }}>View Auth Errors</button>
         </div>
@@ -935,31 +935,6 @@ export default function Admin() {
             <button className="btn-secondary" onClick={() => fetchInbox()} disabled={loading}>
               Reload inbox
             </button>
-          </div>
-        </div>
-
-        <div style={{ marginTop: 12, borderTop: "1px solid rgba(0,0,0,0.12)", paddingTop: 12 }}>
-          <h3 style={{ margin: "0 0 8px" }}>Parent recording limit</h3>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <input
-              type="number"
-              className="input"
-              style={{ width: 140 }}
-              min={MIN_PARENT_RECORDING_MAX_SECONDS}
-              max={MAX_PARENT_RECORDING_MAX_SECONDS}
-              step="1"
-              value={parentRecordingMaxSeconds}
-              onChange={(e) =>
-                setParentRecordingMaxSeconds(normalizeParentRecordingMaxSeconds(e.target.value))
-              }
-            />
-            <span style={{ fontSize: 13, opacity: 0.8 }}>
-              Parents can record up to {parentRecordingMaxSeconds} seconds.
-            </span>
-          </div>
-          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
-            Default is {DEFAULT_PARENT_RECORDING_MAX_SECONDS} seconds. Allowed range is{" "}
-            {MIN_PARENT_RECORDING_MAX_SECONDS}-{MAX_PARENT_RECORDING_MAX_SECONDS} seconds.
           </div>
         </div>
 
@@ -1286,7 +1261,7 @@ export default function Admin() {
           </div>
         ) : null}
 
-        {/* Manage Team Keys Modal */}
+        {/* Manage Team Settings Modal */}
         {showManageKeysModal ? (
           <div
             style={{
@@ -1300,7 +1275,7 @@ export default function Admin() {
             }}
           >
             <div style={{ background: "white", padding: 20, borderRadius: 12, width: 520, maxWidth: "95%", color: "#111" }}>
-              <h3 style={{ marginTop: 0 }}>Manage team keys</h3>
+              <h3 style={{ marginTop: 0 }}>Manage team settings</h3>
               <div style={{ display: "grid", gap: 8 }}>
                 <div>
                   <label className="label">Team to manage</label>
@@ -1315,7 +1290,7 @@ export default function Admin() {
                   </select>
                 </div>
                 <div style={{ fontSize: 12, opacity: 0.75 }}>
-                  This screen only updates the parent and coach keys for <strong>{manageKeysTeam?.name || manageKeysTeamSlug || "this team"}</strong>.
+                  This screen updates parent access, coach access, and recording length for <strong>{manageKeysTeam?.name || manageKeysTeamSlug || "this team"}</strong>.
                 </div>
                 <div>
                   <label className="label">Parent Key</label>
@@ -1325,12 +1300,32 @@ export default function Admin() {
                   <label className="label">Coach Key</label>
                   <input className="input" value={editCoachKey} onChange={(e) => setEditCoachKey(e.target.value)} placeholder="Coach key" />
                 </div>
+                <div>
+                  <label className="label">Parent Recording Limit (seconds)</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={MIN_PARENT_RECORDING_MAX_SECONDS}
+                    max={MAX_PARENT_RECORDING_MAX_SECONDS}
+                    step="1"
+                    value={editParentRecordingMaxSeconds}
+                    onChange={(e) =>
+                      setEditParentRecordingMaxSeconds(
+                        normalizeParentRecordingMaxSeconds(e.target.value)
+                      )
+                    }
+                  />
+                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
+                    Default is {DEFAULT_PARENT_RECORDING_MAX_SECONDS} seconds. Allowed range is{" "}
+                    {MIN_PARENT_RECORDING_MAX_SECONDS}-{MAX_PARENT_RECORDING_MAX_SECONDS} seconds.
+                  </div>
+                </div>
                 <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                   <button className="btn-secondary" onClick={() => setShowManageKeysModal(false)}>
                     Cancel
                   </button>
                   <button className="btn" onClick={saveTeamKeysUpdate} disabled={loading}>
-                    Save Keys
+                    Save Settings
                   </button>
                 </div>
               </div>

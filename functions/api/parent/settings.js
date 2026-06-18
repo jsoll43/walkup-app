@@ -1,4 +1,7 @@
-import { getParentInboxNotificationSettings } from "../../lib/parentInboxNotifications.js";
+import {
+  ensureTeamsRecordingLimitColumn,
+  normalizeParentRecordingMaxSeconds,
+} from "../../lib/teamSettings.js";
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -25,8 +28,10 @@ export const onRequestGet = async ({ request, env }) => {
     const parentKey = getParentKey(request);
     if (!parentKey) return json({ ok: false, error: "Missing parent key" }, 401);
 
+    await ensureTeamsRecordingLimitColumn(env);
+
     const team = await env.DB.prepare(
-      `SELECT id, slug, parent_key, status
+      `SELECT id, slug, parent_key, parent_recording_max_seconds, status
        FROM teams
        WHERE slug = ?`
     )
@@ -41,11 +46,12 @@ export const onRequestGet = async ({ request, env }) => {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
 
-    const settings = await getParentInboxNotificationSettings(env);
     return json({
       ok: true,
       settings: {
-        recordingMaxSeconds: settings.recordingMaxSeconds,
+        recordingMaxSeconds: normalizeParentRecordingMaxSeconds(
+          team.parent_recording_max_seconds
+        ),
       },
     });
   } catch (e) {
