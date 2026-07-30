@@ -30,6 +30,20 @@ async function safeJson(response) {
 }
 
 export default function Archive() {
+  const [hasCoachSession, setHasCoachSession] = useState(() => Boolean(
+    (sessionStorage.getItem("COACH_KEY") || "").trim() &&
+    (
+      sessionStorage.getItem("TEAM_SLUG") ||
+      sessionStorage.getItem("teamSlug") ||
+      ""
+    ).trim()
+  ));
+  const [currentSeason, setCurrentSeason] = useState(null);
+  const [currentTeams, setCurrentTeams] = useState([]);
+  const [loginTeamSlug, setLoginTeamSlug] = useState("");
+  const [loginKey, setLoginKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
   const [archive, setArchive] = useState([]);
   const [seasonId, setSeasonId] = useState("");
   const [teamId, setTeamId] = useState("");
@@ -77,6 +91,41 @@ export default function Archive() {
 
   useEffect(() => {
     let cancelled = false;
+    async function loadCurrentSeason() {
+      try {
+        const response = await fetch("/api/public/teams");
+        const data = await safeJson(response);
+        if (!response.ok || data?.ok === false) return;
+        if (cancelled) return;
+        const teams = Array.isArray(data.teams) ? data.teams : [];
+        setCurrentSeason(data.currentSeason || null);
+        setCurrentTeams(teams);
+        const savedSlug = (
+          sessionStorage.getItem("TEAM_SLUG") ||
+          sessionStorage.getItem("teamSlug") ||
+          ""
+        ).trim().toLowerCase();
+        setLoginTeamSlug(
+          teams.some((item) => item.slug === savedSlug)
+            ? savedSlug
+            : teams[0]?.slug || ""
+        );
+      } catch {
+        // The login form will remain available and show no teams.
+      }
+    }
+    loadCurrentSeason();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasCoachSession) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
     async function loadArchive() {
       setLoading(true);
       setErr("");
@@ -84,6 +133,10 @@ export default function Archive() {
         const response = await fetch("/api/coach/archive", { headers: coachHeaders() });
         const data = await safeJson(response);
         if (!response.ok || data?.ok === false) {
+          if (response.status === 401) {
+            sessionStorage.removeItem("COACH_KEY");
+            setHasCoachSession(false);
+          }
           throw new Error(data?.error || data?.raw || "Could not load the archive.");
         }
         if (cancelled) return;
@@ -103,10 +156,10 @@ export default function Archive() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [hasCoachSession]);
 
   useEffect(() => {
-    if (!teamId) {
+    if (!hasCoachSession || !teamId) {
       setTeam(null);
       setRoster([]);
       setSongStatus({});
@@ -141,7 +194,37 @@ export default function Archive() {
     return () => {
       cancelled = true;
     };
-  }, [teamId]);
+  }, [hasCoachSession, teamId]);
+
+  async function loginToArchive() {
+    if (!loginTeamSlug || !loginKey.trim()) return;
+    setLoginLoading(true);
+    setErr("");
+    try {
+      const headers = {
+        Authorization: `Bearer ${loginKey.trim()}`,
+        "x-coach-key": loginKey.trim(),
+        "x-team-slug": loginTeamSlug,
+      };
+      const response = await fetch("/api/coach/state", { headers });
+      const data = await safeJson(response);
+      if (!response.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || "Invalid coach key.");
+      }
+      const selectedTeam = currentTeams.find((item) => item.slug === loginTeamSlug);
+      sessionStorage.setItem("COACH_KEY", loginKey.trim());
+      sessionStorage.setItem("TEAM_SLUG", loginTeamSlug);
+      sessionStorage.setItem("teamSlug", loginTeamSlug);
+      sessionStorage.setItem("TEAM_NAME", selectedTeam?.name || loginTeamSlug);
+      sessionStorage.setItem("teamName", selectedTeam?.name || loginTeamSlug);
+      setLoginKey("");
+      setHasCoachSession(true);
+    } catch (error) {
+      setErr(error?.message || String(error));
+    } finally {
+      setLoginLoading(false);
+    }
+  }
 
   async function play(playerId) {
     setErr("");
@@ -169,22 +252,55 @@ export default function Archive() {
     }
   }
 
-  const hasCoachSession = Boolean(
-    (sessionStorage.getItem("COACH_KEY") || "").trim() &&
-    (
-      sessionStorage.getItem("TEAM_SLUG") ||
-      sessionStorage.getItem("teamSlug") ||
-      ""
-    ).trim()
-  );
-
   if (!hasCoachSession) {
     return (
-      <div className="page">
+      <div className="page" style={{ maxWidth: 620, margin: "0 auto" }}>
         <div className="card">
           <h1 style={{ marginTop: 0 }}>Walk-Up Song Archive</h1>
-          <p>Log in on the coach page before opening the archive.</p>
-          <Link className="btn" to="/coach">Go to Coach Login</Link>
+          <div style={{ fontWeight: 900 }}>
+            Current season: {currentSeason?.label || "Loading…"}
+          </div>
+          <p>Use a current-season coach key to browse previous seasons and teams.</p>
+
+          <label className="label">Current team</label>
+          <select
+            className="input"
+            value={loginTeamSlug}
+            onChange={(event) => setLoginTeamSlug(event.target.value)}
+            disabled={currentTeams.length === 0}
+          >
+            {currentTeams.map((item) => (
+              <option key={item.slug} value={item.slug}>{item.name}</option>
+            ))}
+            {currentTeams.length === 0 ? <option value="">No current teams available</option> : null}
+          </select>
+
+          <label className="label" style={{ marginTop: 14 }}>Coach key</label>
+          <input
+            className="input"
+            type={showKey ? "text" : "password"}
+            value={loginKey}
+            onChange={(event) => setLoginKey(event.target.value)}
+            onKeyDown={(event) => event.key === "Enter" ? loginToArchive() : null}
+            placeholder="Enter coach key…"
+          />
+          <label style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <input type="checkbox" checked={showKey} onChange={() => setShowKey((value) => !value)} />
+            Show key
+          </label>
+
+          {err ? <div style={{ marginTop: 12, color: "crimson" }}><strong>Error:</strong> {err}</div> : null}
+
+          <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button
+              className="btn"
+              onClick={loginToArchive}
+              disabled={!loginTeamSlug || !loginKey.trim() || loginLoading}
+            >
+              {loginLoading ? "Logging in…" : "Open Archive"}
+            </button>
+            <Link className="btn-secondary" to="/coach">Back to Current Season</Link>
+          </div>
         </div>
       </div>
     );
@@ -198,6 +314,9 @@ export default function Archive() {
             <h1 style={{ margin: 0 }}>Walk-Up Song Archive</h1>
             <div style={{ marginTop: 6, opacity: 0.75 }}>
               Every rostered player is available here, regardless of the saved lineup.
+            </div>
+            <div style={{ marginTop: 6, fontWeight: 900 }}>
+              Current season: {currentSeason?.label || "Loading…"} · Viewing archive
             </div>
           </div>
           <Link className="btn-secondary" to="/coach">Back to Current Season</Link>

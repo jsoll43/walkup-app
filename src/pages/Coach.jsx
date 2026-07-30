@@ -470,6 +470,12 @@ export default function Coach() {
       <div className="page">
         <div className="card">
           <h1 style={{ marginTop: 0 }}>Coach — Select Team</h1>
+          <div style={{ marginTop: 6, fontWeight: 900 }}>
+            Current season: {currentSeason?.label || "Loading…"}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <a className="btn-secondary" href="/archive">Browse Archived Seasons</a>
+          </div>
 
           <div style={{ marginTop: 8 }}>
             <label className="label">Team</label>
@@ -501,6 +507,12 @@ export default function Coach() {
     return (
       <div className="page">
         <div className="card">
+          <div style={{ fontWeight: 900 }}>
+            Current season: {currentSeason?.label || "Loading…"}
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <a className="btn-secondary" href="/archive">Browse Archived Seasons</a>
+          </div>
           <div className="cardTitle">Team</div>
           <div style={{ marginTop: 6 }}>
             <label className="label">Team</label>
