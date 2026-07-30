@@ -1,4 +1,5 @@
 // functions/api/admin/roster-upsert.js
+import { ensureSeasonSchema } from "../../lib/seasons.js";
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj, null, 2), {
     status,
@@ -37,6 +38,7 @@ export async function onRequestPost({ request, env }) {
 
     const provided = getAdminKey(request);
     if (!provided || provided !== env.ADMIN_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
+    await ensureSeasonSchema(env);
 
     const body = await request.json().catch(() => null);
     if (!body) return json({ ok: false, error: "Invalid JSON body" }, 400);
@@ -61,9 +63,14 @@ export async function onRequestPost({ request, env }) {
     let teamId = body.teamId ? String(body.teamId).trim() : "";
     const teamSlug = body.teamSlug ? String(body.teamSlug).trim().toLowerCase() : "";
     if (!teamId && teamSlug) {
-      const t = await env.DB.prepare(`SELECT id FROM teams WHERE slug = ? AND status = 'active'`).bind(teamSlug).first();
+      const t = await env.DB.prepare(
+        `SELECT t.id FROM teams t
+         JOIN seasons s ON s.id = t.season_id
+         WHERE t.slug = ? AND t.status = 'active' AND s.status = 'current'`
+      ).bind(teamSlug).first();
       if (t && t.id) teamId = t.id;
     }
+    if (!teamId) return json({ ok: false, error: "A current-season team is required." }, 400);
 
     const q = `
       INSERT INTO roster_players

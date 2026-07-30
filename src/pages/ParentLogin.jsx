@@ -1,7 +1,7 @@
 // src/pages/ParentLogin.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { getParentKey, setParentKey, getTeamSlug, setTeam } from "../auth/parentAuth";
+import { clearParentKey, getParentKey, setParentKey, getTeamSlug, setTeam } from "../auth/parentAuth";
 
 async function safeJsonOrText(res) {
   const text = await res.text();
@@ -19,7 +19,9 @@ function writeTeamToSessionStorage(slug, name) {
     // Backward/alternate keys just in case other code reads these:
     sessionStorage.setItem("teamSlug", (slug || "").trim().toLowerCase());
     sessionStorage.setItem("teamName", (name || "").trim());
-  } catch {}
+  } catch {
+    // Session storage can be unavailable in privacy-restricted browsers.
+  }
 }
 
 export default function ParentLogin() {
@@ -28,6 +30,7 @@ export default function ParentLogin() {
   const redirectTo = loc.state?.redirectTo || "/parent";
 
   const [teams, setTeams] = useState([]);
+  const [currentSeason, setCurrentSeason] = useState(null);
   const [teamSlug, setTeamSlug] = useState((getTeamSlug() || "default").trim().toLowerCase());
   const [key, setKey] = useState("");
   const [showKey, setShowKey] = useState(false);
@@ -48,6 +51,7 @@ export default function ParentLogin() {
         if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.raw || "Failed to load teams.");
 
         const list = Array.isArray(data.teams) ? data.teams : [];
+        setCurrentSeason(data.currentSeason || null);
         // Sort teams alphabetically by name
         const sortedList = [...list].sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
         setTeams(sortedList);
@@ -72,8 +76,13 @@ export default function ParentLogin() {
 
         // If key already saved, go straight through
         const saved = getParentKey();
-        if (saved) {
+        const savedTeamIsCurrent = list.some(
+          (t) => String(t.slug || "").toLowerCase() === teamSlug
+        );
+        if (saved && savedTeamIsCurrent) {
           nav(redirectTo, { replace: true });
+        } else if (saved) {
+          clearParentKey();
         }
       } catch (e) {
         setErr(e?.message || String(e));
@@ -135,6 +144,11 @@ export default function ParentLogin() {
       <div style={{ opacity: 0.75, marginTop: 8 }}>
         Select your team, then enter the Parent key to submit a walk-up announcement.
       </div>
+      {currentSeason?.label ? (
+        <div style={{ marginTop: 10, fontWeight: 900 }}>
+          Current season: {currentSeason.label}
+        </div>
+      ) : null}
 
       <div style={{ marginTop: 14 }}>
         <label style={{ display: "block", fontSize: 12, fontWeight: 900, opacity: 0.75, marginBottom: 6 }}>

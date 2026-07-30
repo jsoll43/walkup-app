@@ -59,15 +59,6 @@ function formatPlayer(p) {
   return p.number ? `#${p.number} ${name}`.trim() : name || p.id;
 }
 
-function slugify(s) {
-  return String(s || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-}
-
 function AccordionSection({ title, subtitle, children, defaultOpen = false }) {
   return (
     <details className="card admin-accordion" open={defaultOpen}>
@@ -95,6 +86,7 @@ export default function Admin() {
 
   // Teams
   const [teams, setTeams] = useState([]);
+  const [currentSeason, setCurrentSeason] = useState(null);
   const [manageTeamSlug, setManageTeamSlug] = useState(
     sessionStorage.getItem("ADMIN_TEAM_SLUG") || "default"
   );
@@ -106,6 +98,11 @@ export default function Admin() {
   const [newCoachKey, setNewCoachKey] = useState("");
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [deletingTeam, setDeletingTeam] = useState(false);
+  const [startingSeason, setStartingSeason] = useState(false);
+  const [newSeasonLabel, setNewSeasonLabel] = useState("Spring 2027");
+  const [newSeasonYear, setNewSeasonYear] = useState("2027");
+  const [newSeasonTerm, setNewSeasonTerm] = useState("spring");
+  const [copyTeamsForward, setCopyTeamsForward] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [showManageKeysModal, setShowManageKeysModal] = useState(false);
@@ -132,6 +129,10 @@ export default function Admin() {
   const [finalUploading, setFinalUploading] = useState({});
   const [finalFile, setFinalFile] = useState({});
   const [finalRowError, setFinalRowError] = useState({});
+  const [copyDestinationTeamId, setCopyDestinationTeamId] = useState("");
+  const [copyingPlayerId, setCopyingPlayerId] = useState("");
+  const [copyingTeamId, setCopyingTeamId] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
 
   // Auth logs
   const [authLogs, setAuthLogs] = useState([]);
@@ -174,10 +175,6 @@ export default function Admin() {
 
   const adminHeaders = useMemo(() => adminHeadersFor(adminKey), [adminKey]);
 
-  const manageTeam = useMemo(
-    () => teams.find((t) => t.slug === manageTeamSlug) || null,
-    [teams, manageTeamSlug]
-  );
   const manageKeysTeam = useMemo(
     () => teams.find((t) => t.slug === manageKeysTeamSlug) || null,
     [teams, manageKeysTeamSlug]
@@ -187,6 +184,11 @@ export default function Admin() {
     [teams, renameTeamSlug]
   );
   const playersTeam = useMemo(() => teams.find((t) => t.slug === playersTeamSlug) || null, [teams, playersTeamSlug]);
+  const currentTeams = useMemo(
+    () => teams.filter((team) => team.season_status === "current"),
+    [teams]
+  );
+  const playersTeamIsArchived = playersTeam?.season_status === "archived";
 
   // Rename selected team
   const [editTeamName, setEditTeamName] = useState("");
@@ -262,18 +264,35 @@ export default function Admin() {
 
     const list = Array.isArray(data.teams) ? data.teams : [];
     setTeams(list);
+    setCurrentSeason(data.currentSeason || null);
+    const nextCurrentTeams = list.filter((team) => team.season_status === "current");
+    if (
+      nextCurrentTeams.length &&
+      !nextCurrentTeams.some((team) => team.id === copyDestinationTeamId)
+    ) {
+      setCopyDestinationTeamId(nextCurrentTeams[0].id);
+    }
 
     // Ensure manageTeamSlug is valid
     if (list.length > 0) {
-      const found = list.some((t) => t.slug === manageTeamSlug);
+      const found = nextCurrentTeams.some((t) => t.slug === manageTeamSlug);
       const next =
         found
           ? manageTeamSlug
-          : list.find((t) => t.slug === "default")?.slug || list[0].slug;
+          : nextCurrentTeams[0]?.slug || list[0].slug;
 
       if (next !== manageTeamSlug) {
         setManageTeamSlug(next);
         sessionStorage.setItem("ADMIN_TEAM_SLUG", next);
+      }
+      if (!nextCurrentTeams.some((team) => team.slug === renameTeamSlug)) {
+        setRenameTeamSlug(next);
+      }
+      if (!nextCurrentTeams.some((team) => team.slug === manageKeysTeamSlug)) {
+        setManageKeysTeamSlug(next);
+      }
+      if (!nextCurrentTeams.some((team) => team.slug === deleteTeamSlug)) {
+        setDeleteTeamSlug(next);
       }
       return next;
     }
@@ -350,6 +369,8 @@ export default function Admin() {
     }
   }
 
+  // Retained for the existing test-notification workflow, which is not currently surfaced in the UI.
+  // eslint-disable-next-line no-unused-vars
   async function sendParentInboxTestEmail() {
     if (!inboxNotificationEnabled || !inboxNotificationEmail || !isValidEmail(inboxNotificationEmail)) {
       setInboxNotificationStatus("Enter a valid email and enable notifications first.");
@@ -632,6 +653,118 @@ export default function Admin() {
     }
   }
 
+  async function previewFinal(playerId) {
+    setErr("");
+    try {
+      const res = await fetch(
+        `/api/admin/voice-file?playerId=${encodeURIComponent(playerId)}`,
+        { headers: teamHeaders(playersTeamSlug) }
+      );
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => URL.revokeObjectURL(url);
+      await audio.play();
+    } catch (e) {
+      setErr(e?.message || String(e));
+    }
+  }
+
+  async function copyArchivedPlayer(playerId) {
+    if (!playerId || !copyDestinationTeamId) return;
+    setCopyingPlayerId(playerId);
+    setCopyStatus("");
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/copy-player", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...adminHeaders },
+        body: JSON.stringify({
+          sourcePlayerId: playerId,
+          destinationTeamId: copyDestinationTeamId,
+          copySong: true,
+        }),
+      });
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || `Copy failed (HTTP ${res.status})`);
+      }
+      const destination = currentTeams.find((team) => team.id === copyDestinationTeamId);
+      setCopyStatus(
+        `${formatPlayer(data.player)} copied to ${destination?.name || "the current team"}${
+          data.songCopied ? " with the archived song." : ". No archived song was found."
+        }`
+      );
+    } catch (e) {
+      setErr(e?.message || String(e));
+    } finally {
+      setCopyingPlayerId("");
+    }
+  }
+
+  async function copyArchivedTeam() {
+    if (!playersTeam?.id) return;
+    setCopyingTeamId(playersTeam.id);
+    setCopyStatus("");
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/copy-team", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...adminHeaders },
+        body: JSON.stringify({ sourceTeamId: playersTeam.id }),
+      });
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || `Team copy failed (HTTP ${res.status})`);
+      }
+      await fetchTeams();
+      setCopyDestinationTeamId(data.team.id);
+      setCopyStatus(
+        `${data.team.name} was copied into the current season with an empty roster.`
+      );
+    } catch (e) {
+      setErr(e?.message || String(e));
+    } finally {
+      setCopyingTeamId("");
+    }
+  }
+
+  async function startNewSeason() {
+    if (!newSeasonLabel.trim() || !newSeasonYear || !newSeasonTerm) return;
+    const ok = window.confirm(
+      `Make ${newSeasonLabel.trim()} the current season? ${
+        copyTeamsForward
+          ? "Old team shells will be copied with empty rosters."
+          : "The season will start completely empty."
+      }`
+    );
+    if (!ok) return;
+    setStartingSeason(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/seasons", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...adminHeaders },
+        body: JSON.stringify({
+          label: newSeasonLabel.trim(),
+          year: Number(newSeasonYear),
+          term: newSeasonTerm,
+          copyTeams: copyTeamsForward,
+        }),
+      });
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || `Season creation failed (HTTP ${res.status})`);
+      }
+      await refreshAll();
+    } catch (e) {
+      setErr(e?.message || String(e));
+    } finally {
+      setStartingSeason(false);
+    }
+  }
+
   async function saveTeamKeysUpdate() {
     setErr("");
     if (!manageKeysTeamSlug) return;
@@ -803,7 +936,7 @@ export default function Admin() {
 
     const validPlayersTeam = teams.some((t) => t.slug === playersTeamSlug);
     if (!validPlayersTeam) {
-      const fallbackTeam = teams.find((t) => t.slug === "default") || teams[0];
+      const fallbackTeam = teams.find((t) => t.season_status === "current") || teams[0];
       const fallbackSlug = fallbackTeam ? fallbackTeam.slug : "";
       if (fallbackSlug && fallbackSlug !== playersTeamSlug) {
         setPlayersTeamSlug(fallbackSlug);
@@ -903,13 +1036,51 @@ export default function Admin() {
 
       <AccordionSection
         title="Walkup Song Team Management"
-        subtitle="Create, rename, re-key, delete teams, and review authorization errors."
+        subtitle="Manage the current season, teams, credentials, and authorization errors."
       >
+        <div style={{ marginBottom: 14, padding: 12, borderRadius: 12, background: "rgba(255,255,255,0.65)" }}>
+          <div style={{ fontWeight: 1000 }}>
+            Current season: {currentSeason?.label || "Loading…"}
+          </div>
+          <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }}>
+            <div style={{ minWidth: 180 }}>
+              <label className="label">Next season label</label>
+              <input className="input" value={newSeasonLabel} onChange={(e) => setNewSeasonLabel(e.target.value)} />
+            </div>
+            <div style={{ width: 100 }}>
+              <label className="label">Year</label>
+              <input className="input" inputMode="numeric" value={newSeasonYear} onChange={(e) => setNewSeasonYear(e.target.value)} />
+            </div>
+            <div style={{ width: 130 }}>
+              <label className="label">Term</label>
+              <select className="input" value={newSeasonTerm} onChange={(e) => setNewSeasonTerm(e.target.value)}>
+                <option value="spring">Spring</option>
+                <option value="summer">Summer</option>
+                <option value="fall">Fall</option>
+                <option value="winter">Winter</option>
+              </select>
+            </div>
+            <button className="btn" onClick={startNewSeason} disabled={startingSeason}>
+              {startingSeason ? "Starting…" : "Start New Season"}
+            </button>
+          </div>
+          <label style={{ marginTop: 10, display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={copyTeamsForward}
+              onChange={(e) => setCopyTeamsForward(e.target.checked)}
+            />
+            Copy all previous team shells into the new season
+          </label>
+          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+            New seasons start empty by default. If selected, only team names, keys, and settings are copied; rosters and songs remain archived.
+          </div>
+        </div>
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
           <button className="btn" onClick={() => setShowCreateModal(true)}>Create a New Team</button>
-          <button className="btn" onClick={() => setShowRenameModal(true)}>Rename a Team</button>
-          <button className="btn" onClick={() => setShowManageKeysModal(true)}>Manage Team Settings</button>
-          <button className="btn-danger" onClick={() => setShowDeleteModal(true)} disabled={deletingTeam}>Delete a Team</button>
+          <button className="btn" onClick={() => setShowRenameModal(true)} disabled={currentTeams.length === 0}>Rename a Team</button>
+          <button className="btn" onClick={() => setShowManageKeysModal(true)} disabled={currentTeams.length === 0}>Manage Team Settings</button>
+          <button className="btn-danger" onClick={() => setShowDeleteModal(true)} disabled={deletingTeam || currentTeams.length === 0}>Delete a Team</button>
           <button className="btn" onClick={() => { fetchAuthLogs(); setShowAuthLogsModal(true); }}>View Auth Errors</button>
         </div>
       </AccordionSection>
@@ -1033,7 +1204,9 @@ export default function Admin() {
                     <option value="default">No teams</option>
                   ) : (
                     teams.map((t) => (
-                      <option key={t.slug} value={t.slug}>{t.name}</option>
+                      <option key={t.slug} value={t.slug}>
+                        {t.season_label ? `${t.season_label} — ` : ""}{t.name}
+                      </option>
                     ))
                   )}
                 </select>
@@ -1049,7 +1222,43 @@ export default function Admin() {
           </button>
         </div>
 
+        {playersTeamIsArchived ? (
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: "#fff7ed", border: "1px solid #fdba74" }}>
+            <div style={{ fontWeight: 1000 }}>Archived roster — {playersTeam?.season_label}</div>
+            <div style={{ marginTop: 4, fontSize: 13 }}>
+              This roster is read-only. Play songs here or copy a returning player and their song into a current team.
+            </div>
+            <button
+              className="btn-secondary"
+              style={{ marginTop: 10 }}
+              onClick={copyArchivedTeam}
+              disabled={copyingTeamId === playersTeam?.id}
+            >
+              {copyingTeamId === playersTeam?.id ? "Copying Team…" : "Copy Team Shell to Current Season"}
+            </button>
+            <div style={{ marginTop: 10, maxWidth: 360 }}>
+              <label className="label">Copy players to</label>
+              <select
+                className="input"
+                value={copyDestinationTeamId}
+                onChange={(e) => setCopyDestinationTeamId(e.target.value)}
+              >
+                {currentTeams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name} — {team.season_label}
+                  </option>
+                ))}
+                {currentTeams.length === 0 ? <option value="">No current teams yet</option> : null}
+              </select>
+            </div>
+            {copyStatus ? (
+              <div style={{ marginTop: 8, color: "#166534", fontWeight: 800 }}>{copyStatus}</div>
+            ) : null}
+          </div>
+        ) : null}
+
         <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+          {!playersTeamIsArchived ? (
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ minWidth: 80 }}>
               <input className="input" placeholder="#" value={addNumber} onChange={(e) => setAddNumber(e.target.value)} />
@@ -1066,6 +1275,7 @@ export default function Admin() {
               </button>
             </div>
           </div>
+          ) : null}
 
           {roster.length === 0 ? (
             <div style={{ opacity: 0.75 }}>No roster found yet for this team.</div>
@@ -1087,6 +1297,8 @@ export default function Admin() {
                   </div>
 
                   <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    {!playersTeamIsArchived ? (
+                      <>
                     <input
                       type="file"
                       accept="audio/*"
@@ -1100,13 +1312,28 @@ export default function Admin() {
                     <button className="btn" onClick={() => uploadFinal(pid)} disabled={uploading || !finalFile[pid]}>
                       {uploading ? "Uploading…" : "Upload final"}
                     </button>
+                      </>
+                    ) : null}
 
+                    <button className="btn-secondary" onClick={() => previewFinal(pid)} disabled={!exists}>
+                      Play
+                    </button>
                     <button className="btn-secondary" onClick={() => downloadFinal(pid)} disabled={!exists}>
                       Download
                     </button>
-                    <button className="btn-danger" onClick={() => deletePlayer(pid)} style={{ marginLeft: 6 }}>
-                      Delete
-                    </button>
+                    {playersTeamIsArchived ? (
+                      <button
+                        className="btn"
+                        onClick={() => copyArchivedPlayer(pid)}
+                        disabled={!copyDestinationTeamId || copyingPlayerId === pid}
+                      >
+                        {copyingPlayerId === pid ? "Copying…" : "Copy Player + Song"}
+                      </button>
+                    ) : (
+                      <button className="btn-danger" onClick={() => deletePlayer(pid)} style={{ marginLeft: 6 }}>
+                        Delete
+                      </button>
+                    )}
                   </div>
 
                   {rowErr ? (
@@ -1191,10 +1418,10 @@ export default function Admin() {
                 <div>
                   <label className="label">Team to rename</label>
                   <select className="input" value={renameTeamSlug} onChange={(e) => setRenameTeamSlug(e.target.value)}>
-                    {teams.length === 0 ? (
+                    {currentTeams.length === 0 ? (
                       <option value="default">No teams</option>
                     ) : (
-                      teams.map((t) => (
+                      currentTeams.map((t) => (
                         <option key={t.slug} value={t.slug}>{t.name}</option>
                       ))
                     )}
@@ -1229,10 +1456,10 @@ export default function Admin() {
                 <div>
                   <label className="label">Team to delete</label>
                   <select className="input" value={deleteTeamSlug} onChange={(e) => setDeleteTeamSlug(e.target.value)}>
-                    {teams.length === 0 ? (
+                    {currentTeams.length === 0 ? (
                       <option value="default">No teams</option>
                     ) : (
-                      teams.filter((t) => t.slug !== "default").map((t) => (
+                      currentTeams.filter((t) => t.slug !== "default").map((t) => (
                         <option key={t.slug} value={t.slug}>{t.name}</option>
                       ))
                     )}
@@ -1280,10 +1507,10 @@ export default function Admin() {
                 <div>
                   <label className="label">Team to manage</label>
                   <select className="input" value={manageKeysTeamSlug} onChange={(e) => setManageKeysTeamSlug(e.target.value)}>
-                    {teams.length === 0 ? (
+                    {currentTeams.length === 0 ? (
                       <option value="default">No teams</option>
                     ) : (
-                      teams.map((t) => (
+                      currentTeams.map((t) => (
                         <option key={t.slug} value={t.slug}>{t.name}</option>
                       ))
                     )}

@@ -7,6 +7,7 @@ import ParentHome from "./pages/ParentHome.jsx";
 import Coach from "./pages/Coach.jsx";
 import Admin from "./pages/Admin.jsx";
 import Scheduling from "./pages/Scheduling.jsx";
+import Archive from "./pages/Archive.jsx";
 
 import { getParentKey, getTeamSlug } from "./auth/parentAuth";
 
@@ -16,7 +17,7 @@ function TopNav() {
 
   // ✅ Consider BOTH routes as "Parent" for highlighting
   const isParent = pathname === "/parent" || pathname === "/parent-login";
-  const isCoach = pathname === "/coach";
+  const isCoach = pathname === "/coach" || pathname === "/archive";
   const isAdmin = pathname === "/admin";
   const isScheduling = pathname === "/scheduling";
 
@@ -109,6 +110,7 @@ export default function App() {
           <Route path="/parent" element={<ParentHome />} />
 
           <Route path="/coach" element={<Coach />} />
+          <Route path="/archive" element={<Archive />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/scheduling" element={<Scheduling />} />
 

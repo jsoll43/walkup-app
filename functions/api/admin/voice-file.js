@@ -1,4 +1,5 @@
 // functions/api/admin/voice-file.js
+import { ensureSeasonSchema } from "../../lib/seasons.js";
 function getAuthKey(req) {
   const h = req.headers;
   const bearer = h.get("authorization") || "";
@@ -44,6 +45,7 @@ export async function onRequest(context) {
   const { request, env } = context;
 
   try {
+    await ensureSeasonSchema(env);
     const key = getAuthKey(request);
     if (!key || key !== env.ADMIN_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
     if (request.method !== "GET") return json({ ok: false, error: "Method not allowed" }, 405);
@@ -59,14 +61,19 @@ export async function onRequest(context) {
     const bucket = env.WALKUP_VOICE;
     if (!bucket) return json({ ok: false, error: "R2 binding WALKUP_VOICE not configured" }, 500);
 
-    // Team-aware key
+    const teamIdKey = `final/${team.id}/${playerId}`;
     const primaryKey = `final/${team.slug}/${playerId}`;
 
     // Backward compat: old installs stored finals at final/<playerId> (no team)
     const legacyKey = `final/${playerId}`;
 
-    let obj = await bucket.get(primaryKey);
-    let usedKey = primaryKey;
+    let obj = await bucket.get(teamIdKey);
+    let usedKey = teamIdKey;
+
+    if (!obj) {
+      obj = await bucket.get(primaryKey);
+      usedKey = primaryKey;
+    }
 
     if (!obj && team.slug === "default") {
       obj = await bucket.get(legacyKey);

@@ -56,7 +56,14 @@ export default function ParentHome() {
           },
         });
         const data = await readJsonOrText(res);
-        if (!res.ok || data?.ok === false) return;
+        if (!res.ok || data?.ok === false) {
+          if (res.status === 401 || res.status === 404) {
+            clearParentKey();
+            clearTeam();
+            nav("/parent-login", { replace: true });
+          }
+          return;
+        }
 
         const nextMaxSeconds = Math.round(Number(data?.settings?.recordingMaxSeconds));
         if (!cancelled && Number.isFinite(nextMaxSeconds) && nextMaxSeconds > 0) {
@@ -74,7 +81,7 @@ export default function ParentHome() {
     return () => {
       cancelled = true;
     };
-  }, [teamSlug, parentKey]);
+  }, [teamSlug, parentKey, nav]);
 
   async function submit() {
     setErr("");

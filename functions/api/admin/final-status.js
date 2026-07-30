@@ -1,4 +1,5 @@
 // functions/api/admin/final-status.js
+import { ensureSeasonSchema } from "../../lib/seasons.js";
 function getAuthKey(req) {
   const h = req.headers;
   const bearer = h.get("authorization") || "";
@@ -22,9 +23,8 @@ function json(obj, status = 200) {
   });
 }
 
-function playerIdFromKey(key, teamSlug) {
-  // key like "final/<teamSlug>/<playerId>" or "final/<teamSlug>/<playerId>.wav"
-  const prefix = `final/${teamSlug}/`;
+function playerIdFromKey(key, prefixValue) {
+  const prefix = `final/${prefixValue}/`;
   const rest = key.startsWith(prefix) ? key.slice(prefix.length) : key;
   return rest.split(".")[0];
 }
@@ -51,16 +51,29 @@ async function handle(request, env) {
   const status = {};
   let cursor = undefined;
 
-  const prefix = `final/${team.slug}/`;
+  for (const prefixValue of [team.id, team.slug]) {
+    const prefix = `final/${prefixValue}/`;
+    cursor = undefined;
+    do {
+      const listed = await bucket.list({ prefix, cursor });
+      for (const obj of listed.objects) {
+        const pid = playerIdFromKey(obj.key, prefixValue);
+        if (pid) status[pid] = true;
+      }
+      cursor = listed.truncated ? listed.cursor : undefined;
+    } while (cursor);
+  }
 
-  do {
-    const listed = await bucket.list({ prefix, cursor });
-    for (const obj of listed.objects) {
-      const pid = playerIdFromKey(obj.key, team.slug);
-      if (pid) status[pid] = true;
+  if (team.slug === "default") {
+    const roster = await env.DB.prepare(
+      `SELECT id FROM roster_players WHERE team_id = ? AND status = 'active'`
+    ).bind(team.id).all();
+    for (const player of roster.results || []) {
+      if (!status[player.id] && await bucket.head(`final/${player.id}`)) {
+        status[player.id] = true;
+      }
     }
-    cursor = listed.truncated ? listed.cursor : undefined;
-  } while (cursor);
+  }
 
   return json({
     ok: true,
@@ -72,6 +85,7 @@ async function handle(request, env) {
 
 export const onRequestGet = async (context) => {
   try {
+    await ensureSeasonSchema(context.env);
     return await handle(context.request, context.env);
   } catch (e) {
     return json({ ok: false, error: e?.message || String(e) }, 500);
@@ -80,6 +94,7 @@ export const onRequestGet = async (context) => {
 
 export const onRequestPost = async (context) => {
   try {
+    await ensureSeasonSchema(context.env);
     return await handle(context.request, context.env);
   } catch (e) {
     return json({ ok: false, error: e?.message || String(e) }, 500);

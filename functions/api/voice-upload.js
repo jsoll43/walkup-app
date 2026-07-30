@@ -3,6 +3,7 @@ import {
   getParentInboxNotificationSettings,
   sendParentInboxEmail,
 } from "../lib/parentInboxNotifications.js";
+import { ensureSeasonSchema } from "../lib/seasons.js";
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -41,6 +42,7 @@ async function logAuthError(env, teamSlug, teamId, error) {
 
 export const onRequestPost = async ({ request, env }) => {
   try {
+    await ensureSeasonSchema(env);
     const teamSlug = getTeamSlug(request);
     if (!teamSlug) return json({ ok: false, error: "Missing team (x-team-slug)" }, 400);
 
@@ -48,14 +50,17 @@ export const onRequestPost = async ({ request, env }) => {
     if (!parentKey) return json({ ok: false, error: "Missing parent key" }, 401);
 
     const team = await env.DB.prepare(
-      `SELECT id, name, slug, parent_key, status
-       FROM teams
-       WHERE slug = ?`
+      `SELECT t.id, t.name, t.slug, t.parent_key, t.status, s.status AS season_status
+       FROM teams t
+       JOIN seasons s ON s.id = t.season_id
+       WHERE t.slug = ?`
     )
       .bind(teamSlug)
       .first();
 
-    if (!team || team.status !== "active") return json({ ok: false, error: "Unknown team" }, 404);
+    if (!team || team.status !== "active" || team.season_status !== "current") {
+      return json({ ok: false, error: "Unknown team" }, 404);
+    }
     
     if (team.parent_key !== parentKey) {
       await logAuthError(env, teamSlug, team.id, `Invalid parent key provided (expected: ${team.parent_key.substring(0, 3)}..., got: ${parentKey.substring(0, 3)}...)`);

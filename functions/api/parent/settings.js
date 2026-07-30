@@ -1,7 +1,7 @@
 import {
-  ensureTeamsRecordingLimitColumn,
   normalizeParentRecordingMaxSeconds,
 } from "../../lib/teamSettings.js";
+import { ensureSeasonSchema } from "../../lib/seasons.js";
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -28,17 +28,19 @@ export const onRequestGet = async ({ request, env }) => {
     const parentKey = getParentKey(request);
     if (!parentKey) return json({ ok: false, error: "Missing parent key" }, 401);
 
-    await ensureTeamsRecordingLimitColumn(env);
+    await ensureSeasonSchema(env);
 
     const team = await env.DB.prepare(
-      `SELECT id, slug, parent_key, parent_recording_max_seconds, status
-       FROM teams
-       WHERE slug = ?`
+      `SELECT t.id, t.slug, t.parent_key, t.parent_recording_max_seconds,
+              t.status, s.status AS season_status
+       FROM teams t
+       JOIN seasons s ON s.id = t.season_id
+       WHERE t.slug = ?`
     )
       .bind(teamSlug)
       .first();
 
-    if (!team || team.status !== "active") {
+    if (!team || team.status !== "active" || team.season_status !== "current") {
       return json({ ok: false, error: "Unknown team" }, 404);
     }
 

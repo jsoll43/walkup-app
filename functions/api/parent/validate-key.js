@@ -15,6 +15,7 @@ function getParentKey(req) {
 
 export const onRequestPost = async ({ request, env }) => {
   try {
+    await ensureSeasonSchema(env);
     const teamSlug = getTeamSlug(request);
     if (!teamSlug) return json({ ok: false, error: "Missing team" }, 400);
 
@@ -22,14 +23,15 @@ export const onRequestPost = async ({ request, env }) => {
     if (!parentKey) return json({ ok: false, error: "Missing parent key" }, 400);
 
     const team = await env.DB.prepare(
-      `SELECT id, name, slug, parent_key, status
-       FROM teams
-       WHERE slug = ?`
+      `SELECT t.id, t.name, t.slug, t.parent_key, t.status, s.status AS season_status
+       FROM teams t
+       JOIN seasons s ON s.id = t.season_id
+       WHERE t.slug = ?`
     )
       .bind(teamSlug)
       .first();
 
-    if (!team || team.status !== "active") {
+    if (!team || team.status !== "active" || team.season_status !== "current") {
       return json({ ok: false, error: "Unknown team" }, 404);
     }
 
@@ -43,3 +45,4 @@ export const onRequestPost = async ({ request, env }) => {
     return json({ ok: false, error: "Server error" }, 500);
   }
 };
+import { ensureSeasonSchema } from "../../lib/seasons.js";

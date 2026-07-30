@@ -1,4 +1,5 @@
 // functions/api/coach/state.js
+import { ensureSeasonSchema } from "../../lib/seasons.js";
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
@@ -24,6 +25,7 @@ function clampIndex(idx, length) {
 
 export const onRequestGet = async ({ request, env }) => {
   try {
+    await ensureSeasonSchema(env);
     const teamSlug = getTeamSlug(request);
     if (!teamSlug) return json({ ok: false, error: "Missing team (x-team-slug)" }, 400);
 
@@ -31,12 +33,16 @@ export const onRequestGet = async ({ request, env }) => {
     if (!coachKey) return json({ ok: false, error: "Missing coach key" }, 401);
 
     const team = await env.DB.prepare(
-      `SELECT id, name, slug, coach_key, status FROM teams WHERE slug = ?`
+      `SELECT t.id, t.name, t.slug, t.coach_key, t.status, s.status AS season_status
+       FROM teams t JOIN seasons s ON s.id = t.season_id
+       WHERE t.slug = ?`
     )
       .bind(teamSlug)
       .first();
 
-    if (!team || team.status !== "active") return json({ ok: false, error: "Unknown team" }, 404);
+    if (!team || team.status !== "active" || team.season_status !== "current") {
+      return json({ ok: false, error: "Unknown current-season team" }, 404);
+    }
     if (team.coach_key !== coachKey) return json({ ok: false, error: "Unauthorized" }, 401);
 
     const row = await env.DB.prepare(
@@ -65,6 +71,7 @@ export const onRequestGet = async ({ request, env }) => {
 
 export const onRequestPost = async ({ request, env }) => {
   try {
+    await ensureSeasonSchema(env);
     const teamSlug = getTeamSlug(request);
     if (!teamSlug) return json({ ok: false, error: "Missing team (x-team-slug)" }, 400);
 
@@ -72,12 +79,16 @@ export const onRequestPost = async ({ request, env }) => {
     if (!coachKey) return json({ ok: false, error: "Missing coach key" }, 401);
 
     const team = await env.DB.prepare(
-      `SELECT id, name, slug, coach_key, status FROM teams WHERE slug = ?`
+      `SELECT t.id, t.name, t.slug, t.coach_key, t.status, s.status AS season_status
+       FROM teams t JOIN seasons s ON s.id = t.season_id
+       WHERE t.slug = ?`
     )
       .bind(teamSlug)
       .first();
 
-    if (!team || team.status !== "active") return json({ ok: false, error: "Unknown team" }, 404);
+    if (!team || team.status !== "active" || team.season_status !== "current") {
+      return json({ ok: false, error: "Unknown current-season team" }, 404);
+    }
     if (team.coach_key !== coachKey) return json({ ok: false, error: "Unauthorized" }, 401);
 
     const body = await request.json().catch(() => ({}));

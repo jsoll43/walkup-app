@@ -74,6 +74,7 @@ export default function Coach() {
   const teamSlug = useMemo(() => getTeamSlug(), []);
   const [teamName, setTeamName] = useState(getTeamName());
   const [availableTeams, setAvailableTeams] = useState([]);
+  const [currentSeason, setCurrentSeason] = useState(null);
 
   const [roster, setRoster] = useState([]);
   const rosterById = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
@@ -113,7 +114,9 @@ export default function Coach() {
         a.pause();
         a.currentTime = 0;
       }
-    } catch {}
+    } catch {
+      // Stopping a detached audio element is best-effort.
+    }
     setIsPlaying(false);
     setPlayingPlayerId("");
   }
@@ -341,7 +344,7 @@ export default function Coach() {
     return copy;
   }
 
-  function adjustCurrentIndexAfterMove(curIdx, from, to, len) {
+  function adjustCurrentIndexAfterMove(curIdx, from, to) {
     if (!Number.isFinite(curIdx)) return curIdx;
     if (from === to) return curIdx;
     if (curIdx === from) return to;
@@ -358,12 +361,12 @@ export default function Coach() {
   async function moveAndSave(from, to) {
     const next = moveItem(from, to);
     if (next === lineupIds) return;
-    const nextCurrent = adjustCurrentIndexAfterMove(currentIndex, from, to, next.length);
+    const nextCurrent = adjustCurrentIndexAfterMove(currentIndex, from, to);
     setLineupIds(next);
     setCurrentIndex(nextCurrent);
     try {
       await saveState(coachKey, next, nextCurrent);
-    } catch (e) {
+    } catch {
       // saveState will set errors; keep optimistic local state
     }
   }
@@ -375,7 +378,7 @@ export default function Coach() {
     setLineupIds(next);
     try {
       await saveState(coachKey, next, currentIndex);
-    } catch (e) {
+    } catch {
       // saveState sets errors; keep local optimistic state even if save fails
     }
   }
@@ -388,7 +391,7 @@ export default function Coach() {
     setCurrentIndex(nextIdx);
     try {
       await saveState(coachKey, copy, nextIdx);
-    } catch (e) {
+    } catch {
       // saveState sets errors; keep local optimistic state even if save fails
     }
   }
@@ -398,7 +401,7 @@ export default function Coach() {
     setCurrentIndex(0);
     try {
       await saveState(coachKey, [], 0);
-    } catch (e) {
+    } catch {
       // saveState sets errors; keep local optimistic state even if save fails
     }
   }
@@ -432,13 +435,24 @@ export default function Coach() {
         if (!res.ok || json?.ok === false) return;
         if (!mounted) return;
         const teams = Array.isArray(json.teams) ? json.teams : [];
+        setCurrentSeason(json.currentSeason || null);
         // Sort teams alphabetically by name
         const sortedTeams = teams.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
         setAvailableTeams(sortedTeams);
-      } catch {}
+        if (teamSlug && !teams.some((team) => String(team.slug || "") === teamSlug)) {
+          clearCoachKey();
+          sessionStorage.removeItem("TEAM_SLUG");
+          sessionStorage.removeItem("TEAM_NAME");
+          sessionStorage.removeItem("teamSlug");
+          sessionStorage.removeItem("teamName");
+          window.location.reload();
+        }
+      } catch {
+        // Team discovery errors are displayed by the login flow when it retries.
+      }
     })();
     return () => (mounted = false);
-  }, []);
+  }, [teamSlug]);
 
   useEffect(() => {
     if (!isAuthed || !coachKey) return;
@@ -556,6 +570,12 @@ export default function Coach() {
       <div className="card" style={{ marginBottom: 24 }}>
         <div className="cardTitle">Team</div>
         <div style={{ fontWeight: 1000, marginTop: 6 }}>{teamName || teamSlug}</div>
+        {currentSeason?.label ? (
+          <div style={{ marginTop: 4, fontSize: 13, opacity: 0.75 }}>{currentSeason.label}</div>
+        ) : null}
+        <div style={{ marginTop: 10 }}>
+          <a className="btn-secondary" href="/archive">Browse Previous Seasons</a>
+        </div>
 
         <div className="cardTitle" style={{ marginTop: 14 }}>Game mode</div>
 

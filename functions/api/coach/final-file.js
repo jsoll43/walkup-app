@@ -1,4 +1,5 @@
 // functions/api/coach/final-file.js
+import { ensureSeasonSchema } from "../../lib/seasons.js";
 function getBearer(req) {
   const auth = req.headers.get("authorization") || "";
   if (auth.toLowerCase().startsWith("bearer ")) return auth.slice(7).trim();
@@ -25,6 +26,7 @@ export async function onRequest(context) {
   const { request, env } = context;
 
   try {
+    await ensureSeasonSchema(env);
     const key = getBearer(request);
     if (!key) return json({ ok: false, error: "Missing coach key" }, 401);
 
@@ -38,22 +40,28 @@ export async function onRequest(context) {
     if (!teamSlug) return json({ ok: false, error: "Missing team (x-team-slug)" }, 400);
 
     const team = await env.DB.prepare(
-      `SELECT id, name, slug, coach_key, status FROM teams WHERE slug = ?`
+      `SELECT t.id, t.name, t.slug, t.coach_key, t.status, s.status AS season_status
+       FROM teams t JOIN seasons s ON s.id = t.season_id
+       WHERE t.slug = ?`
     )
       .bind(teamSlug)
       .first();
 
-    if (!team || team.status !== "active") return json({ ok: false, error: "Unknown team" }, 404);
+    if (!team || team.status !== "active" || team.season_status !== "current") {
+      return json({ ok: false, error: "Unknown current-season team" }, 404);
+    }
     if (team.coach_key !== key && key !== env.COACH_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
 
     const bucket = env.WALKUP_VOICE;
     if (!bucket) return json({ ok: false, error: "R2 binding WALKUP_VOICE not configured" }, 500);
 
-    // Prefer team-scoped key (new layout): final/<teamSlug>/<playerId>
+    // Prefer immutable team-id layout, then fall back to the older slug layout.
     let obj = null;
+    const teamIdKey = `final/${team.id}/${playerId}`;
+    obj = await bucket.get(teamIdKey);
     if (teamSlug) {
       const teamKey = `final/${teamSlug}/${playerId}`;
-      obj = await bucket.get(teamKey);
+      if (!obj) obj = await bucket.get(teamKey);
       if (!obj) {
         const listed = await bucket.list({ prefix: `final/${teamSlug}/${playerId}` });
         const first = listed.objects?.[0];

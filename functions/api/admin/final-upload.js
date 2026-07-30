@@ -1,4 +1,5 @@
 // functions/api/admin/final-upload.js
+import { ensureSeasonSchema } from "../../lib/seasons.js";
 function getAuthKey(req) {
   const h = req.headers;
   const bearer = h.get("authorization") || "";
@@ -24,14 +25,17 @@ function json(obj, status = 200) {
 
 async function requireTeam(env, slug) {
   const team = await env.DB.prepare(
-    `SELECT id, name, slug, status FROM teams WHERE slug = ?`
+    `SELECT t.id, t.name, t.slug, t.status, s.status AS season_status
+     FROM teams t JOIN seasons s ON s.id = t.season_id
+     WHERE t.slug = ?`
   ).bind(slug).first();
-  if (!team || team.status !== "active") return null;
+  if (!team || team.status !== "active" || team.season_status !== "current") return null;
   return team;
 }
 
 export const onRequestPost = async ({ request, env }) => {
   try {
+    await ensureSeasonSchema(env);
     const key = getAuthKey(request);
     if (!key || key !== env.ADMIN_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
 
@@ -54,8 +58,8 @@ export const onRequestPost = async ({ request, env }) => {
     const bucket = env.WALKUP_VOICE;
     if (!bucket) return json({ ok: false, error: "R2 binding WALKUP_VOICE not configured" }, 500);
 
-    // Team-aware final key (no extension for backwards compatibility with your UI/status map)
-    const r2Key = `final/${team.slug}/${playerId}`;
+    // Immutable team IDs keep archived songs safe even when human-readable slugs change.
+    const r2Key = `final/${team.id}/${playerId}`;
 
     const buf = await file.arrayBuffer();
     const contentType = file.type || "application/octet-stream";

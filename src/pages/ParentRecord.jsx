@@ -89,7 +89,9 @@ export default function ParentRecord({ onBlob, disabled = false, playerName = ""
     return () => {
       try {
         if (previewUrl) URL.revokeObjectURL(previewUrl);
-      } catch {}
+      } catch {
+        // Object URL cleanup is best-effort during unmount.
+      }
       cleanup();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -98,7 +100,9 @@ export default function ParentRecord({ onBlob, disabled = false, playerName = ""
   function cleanup() {
     try {
       if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
-    } catch {}
+    } catch {
+      // Timer may already have completed.
+    }
     stopTimerRef.current = null;
 
     try {
@@ -106,21 +110,31 @@ export default function ParentRecord({ onBlob, disabled = false, playerName = ""
         processorRef.current.disconnect();
         processorRef.current.onaudioprocess = null;
       }
-    } catch {}
+    } catch {
+      // Audio nodes may already be disconnected.
+    }
     try {
       if (sourceRef.current) sourceRef.current.disconnect();
-    } catch {}
+    } catch {
+      // Audio source may already be disconnected.
+    }
     try {
       if (gainRef.current) gainRef.current.disconnect();
-    } catch {}
+    } catch {
+      // Gain node may already be disconnected.
+    }
     try {
       if (audioCtxRef.current) audioCtxRef.current.close();
-    } catch {}
+    } catch {
+      // Audio context may already be closed.
+    }
     try {
       if (mediaStreamRef.current) {
         for (const t of mediaStreamRef.current.getTracks()) t.stop();
       }
-    } catch {}
+    } catch {
+      // Media tracks may already be stopped.
+    }
 
     processorRef.current = null;
     sourceRef.current = null;
@@ -200,7 +214,9 @@ export default function ParentRecord({ onBlob, disabled = false, playerName = ""
       if (previewUrl) {
         try {
           URL.revokeObjectURL(previewUrl);
-        } catch {}
+        } catch {
+          // The previous preview URL may already be revoked.
+        }
       }
       const url = URL.createObjectURL(wavBlob);
       setPreviewUrl(url);
@@ -222,14 +238,18 @@ export default function ParentRecord({ onBlob, disabled = false, playerName = ""
     if (stopTimerRef.current) {
       try {
         clearTimeout(stopTimerRef.current);
-      } catch {}
+      } catch {
+        // Timer may already have completed.
+      }
     }
     stopTimerRef.current = null;
 
     if (previewUrl) {
       try {
         URL.revokeObjectURL(previewUrl);
-      } catch {}
+      } catch {
+        // The preview URL may already be revoked.
+      }
     }
     setPreviewUrl("");
 

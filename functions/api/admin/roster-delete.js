@@ -1,4 +1,5 @@
 // functions/api/admin/roster-delete.js
+import { ensureSeasonSchema } from "../../lib/seasons.js";
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj, null, 2), {
     status,
@@ -51,10 +52,22 @@ export async function onRequestPost({ request, env }) {
 
     const provided = getAdminKey(request);
     if (!provided || provided !== String(env.ADMIN_KEY).trim()) return json({ ok: false, error: "Unauthorized" }, 401);
+    await ensureSeasonSchema(env);
 
     const body = await request.json().catch(() => null);
     const id = (body?.id || "").toString().trim();
     if (!id) return json({ ok: false, error: "id is required" }, 400);
+
+    const currentPlayer = await env.DB.prepare(
+      `SELECT rp.id
+       FROM roster_players rp
+       JOIN teams t ON t.id = rp.team_id
+       JOIN seasons s ON s.id = t.season_id
+       WHERE rp.id = ? AND s.status = 'current'`
+    ).bind(id).first();
+    if (!currentPlayer) {
+      return json({ ok: false, error: "Archived players are read-only." }, 400);
+    }
 
     const now = new Date().toISOString();
     const q = `

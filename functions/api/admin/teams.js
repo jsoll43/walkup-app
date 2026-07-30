@@ -3,9 +3,9 @@ import {
   DEFAULT_PARENT_RECORDING_MAX_SECONDS,
   MAX_PARENT_RECORDING_MAX_SECONDS,
   MIN_PARENT_RECORDING_MAX_SECONDS,
-  ensureTeamsRecordingLimitColumn,
   normalizeParentRecordingMaxSeconds,
 } from "../../lib/teamSettings.js";
+import { ensureSeasonSchema, getCurrentSeason } from "../../lib/seasons.js";
 
 function getAdminKey(req) {
   const h = req.headers;
@@ -38,16 +38,27 @@ export const onRequestGet = async ({ request, env }) => {
     const key = getAdminKey(request);
     if (!key || key !== env.ADMIN_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
 
-    await ensureTeamsRecordingLimitColumn(env);
+    await ensureSeasonSchema(env);
 
     const res = await env.DB.prepare(
-      `SELECT id, name, slug, parent_key, coach_key, parent_recording_max_seconds, status, created_at, deleted_at
-       FROM teams
-       WHERE status = 'active'
-       ORDER BY created_at DESC`
+      `SELECT t.id, t.name, t.slug, t.parent_key, t.coach_key,
+              t.parent_recording_max_seconds, t.status, t.created_at, t.deleted_at,
+              t.season_id, s.label AS season_label, s.status AS season_status,
+              t.copied_from_team_id
+       FROM teams t
+       LEFT JOIN seasons s ON s.id = t.season_id
+       WHERE t.status = 'active'
+       ORDER BY CASE s.status WHEN 'current' THEN 0 ELSE 1 END,
+                s.year DESC,
+                CASE s.term WHEN 'fall' THEN 2 WHEN 'summer' THEN 1 WHEN 'spring' THEN 0 ELSE -1 END DESC,
+                t.name ASC`
     ).all();
 
-    return json({ ok: true, teams: res.results || [] });
+    return json({
+      ok: true,
+      currentSeason: await getCurrentSeason(env),
+      teams: res.results || [],
+    });
   } catch (e) {
     return json({ ok: false, error: e?.message || String(e) }, 500);
   }
@@ -87,7 +98,11 @@ export const onRequestPost = async ({ request, env }) => {
       );
     }
 
-    await ensureTeamsRecordingLimitColumn(env);
+    await ensureSeasonSchema(env);
+    const currentSeason = await getCurrentSeason(env);
+    if (!currentSeason) return json({ ok: false, error: "No current season is configured." }, 409);
+
+    slug = `${slug}-${currentSeason.id}`;
 
     const now = new Date().toISOString();
     let id = makeIdFromSlug(slug);
@@ -106,10 +121,12 @@ export const onRequestPost = async ({ request, env }) => {
     }
 
     await env.DB.prepare(
-      `INSERT INTO teams (id, name, slug, parent_key, coach_key, parent_recording_max_seconds, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`
+      `INSERT INTO teams
+         (id, name, slug, parent_key, coach_key, parent_recording_max_seconds,
+          status, created_at, season_id)
+       VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`
     )
-      .bind(id, name, slug, parentKey, coachKey, recordingMaxSeconds, now)
+      .bind(id, name, slug, parentKey, coachKey, recordingMaxSeconds, now, currentSeason.id)
       .run();
 
     // Initialize coach state row
@@ -155,9 +172,13 @@ export const onRequestPut = async ({ request, env }) => {
       );
     }
 
-    await ensureTeamsRecordingLimitColumn(env);
+    await ensureSeasonSchema(env);
 
-    const existing = await env.DB.prepare(`SELECT id FROM teams WHERE slug = ? AND status = 'active'`).bind(slug).first();
+    const existing = await env.DB.prepare(
+      `SELECT t.id FROM teams t
+       JOIN seasons s ON s.id = t.season_id
+       WHERE t.slug = ? AND t.status = 'active' AND s.status = 'current'`
+    ).bind(slug).first();
     if (!existing) return json({ ok: false, error: "Unknown team" }, 404);
 
     const parts = [];
@@ -200,13 +221,21 @@ export const onRequestDelete = async ({ request, env }) => {
     if (!slug) return json({ ok: false, error: "Missing slug" }, 400);
     if (slug === "default") return json({ ok: false, error: "Cannot delete the default team." }, 400);
 
+    await ensureSeasonSchema(env);
+    const team = await env.DB.prepare(
+      `SELECT t.id FROM teams t
+       JOIN seasons s ON s.id = t.season_id
+       WHERE t.slug = ? AND t.status = 'active' AND s.status = 'current'`
+    ).bind(slug).first();
+    if (!team) return json({ ok: false, error: "Current-season team not found." }, 404);
+
     const now = new Date().toISOString();
 
     // Soft delete team
     const res = await env.DB.prepare(
-      `UPDATE teams SET status='deleted', deleted_at=? WHERE slug=? AND status='active'`
+      `UPDATE teams SET status='deleted', deleted_at=? WHERE id=? AND status='active'`
     )
-      .bind(now, slug)
+      .bind(now, team.id)
       .run();
 
     return json({ ok: true, updated: res?.meta?.changes || 0 });

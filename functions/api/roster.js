@@ -1,4 +1,5 @@
 // functions/api/roster.js
+import { ensureSeasonSchema } from "../lib/seasons.js";
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
@@ -24,10 +25,17 @@ function getAdminKey(req) {
 
 export const onRequestGet = async ({ request, env }) => {
   try {
+    await ensureSeasonSchema(env);
     const teamSlug = getTeamSlug(request);
     if (!teamSlug) return json({ ok: false, error: "Missing team (x-team-slug)" }, 400);
 
-    const team = await env.DB.prepare(`SELECT id, name, slug, coach_key, status FROM teams WHERE slug = ?`)
+    const team = await env.DB.prepare(
+      `SELECT t.id, t.name, t.slug, t.coach_key, t.status,
+              s.label AS season_label, s.status AS season_status
+       FROM teams t
+       JOIN seasons s ON s.id = t.season_id
+       WHERE t.slug = ?`
+    )
       .bind(teamSlug)
       .first();
     if (!team || team.status !== "active") return json({ ok: false, error: "Unknown team" }, 404);
@@ -49,7 +57,16 @@ export const onRequestGet = async ({ request, env }) => {
       .bind(team.id)
       .all();
 
-    return json({ ok: true, team: { slug: team.slug, name: team.name }, roster: res.results || [] });
+    return json({
+      ok: true,
+      team: {
+        slug: team.slug,
+        name: team.name,
+        seasonLabel: team.season_label,
+        seasonStatus: team.season_status,
+      },
+      roster: res.results || [],
+    });
   } catch (e) {
     return json({ ok: false, error: e?.message || String(e) }, 500);
   }
