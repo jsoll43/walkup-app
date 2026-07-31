@@ -588,18 +588,6 @@ export default function Coach() {
       <div className="card" style={{ marginBottom: 24 }}>
         <div className="cardTitle">Team</div>
         <div style={{ fontWeight: 1000, marginTop: 6 }}>{teamName || teamSlug}</div>
-        {currentSeason?.label ? (
-          <div style={{ marginTop: 4, fontSize: 13, opacity: 0.75 }}>{currentSeason.label}</div>
-        ) : null}
-        <div className="coach-archive-access" style={{ justifyContent: "flex-start" }}>
-          <button
-            type="button"
-            className="btn-secondary btn-sm"
-            onClick={() => window.location.assign("/archive")}
-          >
-            Browse previous seasons →
-          </button>
-        </div>
 
         <div className="cardTitle" style={{ marginTop: 14 }}>Game mode</div>
 
