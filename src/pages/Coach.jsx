@@ -586,9 +586,24 @@ export default function Coach() {
       ) : null}
 
       <div className="card" style={{ marginBottom: 24 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-          <div className="cardTitle">Team</div>
-          <div style={{ fontWeight: 1000 }}>{teamName || teamSlug}</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
+            <div className="cardTitle">Team</div>
+            <div style={{ fontWeight: 1000 }}>{teamName || teamSlug}</div>
+          </div>
+          <button
+            className="btn-secondary btn-sm"
+            onClick={() => {
+              stopAudio();
+              clearCoachKey();
+              setIsAuthed(false);
+              setCoachKey("");
+              setLoginKey("");
+              setErr("");
+            }}
+          >
+            Log out
+          </button>
         </div>
 
         <div className="cardTitle" style={{ marginTop: 10 }}>Game mode</div>
@@ -661,7 +676,6 @@ export default function Coach() {
             {isPlaying && playingPlayerId ? ` • Playing` : ""}
           </div>
 
-          {/* logout moved below Back/Next */}
         </div>
 
         <div style={{ marginTop: 8, display: "flex", gap: 0, alignItems: "center" }}>
@@ -673,21 +687,6 @@ export default function Coach() {
           </button>
         </div>
 
-        <div style={{ marginTop: 8 }}>
-          <button
-            className="btn-secondary"
-            onClick={() => {
-              stopAudio();
-              clearCoachKey();
-              setIsAuthed(false);
-              setCoachKey("");
-              setLoginKey("");
-              setErr("");
-            }}
-          >
-            Log out
-          </button>
-        </div>
       </div>
 
       <div className="card">
