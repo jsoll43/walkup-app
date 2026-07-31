@@ -561,7 +561,14 @@ export default function Coach() {
 
           <div className="coach-archive-access">
             <span>Looking for an older team?</span>
-            <a className="coach-archive-link" href="/archive">Browse archived seasons</a>
+            <button
+              type="button"
+              className="btn-secondary btn-sm"
+              style={{ marginLeft: 6 }}
+              onClick={() => window.location.assign("/archive")}
+            >
+              Browse archived seasons →
+            </button>
           </div>
         </div>
       </div>
@@ -585,7 +592,13 @@ export default function Coach() {
           <div style={{ marginTop: 4, fontSize: 13, opacity: 0.75 }}>{currentSeason.label}</div>
         ) : null}
         <div className="coach-archive-access" style={{ justifyContent: "flex-start" }}>
-          <a className="coach-archive-link" href="/archive">Browse previous seasons</a>
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            onClick={() => window.location.assign("/archive")}
+          >
+            Browse previous seasons →
+          </button>
         </div>
 
         <div className="cardTitle" style={{ marginTop: 14 }}>Game mode</div>

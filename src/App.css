@@ -289,17 +289,6 @@ button:disabled {
   color: rgba(11, 31, 51, 0.68);
 }
 
-.coach-archive-link {
-  color: var(--bgsl-navy);
-  font-weight: 800;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.coach-archive-link:hover {
-  color: var(--bgsl-navy-dark);
-}
-
 .coach-add-row {
   display: flex;
   align-items: center;

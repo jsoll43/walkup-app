@@ -1063,7 +1063,7 @@ export default function Admin() {
         >
           <span>Current season: <strong>{currentSeason?.label || "Loading…"}</strong></span>
           <button className="btn-secondary btn-sm" onClick={() => setShowSeasonModal(true)}>
-            Season settings
+            Start a new season
           </button>
         </div>
       </AccordionSection>
@@ -1338,7 +1338,7 @@ export default function Admin() {
         <SchedulingAdminSection isAuthed={isAuthed} adminHeaders={adminHeaders} embedded />
       </AccordionSection>
 
-        {/* Season Settings Modal */}
+        {/* Start New Season Modal */}
         {showSeasonModal ? (
           <div
             style={{
@@ -1352,7 +1352,7 @@ export default function Admin() {
             }}
           >
             <div style={{ background: "white", padding: 20, borderRadius: 12, width: 560, maxWidth: "95%", color: "#111" }}>
-              <h3 style={{ marginTop: 0 }}>Season settings</h3>
+              <h3 style={{ marginTop: 0 }}>Start a new season</h3>
               <div style={{ padding: 10, borderRadius: 10, background: "#fff7ed", border: "1px solid #fdba74", fontSize: 13 }}>
                 Starting a season immediately archives <strong>{currentSeason?.label || "the current season"}</strong> and changes which teams parents and coaches see.
               </div>
