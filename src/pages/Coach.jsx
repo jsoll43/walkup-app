@@ -606,8 +606,6 @@ export default function Coach() {
           </button>
         </div>
 
-        <div className="cardTitle" style={{ marginTop: 10 }}>Game mode</div>
-
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>LAST UP</div>
           <div style={{ fontSize: 18, marginBottom: 10 }}>
