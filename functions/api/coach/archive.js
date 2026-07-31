@@ -13,18 +13,21 @@ function getCoachKey(request) {
   return (request.headers.get("x-coach-key") || "").trim();
 }
 
-async function authorizeCurrentCoach(request, env) {
-  const teamSlug = (request.headers.get("x-team-slug") || "").trim().toLowerCase();
+async function authorizeArchiveCoach(request, env, archivedTeam) {
   const key = getCoachKey(request);
-  if (!teamSlug || !key) return null;
-  const team = await env.DB.prepare(
+  if (!key) return false;
+  if (key === env.COACH_KEY || key === archivedTeam.coach_key) return true;
+
+  const teamSlug = (request.headers.get("x-team-slug") || "").trim().toLowerCase();
+  if (!teamSlug) return false;
+  const currentTeam = await env.DB.prepare(
     `SELECT t.id
      FROM teams t
      JOIN seasons s ON s.id = t.season_id
      WHERE t.slug = ? AND t.status = 'active' AND s.status = 'current'
-       AND (t.coach_key = ? OR ? = ?)`
-  ).bind(teamSlug, key, key, env.COACH_KEY || "").first();
-  return team || null;
+       AND t.coach_key = ?`
+  ).bind(teamSlug, key).first();
+  return Boolean(currentTeam);
 }
 
 async function songStatus(bucket, team, players) {
@@ -53,16 +56,13 @@ async function songStatus(bucket, team, players) {
 export const onRequestGet = async ({ request, env }) => {
   try {
     await ensureSeasonSchema(env);
-    if (!await authorizeCurrentCoach(request, env)) {
-      return json({ ok: false, error: "Unauthorized" }, 401);
-    }
 
     const url = new URL(request.url);
     const teamId = String(url.searchParams.get("teamId") || "").trim();
     if (!teamId) {
       const result = await env.DB.prepare(
         `SELECT s.id AS season_id, s.label AS season_label, s.year, s.term,
-                t.id AS team_id, t.name AS team_name
+                t.id AS team_id, t.name AS team_name, t.slug AS team_slug
          FROM seasons s
          JOIN teams t ON t.season_id = s.id AND t.status = 'active'
          WHERE s.status = 'archived'
@@ -74,12 +74,16 @@ export const onRequestGet = async ({ request, env }) => {
     }
 
     const team = await env.DB.prepare(
-      `SELECT t.id, t.name, t.slug, s.id AS season_id, s.label AS season_label
+      `SELECT t.id, t.name, t.slug, t.coach_key,
+              s.id AS season_id, s.label AS season_label
        FROM teams t
        JOIN seasons s ON s.id = t.season_id
        WHERE t.id = ? AND t.status = 'active' AND s.status = 'archived'`
     ).bind(teamId).first();
     if (!team) return json({ ok: false, error: "Archived team not found." }, 404);
+    if (!await authorizeArchiveCoach(request, env, team)) {
+      return json({ ok: false, error: "Unauthorized" }, 401);
+    }
 
     const rosterResult = await env.DB.prepare(
       `SELECT id, number, first, last
@@ -90,7 +94,13 @@ export const onRequestGet = async ({ request, env }) => {
     const roster = rosterResult.results || [];
     return json({
       ok: true,
-      team,
+      team: {
+        id: team.id,
+        name: team.name,
+        slug: team.slug,
+        season_id: team.season_id,
+        season_label: team.season_label,
+      },
       roster,
       songStatus: await songStatus(env.WALKUP_VOICE, team, roster),
     });
@@ -98,4 +108,3 @@ export const onRequestGet = async ({ request, env }) => {
     return json({ ok: false, error: error?.message || String(error) }, 500);
   }
 };
-

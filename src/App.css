@@ -235,6 +235,22 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.btn,
+.btn-secondary,
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font: inherit;
+  font-weight: 1000;
+  line-height: normal;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
 .btn {
   background: var(--bgsl-gold);
   color: var(--bgsl-navy-dark);

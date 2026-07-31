@@ -30,27 +30,32 @@ async function findSong(bucket, team, playerId) {
 export const onRequestGet = async ({ request, env }) => {
   try {
     await ensureSeasonSchema(env);
-    const currentTeamSlug = (request.headers.get("x-team-slug") || "").trim().toLowerCase();
-    const key = getCoachKey(request);
-    const authorized = await env.DB.prepare(
-      `SELECT t.id FROM teams t
-       JOIN seasons s ON s.id = t.season_id
-       WHERE t.slug = ? AND t.status = 'active' AND s.status = 'current'
-         AND (t.coach_key = ? OR ? = ?)`
-    ).bind(currentTeamSlug, key, key, env.COACH_KEY || "").first();
-    if (!authorized) return json({ ok: false, error: "Unauthorized" }, 401);
-
     const url = new URL(request.url);
     const teamId = String(url.searchParams.get("teamId") || "").trim();
     const playerId = String(url.searchParams.get("playerId") || "").trim();
     if (!teamId || !playerId) return json({ ok: false, error: "Missing team or player." }, 400);
 
     const team = await env.DB.prepare(
-      `SELECT t.id, t.slug FROM teams t
+      `SELECT t.id, t.slug, t.coach_key FROM teams t
        JOIN seasons s ON s.id = t.season_id
        WHERE t.id = ? AND t.status = 'active' AND s.status = 'archived'`
     ).bind(teamId).first();
     if (!team) return json({ ok: false, error: "Archived team not found." }, 404);
+
+    const key = getCoachKey(request);
+    const authTeamSlug = (request.headers.get("x-team-slug") || "").trim().toLowerCase();
+    let authorized = Boolean(key && (key === env.COACH_KEY || key === team.coach_key));
+    if (!authorized && key && authTeamSlug) {
+      const currentTeam = await env.DB.prepare(
+        `SELECT t.id FROM teams t
+         JOIN seasons s ON s.id = t.season_id
+         WHERE t.slug = ? AND t.status = 'active' AND s.status = 'current'
+           AND t.coach_key = ?`
+      ).bind(authTeamSlug, key).first();
+      authorized = Boolean(currentTeam);
+    }
+    if (!authorized) return json({ ok: false, error: "Unauthorized" }, 401);
+
     if (!env.WALKUP_VOICE) return json({ ok: false, error: "Audio storage is unavailable." }, 500);
 
     const object = await findSong(env.WALKUP_VOICE, team, playerId);
@@ -66,4 +71,3 @@ export const onRequestGet = async ({ request, env }) => {
     return json({ ok: false, error: error?.message || String(error) }, 500);
   }
 };
-
