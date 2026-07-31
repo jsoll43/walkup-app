@@ -276,6 +276,30 @@ button:disabled {
 }
 
 /* Coach-specific */
+.coach-archive-access {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(16, 46, 79, 0.14);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: rgba(11, 31, 51, 0.68);
+}
+
+.coach-archive-link {
+  color: var(--bgsl-navy);
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.coach-archive-link:hover {
+  color: var(--bgsl-navy-dark);
+}
+
 .coach-add-row {
   display: flex;
   align-items: center;
