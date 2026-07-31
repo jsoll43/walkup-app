@@ -103,6 +103,7 @@ export default function Admin() {
   const [newSeasonYear, setNewSeasonYear] = useState("2027");
   const [newSeasonTerm, setNewSeasonTerm] = useState("spring");
   const [copyTeamsForward, setCopyTeamsForward] = useState(false);
+  const [showSeasonModal, setShowSeasonModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [showManageKeysModal, setShowManageKeysModal] = useState(false);
@@ -758,6 +759,7 @@ export default function Admin() {
         throw new Error(data?.error || data?.raw || `Season creation failed (HTTP ${res.status})`);
       }
       await refreshAll();
+      setShowSeasonModal(false);
     } catch (e) {
       setErr(e?.message || String(e));
     } finally {
@@ -1038,50 +1040,31 @@ export default function Admin() {
         title="Walkup Song Team Management"
         subtitle="Manage the current season, teams, credentials, and authorization errors."
       >
-        <div style={{ marginBottom: 14, padding: 12, borderRadius: 12, background: "rgba(255,255,255,0.65)" }}>
-          <div style={{ fontWeight: 1000 }}>
-            Current season: {currentSeason?.label || "Loading…"}
-          </div>
-          <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }}>
-            <div style={{ minWidth: 180 }}>
-              <label className="label">Next season label</label>
-              <input className="input" value={newSeasonLabel} onChange={(e) => setNewSeasonLabel(e.target.value)} />
-            </div>
-            <div style={{ width: 100 }}>
-              <label className="label">Year</label>
-              <input className="input" inputMode="numeric" value={newSeasonYear} onChange={(e) => setNewSeasonYear(e.target.value)} />
-            </div>
-            <div style={{ width: 130 }}>
-              <label className="label">Term</label>
-              <select className="input" value={newSeasonTerm} onChange={(e) => setNewSeasonTerm(e.target.value)}>
-                <option value="spring">Spring</option>
-                <option value="summer">Summer</option>
-                <option value="fall">Fall</option>
-                <option value="winter">Winter</option>
-              </select>
-            </div>
-            <button className="btn" onClick={startNewSeason} disabled={startingSeason}>
-              {startingSeason ? "Starting…" : "Start New Season"}
-            </button>
-          </div>
-          <label style={{ marginTop: 10, display: "inline-flex", alignItems: "center", gap: 8 }}>
-            <input
-              type="checkbox"
-              checked={copyTeamsForward}
-              onChange={(e) => setCopyTeamsForward(e.target.checked)}
-            />
-            Copy all previous team shells into the new season
-          </label>
-          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-            New seasons start empty by default. If selected, only team names, keys, and settings are copied; rosters and songs remain archived.
-          </div>
-        </div>
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
           <button className="btn" onClick={() => setShowCreateModal(true)}>Create a New Team</button>
           <button className="btn" onClick={() => setShowRenameModal(true)} disabled={currentTeams.length === 0}>Rename a Team</button>
           <button className="btn" onClick={() => setShowManageKeysModal(true)} disabled={currentTeams.length === 0}>Manage Team Settings</button>
           <button className="btn-danger" onClick={() => setShowDeleteModal(true)} disabled={deletingTeam || currentTeams.length === 0}>Delete a Team</button>
           <button className="btn" onClick={() => { fetchAuthLogs(); setShowAuthLogsModal(true); }}>View Auth Errors</button>
+        </div>
+        <div
+          style={{
+            marginTop: 18,
+            paddingTop: 12,
+            borderTop: "1px solid rgba(16,46,79,0.14)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            flexWrap: "wrap",
+            fontSize: 13,
+            opacity: 0.82,
+          }}
+        >
+          <span>Current season: <strong>{currentSeason?.label || "Loading…"}</strong></span>
+          <button className="btn-secondary btn-sm" onClick={() => setShowSeasonModal(true)}>
+            Season settings
+          </button>
         </div>
       </AccordionSection>
 
@@ -1354,6 +1337,70 @@ export default function Admin() {
       >
         <SchedulingAdminSection isAuthed={isAuthed} adminHeaders={adminHeaders} embedded />
       </AccordionSection>
+
+        {/* Season Settings Modal */}
+        {showSeasonModal ? (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 9999,
+            }}
+          >
+            <div style={{ background: "white", padding: 20, borderRadius: 12, width: 560, maxWidth: "95%", color: "#111" }}>
+              <h3 style={{ marginTop: 0 }}>Season settings</h3>
+              <div style={{ padding: 10, borderRadius: 10, background: "#fff7ed", border: "1px solid #fdba74", fontSize: 13 }}>
+                Starting a season immediately archives <strong>{currentSeason?.label || "the current season"}</strong> and changes which teams parents and coaches see.
+              </div>
+
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                <div>
+                  <label className="label">New season label</label>
+                  <input className="input" value={newSeasonLabel} onChange={(e) => setNewSeasonLabel(e.target.value)} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <label className="label">Year</label>
+                    <input className="input" inputMode="numeric" value={newSeasonYear} onChange={(e) => setNewSeasonYear(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="label">Term</label>
+                    <select className="input" value={newSeasonTerm} onChange={(e) => setNewSeasonTerm(e.target.value)}>
+                      <option value="spring">Spring</option>
+                      <option value="summer">Summer</option>
+                      <option value="fall">Fall</option>
+                      <option value="winter">Winter</option>
+                    </select>
+                  </div>
+                </div>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={copyTeamsForward}
+                    onChange={(e) => setCopyTeamsForward(e.target.checked)}
+                  />
+                  Copy previous team shells into the new season
+                </label>
+                <div style={{ fontSize: 12, opacity: 0.75 }}>
+                  New seasons start empty by default. Copying team shells includes names, keys, and settings—not rosters or songs.
+                </div>
+              </div>
+
+              <div style={{ marginTop: 18, display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <button className="btn-secondary" onClick={() => setShowSeasonModal(false)} disabled={startingSeason}>
+                  Cancel
+                </button>
+                <button className="btn-danger" onClick={startNewSeason} disabled={startingSeason}>
+                  {startingSeason ? "Starting…" : "Make New Season Current"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {/* Create Team Modal */}
         {showCreateModal ? (
