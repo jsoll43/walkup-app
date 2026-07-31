@@ -1,27 +1,6 @@
 // functions/api/admin/final-upload.js
+import { getRequestKey, getTeamSlug, json } from "../../lib/api.js";
 import { ensureSeasonSchema } from "../../lib/seasons.js";
-function getAuthKey(req) {
-  const h = req.headers;
-  const bearer = h.get("authorization") || "";
-  if (bearer.toLowerCase().startsWith("bearer ")) return bearer.slice(7).trim();
-  return (h.get("x-admin-key") || "").trim();
-}
-
-function getTeamSlug(req) {
-  const u = new URL(req.url);
-  return (
-    (req.headers.get("x-team-slug") || "").trim().toLowerCase() ||
-    (u.searchParams.get("teamSlug") || "").trim().toLowerCase() ||
-    "default"
-  );
-}
-
-function json(obj, status = 200) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8" },
-  });
-}
 
 async function requireTeam(env, slug) {
   const team = await env.DB.prepare(
@@ -36,10 +15,10 @@ async function requireTeam(env, slug) {
 export const onRequestPost = async ({ request, env }) => {
   try {
     await ensureSeasonSchema(env);
-    const key = getAuthKey(request);
+    const key = getRequestKey(request, "x-admin-key");
     if (!key || key !== env.ADMIN_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
 
-    const teamSlug = getTeamSlug(request);
+    const teamSlug = getTeamSlug(request, "default");
     const team = await requireTeam(env, teamSlug);
     if (!team) return json({ ok: false, error: `Unknown team: ${teamSlug}` }, 404);
 

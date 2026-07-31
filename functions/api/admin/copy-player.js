@@ -1,17 +1,6 @@
+import { getRequestKey, json } from "../../lib/api.js";
+import { findFinalSong } from "../../lib/finalSongs.js";
 import { ensureSeasonSchema } from "../../lib/seasons.js";
-
-function json(value, status = 200) {
-  return new Response(JSON.stringify(value), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8" },
-  });
-}
-
-function getAdminKey(request) {
-  const bearer = (request.headers.get("authorization") || "").trim();
-  if (bearer.toLowerCase().startsWith("bearer ")) return bearer.slice(7).trim();
-  return (request.headers.get("x-admin-key") || "").trim();
-}
 
 function slugify(value) {
   return String(value || "")
@@ -21,22 +10,9 @@ function slugify(value) {
     .replace(/^-+|-+$/g, "");
 }
 
-async function findSong(bucket, team, playerId) {
-  const keys = [
-    `final/${team.id}/${playerId}`,
-    `final/${team.slug}/${playerId}`,
-    ...(team.slug === "default" ? [`final/${playerId}`] : []),
-  ];
-  for (const key of keys) {
-    const object = await bucket.get(key);
-    if (object) return { object, key };
-  }
-  return null;
-}
-
 export const onRequestPost = async ({ request, env }) => {
   try {
-    if (getAdminKey(request) !== env.ADMIN_KEY) {
+    if (getRequestKey(request, "x-admin-key") !== env.ADMIN_KEY) {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
     await ensureSeasonSchema(env);
@@ -102,7 +78,7 @@ export const onRequestPost = async ({ request, env }) => {
         slug: source.team_slug,
         name: source.team_name,
       };
-      const found = await findSong(env.WALKUP_VOICE, sourceTeam, source.id);
+      const found = await findFinalSong(env.WALKUP_VOICE, sourceTeam, source.id);
       if (found) {
         await env.WALKUP_VOICE.put(`final/${destination.id}/${playerId}`, found.object.body, {
           httpMetadata: found.object.httpMetadata,
@@ -130,4 +106,3 @@ export const onRequestPost = async ({ request, env }) => {
     return json({ ok: false, error: error?.message || String(error) }, 500);
   }
 };
-

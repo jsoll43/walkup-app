@@ -1,17 +1,5 @@
+import { getRequestKey, json } from "../../lib/api.js";
 import { createSeason, ensureSeasonSchema } from "../../lib/seasons.js";
-
-function json(value, status = 200) {
-  return new Response(JSON.stringify(value), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8" },
-  });
-}
-
-function getAdminKey(request) {
-  const bearer = (request.headers.get("authorization") || "").trim();
-  if (bearer.toLowerCase().startsWith("bearer ")) return bearer.slice(7).trim();
-  return (request.headers.get("x-admin-key") || "").trim();
-}
 
 async function listSeasons(env) {
   const result = await env.DB.prepare(
@@ -28,7 +16,7 @@ async function listSeasons(env) {
 
 export const onRequestGet = async ({ request, env }) => {
   try {
-    if (getAdminKey(request) !== env.ADMIN_KEY) {
+    if (getRequestKey(request, "x-admin-key") !== env.ADMIN_KEY) {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
     await ensureSeasonSchema(env);
@@ -40,7 +28,7 @@ export const onRequestGet = async ({ request, env }) => {
 
 export const onRequestPost = async ({ request, env }) => {
   try {
-    if (getAdminKey(request) !== env.ADMIN_KEY) {
+    if (getRequestKey(request, "x-admin-key") !== env.ADMIN_KEY) {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
     const body = await request.json().catch(() => ({}));
@@ -51,4 +39,3 @@ export const onRequestPost = async ({ request, env }) => {
     return json({ ok: false, error: message }, /already exists|required/.test(message) ? 400 : 500);
   }
 };
-

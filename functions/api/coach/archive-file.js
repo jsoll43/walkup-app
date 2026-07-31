@@ -1,31 +1,7 @@
+import { json } from "../../lib/api.js";
+import { authorizeArchiveCoach, getArchivedTeam } from "../../lib/archiveAccess.js";
+import { findFinalSong } from "../../lib/finalSongs.js";
 import { ensureSeasonSchema } from "../../lib/seasons.js";
-
-function json(value, status = 200) {
-  return new Response(JSON.stringify(value), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8" },
-  });
-}
-
-function getCoachKey(request) {
-  const bearer = (request.headers.get("authorization") || "").trim();
-  return bearer.toLowerCase().startsWith("bearer ")
-    ? bearer.slice(7).trim()
-    : (request.headers.get("x-coach-key") || "").trim();
-}
-
-async function findSong(bucket, team, playerId) {
-  const keys = [
-    `final/${team.id}/${playerId}`,
-    `final/${team.slug}/${playerId}`,
-    ...(team.slug === "default" ? [`final/${playerId}`] : []),
-  ];
-  for (const key of keys) {
-    const object = await bucket.get(key);
-    if (object) return object;
-  }
-  return null;
-}
 
 export const onRequestGet = async ({ request, env }) => {
   try {
@@ -35,34 +11,24 @@ export const onRequestGet = async ({ request, env }) => {
     const playerId = String(url.searchParams.get("playerId") || "").trim();
     if (!teamId || !playerId) return json({ ok: false, error: "Missing team or player." }, 400);
 
-    const team = await env.DB.prepare(
-      `SELECT t.id, t.slug, t.coach_key FROM teams t
-       JOIN seasons s ON s.id = t.season_id
-       WHERE t.id = ? AND t.status = 'active' AND s.status = 'archived'`
-    ).bind(teamId).first();
+    const team = await getArchivedTeam(env, teamId);
     if (!team) return json({ ok: false, error: "Archived team not found." }, 404);
-
-    const key = getCoachKey(request);
-    const authTeamSlug = (request.headers.get("x-team-slug") || "").trim().toLowerCase();
-    let authorized = Boolean(key && (key === env.COACH_KEY || key === team.coach_key));
-    if (!authorized && key && authTeamSlug) {
-      const currentTeam = await env.DB.prepare(
-        `SELECT t.id FROM teams t
-         JOIN seasons s ON s.id = t.season_id
-         WHERE t.slug = ? AND t.status = 'active' AND s.status = 'current'
-           AND t.coach_key = ?`
-      ).bind(authTeamSlug, key).first();
-      authorized = Boolean(currentTeam);
+    if (!await authorizeArchiveCoach(request, env, team)) {
+      return json({ ok: false, error: "Unauthorized" }, 401);
     }
-    if (!authorized) return json({ ok: false, error: "Unauthorized" }, 401);
 
     if (!env.WALKUP_VOICE) return json({ ok: false, error: "Audio storage is unavailable." }, 500);
 
-    const object = await findSong(env.WALKUP_VOICE, team, playerId);
-    if (!object) return json({ ok: false, error: "Song not found." }, 404);
-    return new Response(object.body, {
+    const found = await findFinalSong(
+      env.WALKUP_VOICE,
+      team,
+      playerId,
+      { prefixFallback: true }
+    );
+    if (!found?.object) return json({ ok: false, error: "Song not found." }, 404);
+    return new Response(found.object.body, {
       headers: {
-        "content-type": object.httpMetadata?.contentType || "application/octet-stream",
+        "content-type": found.object.httpMetadata?.contentType || "application/octet-stream",
         "cache-control": "no-store",
         "content-disposition": `inline; filename="${playerId}-final"`,
       },

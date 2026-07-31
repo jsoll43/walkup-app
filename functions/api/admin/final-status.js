@@ -1,33 +1,7 @@
 // functions/api/admin/final-status.js
+import { getRequestKey, getTeamSlug, json } from "../../lib/api.js";
+import { getFinalSongStatus } from "../../lib/finalSongs.js";
 import { ensureSeasonSchema } from "../../lib/seasons.js";
-function getAuthKey(req) {
-  const h = req.headers;
-  const bearer = h.get("authorization") || "";
-  if (bearer.toLowerCase().startsWith("bearer ")) return bearer.slice(7).trim();
-  return (h.get("x-admin-key") || "").trim();
-}
-
-function getTeamSlug(req) {
-  const u = new URL(req.url);
-  return (
-    (req.headers.get("x-team-slug") || "").trim().toLowerCase() ||
-    (u.searchParams.get("teamSlug") || "").trim().toLowerCase() ||
-    "default"
-  );
-}
-
-function json(obj, status = 200) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8" },
-  });
-}
-
-function playerIdFromKey(key, prefixValue) {
-  const prefix = `final/${prefixValue}/`;
-  const rest = key.startsWith(prefix) ? key.slice(prefix.length) : key;
-  return rest.split(".")[0];
-}
 
 async function requireTeam(env, slug) {
   const team = await env.DB.prepare(
@@ -38,42 +12,24 @@ async function requireTeam(env, slug) {
 }
 
 async function handle(request, env) {
-  const key = getAuthKey(request);
+  const key = getRequestKey(request, "x-admin-key");
   if (!key || key !== env.ADMIN_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
 
-  const teamSlug = getTeamSlug(request);
+  const teamSlug = getTeamSlug(request, "default");
   const team = await requireTeam(env, teamSlug);
   if (!team) return json({ ok: false, error: `Unknown team: ${teamSlug}` }, 404);
 
   const bucket = env.WALKUP_VOICE;
   if (!bucket) return json({ ok: false, error: "R2 binding WALKUP_VOICE not configured" }, 500);
 
-  const status = {};
-  let cursor = undefined;
-
-  for (const prefixValue of [team.id, team.slug]) {
-    const prefix = `final/${prefixValue}/`;
-    cursor = undefined;
-    do {
-      const listed = await bucket.list({ prefix, cursor });
-      for (const obj of listed.objects) {
-        const pid = playerIdFromKey(obj.key, prefixValue);
-        if (pid) status[pid] = true;
-      }
-      cursor = listed.truncated ? listed.cursor : undefined;
-    } while (cursor);
-  }
-
+  let roster = [];
   if (team.slug === "default") {
-    const roster = await env.DB.prepare(
+    const result = await env.DB.prepare(
       `SELECT id FROM roster_players WHERE team_id = ? AND status = 'active'`
     ).bind(team.id).all();
-    for (const player of roster.results || []) {
-      if (!status[player.id] && await bucket.head(`final/${player.id}`)) {
-        status[player.id] = true;
-      }
-    }
+    roster = result.results || [];
   }
+  const status = await getFinalSongStatus(bucket, team, roster);
 
   return json({
     ok: true,

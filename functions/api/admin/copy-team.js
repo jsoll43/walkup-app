@@ -1,22 +1,9 @@
+import { getRequestKey, json } from "../../lib/api.js";
 import { ensureSeasonSchema, getCurrentSeason, uniqueTeamSlug } from "../../lib/seasons.js";
-
-function json(value, status = 200) {
-  return new Response(JSON.stringify(value), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8" },
-  });
-}
-
-function getAdminKey(request) {
-  const bearer = (request.headers.get("authorization") || "").trim();
-  return bearer.toLowerCase().startsWith("bearer ")
-    ? bearer.slice(7).trim()
-    : (request.headers.get("x-admin-key") || "").trim();
-}
 
 export const onRequestPost = async ({ request, env }) => {
   try {
-    if (getAdminKey(request) !== env.ADMIN_KEY) {
+    if (getRequestKey(request, "x-admin-key") !== env.ADMIN_KEY) {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
     await ensureSeasonSchema(env);

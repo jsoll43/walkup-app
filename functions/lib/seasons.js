@@ -2,6 +2,7 @@ import { ensureTeamsRecordingLimitColumn } from "./teamSettings.js";
 
 export const SPRING_2026_ID = "spring-2026";
 export const FALL_2026_ID = "fall-2026";
+const schemaReadyByDatabase = new WeakMap();
 
 function slugify(value) {
   return String(value || "")
@@ -36,7 +37,7 @@ export async function uniqueTeamSlug(env, base) {
   return candidate;
 }
 
-export async function ensureSeasonSchema(env) {
+async function prepareSeasonSchema(env) {
   await ensureTeamsRecordingLimitColumn(env);
 
   await env.DB.prepare(
@@ -84,7 +85,23 @@ export async function ensureSeasonSchema(env) {
   await env.DB.prepare(
     `UPDATE teams SET season_id = ? WHERE season_id IS NULL OR season_id = ''`
   ).bind(SPRING_2026_ID).run();
+}
 
+export function ensureSeasonSchema(env) {
+  const database = env?.DB;
+  if (!database || (typeof database !== "object" && typeof database !== "function")) {
+    return prepareSeasonSchema(env);
+  }
+
+  let ready = schemaReadyByDatabase.get(database);
+  if (!ready) {
+    ready = prepareSeasonSchema(env).catch((error) => {
+      schemaReadyByDatabase.delete(database);
+      throw error;
+    });
+    schemaReadyByDatabase.set(database, ready);
+  }
+  return ready;
 }
 
 export async function getCurrentSeason(env) {

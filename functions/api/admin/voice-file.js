@@ -1,27 +1,7 @@
 // functions/api/admin/voice-file.js
+import { getRequestKey, getTeamSlug, json } from "../../lib/api.js";
+import { findFinalSong } from "../../lib/finalSongs.js";
 import { ensureSeasonSchema } from "../../lib/seasons.js";
-function getAuthKey(req) {
-  const h = req.headers;
-  const bearer = h.get("authorization") || "";
-  if (bearer.toLowerCase().startsWith("bearer ")) return bearer.slice(7).trim();
-  return (h.get("x-admin-key") || "").trim();
-}
-
-function getTeamSlug(req) {
-  const u = new URL(req.url);
-  return (
-    (req.headers.get("x-team-slug") || "").trim().toLowerCase() ||
-    (u.searchParams.get("teamSlug") || "").trim().toLowerCase() ||
-    "default"
-  );
-}
-
-function json(obj, status = 200) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8" },
-  });
-}
 
 function extFromType(type) {
   const t = (type || "").toLowerCase();
@@ -46,7 +26,7 @@ export async function onRequest(context) {
 
   try {
     await ensureSeasonSchema(env);
-    const key = getAuthKey(request);
+    const key = getRequestKey(request, "x-admin-key");
     if (!key || key !== env.ADMIN_KEY) return json({ ok: false, error: "Unauthorized" }, 401);
     if (request.method !== "GET") return json({ ok: false, error: "Method not allowed" }, 405);
 
@@ -54,33 +34,16 @@ export async function onRequest(context) {
     const playerId = String(url.searchParams.get("playerId") || "").trim();
     if (!playerId) return json({ ok: false, error: "Missing playerId" }, 400);
 
-    const teamSlug = getTeamSlug(request);
+    const teamSlug = getTeamSlug(request, "default");
     const team = await requireTeam(env, teamSlug);
     if (!team) return json({ ok: false, error: `Unknown team: ${teamSlug}` }, 404);
 
     const bucket = env.WALKUP_VOICE;
     if (!bucket) return json({ ok: false, error: "R2 binding WALKUP_VOICE not configured" }, 500);
 
-    const teamIdKey = `final/${team.id}/${playerId}`;
-    const primaryKey = `final/${team.slug}/${playerId}`;
-
-    // Backward compat: old installs stored finals at final/<playerId> (no team)
-    const legacyKey = `final/${playerId}`;
-
-    let obj = await bucket.get(teamIdKey);
-    let usedKey = teamIdKey;
-
-    if (!obj) {
-      obj = await bucket.get(primaryKey);
-      usedKey = primaryKey;
-    }
-
-    if (!obj && team.slug === "default") {
-      obj = await bucket.get(legacyKey);
-      usedKey = legacyKey;
-    }
-
-    if (!obj) return json({ ok: false, error: "Not found" }, 404);
+    const found = await findFinalSong(bucket, team, playerId);
+    if (!found?.object) return json({ ok: false, error: "Not found" }, 404);
+    const { object: obj, key: usedKey } = found;
 
     const contentType = obj.httpMetadata?.contentType || "application/octet-stream";
     const ext = extFromType(contentType);
