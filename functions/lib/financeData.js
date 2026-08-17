@@ -13,6 +13,8 @@ import {
   transactionFingerprint,
 } from "../../shared/financeCore.js";
 
+const HISTORICAL_IMPORT_ACCOUNT_ID = "finance_account_historical";
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -97,6 +99,7 @@ function mapReconciliation(row) {
     reconciledBy: row.reconciled_by || "",
     reconciledAt: row.reconciled_at || "",
     periodStatus: row.period_status || "draft",
+    balancesKnown: !row.pending_balance_month,
     updatedAt: row.updated_at,
   };
 }
@@ -221,10 +224,13 @@ function monthlyCashFlow(transactions, months, forecasts) {
 async function loadReconciliations(env, fiscalYearId) {
   const rows = await all(
     env,
-    `SELECT r.*, a.name AS account_name, a.account_type, COALESCE(p.status, 'draft') AS period_status
+    `SELECT r.*, a.name AS account_name, a.account_type, COALESCE(p.status, 'draft') AS period_status,
+            pending.statement_month AS pending_balance_month
      FROM finance_reconciliations r
      JOIN finance_accounts a ON a.id = r.account_id
      LEFT JOIN finance_periods p ON p.statement_month = r.statement_month
+     LEFT JOIN finance_pending_statement_balances pending
+       ON pending.statement_month = r.statement_month AND pending.account_id = r.account_id
      WHERE r.fiscal_year_id = ?
      ORDER BY r.statement_month, a.name`,
     [fiscalYearId],
@@ -235,7 +241,7 @@ async function loadReconciliations(env, fiscalYearId) {
 function latestReconciledBalances(reconciliations) {
   const byAccount = new Map();
   reconciliations
-    .filter((item) => item.status === "reconciled")
+    .filter((item) => item.status === "reconciled" && item.balancesKnown)
     .forEach((item) => {
       const current = byAccount.get(item.accountId);
       if (!current || item.statementMonth > current.statementMonth) byAccount.set(item.accountId, item);
@@ -265,11 +271,11 @@ function controlsActuals(controls, transactions, reconciliations) {
     if (control.metric === "normalized_expenses") result[control.id] = summary.normalizedExpensesCents;
     if (["net", "net_ytd"].includes(control.metric)) result[control.id] = summary.surplusCents;
     if (control.metric === "ending_cash") {
-      const rows = reconciliations.filter((item) => item.statementMonth === control.statement_month);
+      const rows = reconciliations.filter((item) => item.statementMonth === control.statement_month && item.balancesKnown);
       if (rows.length) result[control.id] = rows.reduce((sum, item) => sum + item.statementEndingBalanceCents, 0);
     }
     if (control.metric === "beginning_cash") {
-      const rows = reconciliations.filter((item) => item.statementMonth === control.statement_month);
+      const rows = reconciliations.filter((item) => item.statementMonth === control.statement_month && item.balancesKnown);
       if (rows.length) result[control.id] = rows.reduce((sum, item) => sum + item.openingBalanceCents, 0);
     }
   });
@@ -319,7 +325,7 @@ export async function getFinanceDashboard(env, session, fiscalYearId) {
   const restrictedFundsCents = restrictedFunds.reduce((sum, item) => sum + Number(item.amount_cents), 0);
   const outstandingObligationsCents = commitments.reduce((sum, item) => sum + Number(item.amount_cents), 0);
   const reserveCents = Number(settings?.reserve_cents || 0);
-  const latestReconciledMonth = reconciliations.filter((item) => item.status === "reconciled").map((item) => item.statementMonth).sort().at(-1) || "";
+  const latestReconciledMonth = reconciliations.filter((item) => item.status === "reconciled" && item.balancesKnown).map((item) => item.statementMonth).sort().at(-1) || "";
   const actualMonths = [...new Set(transactions.map((transaction) => transaction.statementMonth))].sort();
   const forecastMonthly = months.map((month) => ({
     statementMonth: month,
@@ -363,7 +369,7 @@ export async function getFinanceDashboard(env, session, fiscalYearId) {
       ytdSurplusCents: summary.surplusCents,
       projectedEndingBalance: projection,
       latestReconciledMonth,
-      hasUnreconciled: reconciliations.length === 0 || reconciliations.some((item) => item.status !== "reconciled") || missingMonths.length > 0,
+      hasUnreconciled: reconciliations.length === 0 || reconciliations.some((item) => item.status !== "reconciled" || !item.balancesKnown) || missingMonths.length > 0,
     },
     monthly: monthlyCashFlow(transactions, months, forecasts),
     spending: {
@@ -466,25 +472,33 @@ export async function previewFinanceImport(env, session, body) {
   const batch = {
     fiscalYearId: String(body.fiscalYearId || ""),
     statementMonth: String(body.statementMonth || ""),
-    accountId: String(body.accountId || ""),
+    accountId: HISTORICAL_IMPORT_ACCOUNT_ID,
   };
   if (!/^\d{4}-\d{2}$/.test(batch.statementMonth)) throw Object.assign(new Error("A statement month is required."), { status: 400 });
   if (fiscalYearForDate(`${batch.statementMonth}-01`).id !== batch.fiscalYearId) throw Object.assign(new Error("Statement month is outside the selected fiscal year."), { status: 400 });
   const [fiscalYear, account] = await Promise.all([
     first(env, `SELECT id FROM finance_fiscal_years WHERE id = ?`, [batch.fiscalYearId]),
-    first(env, `SELECT id FROM finance_accounts WHERE id = ? AND is_active = 1`, [batch.accountId]),
+    first(env, `SELECT id, name FROM finance_accounts WHERE id = ? AND is_active = 1`, [batch.accountId]),
   ]);
-  if (!fiscalYear || !account) throw Object.assign(new Error("Invalid fiscal year or account."), { status: 400 });
+  if (!fiscalYear || !account) throw Object.assign(new Error("The historical import account is unavailable. Apply migration 0009 before importing."), { status: 409 });
   if (!Array.isArray(body.rows) || body.rows.length === 0 || body.rows.length > 2000) throw Object.assign(new Error("Import must contain between 1 and 2,000 transaction rows."), { status: 400 });
   let rows = body.rows.map((row) => validatePreviewRow(row, batch));
   rows = await applyCategoryMappings(env, rows);
   rows = await detectDuplicates(env, rows, batch.accountId);
   const importBatchId = id("finance_import");
-  const openingBalanceCents = Number(body.openingBalanceCents);
-  const statementEndingBalanceCents = Number(body.statementEndingBalanceCents);
-  if (!Number.isSafeInteger(openingBalanceCents) || !Number.isSafeInteger(statementEndingBalanceCents)) throw Object.assign(new Error("Opening and ending balances must be integer cents."), { status: 400 });
-  const reconciliation = calculateReconciliation({ openingBalanceCents, statementEndingBalanceCents, transactions: rows, outstandingItemsCents: 0 });
-  const preview = { rows, openingBalanceCents, statementEndingBalanceCents, reconciliation };
+  const hasOpeningBalance = body.openingBalanceCents !== null && body.openingBalanceCents !== undefined && body.openingBalanceCents !== "";
+  const hasEndingBalance = body.statementEndingBalanceCents !== null && body.statementEndingBalanceCents !== undefined && body.statementEndingBalanceCents !== "";
+  if (hasOpeningBalance !== hasEndingBalance) throw Object.assign(new Error("Provide both statement balances or leave both pending."), { status: 400 });
+  const balancesPending = !hasOpeningBalance;
+  const openingBalanceCents = balancesPending ? null : Number(body.openingBalanceCents);
+  const statementEndingBalanceCents = balancesPending ? null : Number(body.statementEndingBalanceCents);
+  if (!balancesPending && (!Number.isSafeInteger(openingBalanceCents) || !Number.isSafeInteger(statementEndingBalanceCents))) {
+    throw Object.assign(new Error("Opening and ending balances must be integer cents."), { status: 400 });
+  }
+  const reconciliation = balancesPending
+    ? null
+    : calculateReconciliation({ openingBalanceCents, statementEndingBalanceCents, transactions: rows, outstandingItemsCents: 0 });
+  const preview = { rows, openingBalanceCents, statementEndingBalanceCents, balancesPending, reconciliation };
   const duplicateCount = rows.filter((row) => row.possibleDuplicate).length;
   await run(
     env,
@@ -494,8 +508,8 @@ export async function previewFinanceImport(env, session, body) {
      VALUES (?, ?, ?, ?, ?, ?, 'preview', ?, ?, ?, 0, 0, ?, ?)`,
     [importBatchId, batch.fiscalYearId, batch.statementMonth, batch.accountId, String(body.sourceFilename || "upload").split(/[\\/]/).at(-1).slice(0, 240), String(body.sourceSha256 || "").slice(0, 64), JSON.stringify(preview), rows.length, duplicateCount, session.actor, nowIso()],
   );
-  await auditFinance(env, session, "import_preview_created", "import_batch", importBatchId, { statementMonth: batch.statementMonth, accountId: batch.accountId, rowCount: rows.length, duplicateCount });
-  return { batchId: importBatchId, ...preview, duplicateCount };
+  await auditFinance(env, session, "import_preview_created", "import_batch", importBatchId, { statementMonth: batch.statementMonth, accountId: batch.accountId, balancesPending, rowCount: rows.length, duplicateCount });
+  return { batchId: importBatchId, statementMonth: batch.statementMonth, fiscalYearId: batch.fiscalYearId, accountName: account.name, ...preview, duplicateCount };
 }
 
 export async function confirmFinanceImport(env, session, batchId, body) {
@@ -533,12 +547,22 @@ export async function confirmFinanceImport(env, session, batchId, body) {
       row.notes || "", session.actor, timestamp, timestamp,
     );
   });
-  const reconciliation = calculateReconciliation({
-    openingBalanceCents: Number(original.openingBalanceCents),
-    statementEndingBalanceCents: Number(original.statementEndingBalanceCents),
+  const hasStoredBalances = Number.isSafeInteger(original.openingBalanceCents) && Number.isSafeInteger(original.statementEndingBalanceCents);
+  const balancesPending = original.balancesPending === true || !hasStoredBalances;
+  const movement = calculateReconciliation({
+    openingBalanceCents: 0,
+    statementEndingBalanceCents: 0,
     transactions: included,
     outstandingItemsCents: 0,
   });
+  const reconciliation = balancesPending
+    ? { ...movement, openingBalanceCents: 0, statementEndingBalanceCents: 0, expectedEndingBalanceCents: 0, differenceCents: 0, canReconcile: false, status: "unreconciled" }
+    : calculateReconciliation({
+      openingBalanceCents: Number(original.openingBalanceCents),
+      statementEndingBalanceCents: Number(original.statementEndingBalanceCents),
+      transactions: included,
+      outstandingItemsCents: 0,
+    });
   statements.push(env.DB.prepare(
     `INSERT INTO finance_reconciliations
        (id, fiscal_year_id, statement_month, account_id, opening_balance_cents, statement_ending_balance_cents,
@@ -560,6 +584,15 @@ export async function confirmFinanceImport(env, session, batchId, body) {
     reconciliation.statementEndingBalanceCents, reconciliation.expectedEndingBalanceCents, reconciliation.differenceCents,
     reconciliation.depositsCents, reconciliation.withdrawalsCents, reconciliation.transfersCents,
     reconciliation.outstandingItemsCents, timestamp, timestamp));
+  statements.push(balancesPending
+    ? env.DB.prepare(
+      `INSERT INTO finance_pending_statement_balances
+         (statement_month, account_id, reason, created_by, created_at)
+       VALUES (?, ?, 'statement_not_supplied', ?, ?)
+       ON CONFLICT(statement_month, account_id) DO UPDATE SET
+         reason = excluded.reason, created_by = excluded.created_by, created_at = excluded.created_at`,
+    ).bind(batch.statement_month, batch.account_id, session.actor, timestamp)
+    : env.DB.prepare(`DELETE FROM finance_pending_statement_balances WHERE statement_month = ? AND account_id = ?`).bind(batch.statement_month, batch.account_id));
   statements.push(env.DB.prepare(
     `INSERT INTO finance_periods (statement_month, fiscal_year_id, status, updated_at)
      VALUES (?, ?, 'draft', ?)
@@ -571,8 +604,8 @@ export async function confirmFinanceImport(env, session, batchId, body) {
      WHERE id = ? AND status = 'preview'`,
   ).bind(included.length, skipped, timestamp, batch.id));
   await env.DB.batch(statements);
-  await auditFinance(env, session, "import_confirmed", "import_batch", batch.id, { importedCount: included.length, skippedCount: skipped, reconciliationDifferenceCents: reconciliation.differenceCents });
-  return { batchId: batch.id, importedCount: included.length, skippedCount: skipped, reconciliation: { ...reconciliation, status: "unreconciled" } };
+  await auditFinance(env, session, "import_confirmed", "import_batch", batch.id, { importedCount: included.length, skippedCount: skipped, balancesPending, reconciliationDifferenceCents: balancesPending ? null : reconciliation.differenceCents });
+  return { batchId: batch.id, importedCount: included.length, skippedCount: skipped, balancesPending, reconciliation: { ...reconciliation, status: "unreconciled" } };
 }
 
 export async function rollbackFinanceImport(env, session, batchId) {
@@ -595,35 +628,49 @@ export async function saveFinanceReconciliation(env, session, statementMonth, bo
   const existing = await first(env, `SELECT * FROM finance_reconciliations WHERE statement_month = ? AND account_id = ?`, [statementMonth, accountId]);
   if (!existing) throw Object.assign(new Error("Reconciliation record not found. Import transactions first."), { status: 404 });
   const rows = await loadTransactions(env, { fiscalYearId: existing.fiscal_year_id, session: { role: "editor" }, filters: { month: statementMonth, accountId } });
+  const openingBalanceCents = Number(body.openingBalanceCents);
+  const statementEndingBalanceCents = Number(body.statementEndingBalanceCents);
+  const outstandingItemsCents = Number(body.outstandingItemsCents || 0);
+  if (![openingBalanceCents, statementEndingBalanceCents, outstandingItemsCents].every(Number.isSafeInteger)) {
+    throw Object.assign(new Error("Statement balances and outstanding items must be integer cents."), { status: 400 });
+  }
   const calculation = calculateReconciliation({
-    openingBalanceCents: Number(body.openingBalanceCents),
-    statementEndingBalanceCents: Number(body.statementEndingBalanceCents),
+    openingBalanceCents,
+    statementEndingBalanceCents,
     transactions: rows,
-    outstandingItemsCents: Number(body.outstandingItemsCents || 0),
+    outstandingItemsCents,
   });
   const wantsReconciled = body.status === "reconciled";
   if (wantsReconciled && !calculation.canReconcile) throw Object.assign(new Error("The month cannot be reconciled until the difference is $0.00 and every transaction is reviewed."), { status: 409, details: calculation });
   const status = wantsReconciled ? "reconciled" : "unreconciled";
   const timestamp = nowIso();
-  await run(
-    env,
-    `UPDATE finance_reconciliations SET
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE finance_reconciliations SET
        opening_balance_cents = ?, statement_ending_balance_cents = ?, expected_ending_balance_cents = ?,
        difference_cents = ?, deposits_cents = ?, withdrawals_cents = ?, transfers_cents = ?, outstanding_items_cents = ?,
        status = ?, document_id = ?, notes = ?, reconciled_by = ?, reconciled_at = ?, updated_at = ?
-     WHERE statement_month = ? AND account_id = ?`,
-    [calculation.openingBalanceCents, calculation.statementEndingBalanceCents, calculation.expectedEndingBalanceCents,
+       WHERE statement_month = ? AND account_id = ?`,
+    ).bind(calculation.openingBalanceCents, calculation.statementEndingBalanceCents, calculation.expectedEndingBalanceCents,
       calculation.differenceCents, calculation.depositsCents, calculation.withdrawalsCents, calculation.transfersCents,
       calculation.outstandingItemsCents, status, body.documentId || null, String(body.notes || "").slice(0, 1000),
-      wantsReconciled ? session.actor : null, wantsReconciled ? timestamp : null, timestamp, statementMonth, accountId],
-  );
+      wantsReconciled ? session.actor : null, wantsReconciled ? timestamp : null, timestamp, statementMonth, accountId),
+    env.DB.prepare(`DELETE FROM finance_pending_statement_balances WHERE statement_month = ? AND account_id = ?`).bind(statementMonth, accountId),
+  ]);
   await auditFinance(env, session, wantsReconciled ? "month_reconciled" : "reconciliation_updated", "reconciliation", existing.id, calculation);
-  return { ...calculation, status };
+  return { ...calculation, status, balancesKnown: true };
 }
 
 export async function setFinancePeriodPublication(env, session, statementMonth, publish) {
-  const reconciliations = await all(env, `SELECT status, difference_cents FROM finance_reconciliations WHERE statement_month = ?`, [statementMonth]);
-  if (publish && (!reconciliations.length || reconciliations.some((item) => item.status !== "reconciled" || Number(item.difference_cents) !== 0))) {
+  const reconciliations = await all(env,
+    `SELECT r.status, r.difference_cents, pending.statement_month AS pending_balance_month
+     FROM finance_reconciliations r
+     LEFT JOIN finance_pending_statement_balances pending
+       ON pending.statement_month = r.statement_month AND pending.account_id = r.account_id
+     WHERE r.statement_month = ?`,
+    [statementMonth],
+  );
+  if (publish && (!reconciliations.length || reconciliations.some((item) => item.status !== "reconciled" || Number(item.difference_cents) !== 0 || item.pending_balance_month))) {
     throw Object.assign(new Error("Every account for the month must be reconciled with a $0.00 difference before publishing."), { status: 409 });
   }
   const fiscalYearId = fiscalYearForDate(`${statementMonth}-01`).id;

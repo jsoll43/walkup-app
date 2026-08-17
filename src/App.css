@@ -930,6 +930,26 @@ button:disabled {
   text-overflow: ellipsis;
 }
 
+.finance-queue-status {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #dbe4ee;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+}
+
+.finance-queue-status span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .finance-transaction-list,
 .finance-import-rows {
   display: grid;

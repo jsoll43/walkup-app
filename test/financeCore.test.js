@@ -11,7 +11,7 @@ import {
   projectFiscalYear,
   summarizeTransactions,
 } from "../shared/financeCore.js";
-import { parseBgslWorkbook, validateImportRows } from "../shared/financeImport.js";
+import { inferImportMonth, parseBgslWorkbook, validateImportRows } from "../shared/financeImport.js";
 import { requireFinanceAuth } from "../functions/lib/financeAuth.js";
 
 function transaction(overrides = {}) {
@@ -143,6 +143,13 @@ test("parses underlying workbook transaction rows and rejects out-of-period date
   assert.match(validated[1].errors.join(" "), /outside 2026-02/);
 });
 
+test("detects monthly import periods from filenames and rejects annual workbooks", () => {
+  assert.equal(inferImportMonth("October 2024- BGSL.xlsx"), "2024-10");
+  assert.equal(inferImportMonth("Sept 2025- BGSL.xlsx"), "2025-09");
+  assert.equal(inferImportMonth("transactions-2026-06.csv"), "2026-06");
+  assert.throws(() => inferImportMonth("BGSL Oct 2024-Sept 2025 Financials.xlsx"), /multi-month files are not accepted/i);
+});
+
 test("enforces Board viewer versus finance editor permissions", async () => {
   const localRequest = new Request("http://localhost/api/board/finance/dashboard");
   const viewer = await requireFinanceAuth(localRequest, { FINANCE_LOCAL_AUTH_BYPASS: "true", FINANCE_LOCAL_AUTH_ROLE: "viewer" });
@@ -154,4 +161,3 @@ test("enforces Board viewer versus finance editor permissions", async () => {
   const productionBypassAttempt = await requireFinanceAuth(new Request("https://bgslwalkup.com/api/board/finance/dashboard"), { FINANCE_LOCAL_AUTH_BYPASS: "true", FINANCE_LOCAL_AUTH_ROLE: "editor" }, { editor: true });
   assert.equal(productionBypassAttempt.status, 401);
 });
-

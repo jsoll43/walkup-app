@@ -11,6 +11,26 @@ function cellText(value) {
   return String(value ?? "").trim();
 }
 
+const IMPORT_MONTHS = new Map([
+  ["jan", 1], ["january", 1], ["feb", 2], ["february", 2], ["mar", 3], ["march", 3],
+  ["apr", 4], ["april", 4], ["may", 5], ["jun", 6], ["june", 6], ["jul", 7], ["july", 7],
+  ["aug", 8], ["august", 8], ["sep", 9], ["sept", 9], ["september", 9], ["oct", 10],
+  ["october", 10], ["nov", 11], ["november", 11], ["dec", 12], ["december", 12],
+]);
+
+export function inferImportMonth(filename) {
+  const matches = new Set(String(filename || "").match(/20\d{2}-(?:0[1-9]|1[0-2])/g) || []);
+  const monthPattern = /(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)[\s._-]+(20\d{2})/gi;
+  for (const match of String(filename || "").matchAll(monthPattern)) {
+    const month = IMPORT_MONTHS.get(match[1].toLowerCase());
+    matches.add(`${match[2]}-${String(month).padStart(2, "0")}`);
+  }
+  if (matches.size !== 1) {
+    throw new Error(`${filename}: use one monthly file whose name includes its month and year. Annual or multi-month files are not accepted.`);
+  }
+  return [...matches][0];
+}
+
 function inferFlags(classification, description, amountCents) {
   const normalized = normalizeDescription(description);
   const isTransfer = classification === "transfer" ||

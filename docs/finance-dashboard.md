@@ -13,6 +13,7 @@ The finance experience extends the existing application at `/board/finance`; it 
 - All stored monetary values are integer cents. Fiscal years always run October 1 through September 30.
 - Internal transfers are visible but excluded from league-wide income, expenses, and results.
 - A manually entered ending balance never reconciles a month. Reconciliation requires a zero calculated difference and no unreviewed transactions. Publishing requires every account in the month to be reconciled.
+- Historical transaction backfills do not require an account or statement balances at import time. The server assigns them to `Consolidated historical source`; balances remain explicitly pending and cannot contribute to cash, reconciliation, or publication until an editor enters both official statement balances.
 - Version 1 insights are exact calculations and templates. No AI binding or paid SaaS is used.
 
 ## Repository files and local data
@@ -51,6 +52,7 @@ Apply to a local Wrangler D1 database:
 
 ```sh
 npx wrangler d1 execute YOUR_D1_DATABASE --local --file=./migrations/0008_finance.sql
+npx wrangler d1 execute YOUR_D1_DATABASE --local --file=./migrations/0009_finance_backfill.sql
 ```
 
 Inspect the local schema:
@@ -63,7 +65,10 @@ After reviewing the local result, apply to the existing remote D1 database:
 
 ```sh
 npx wrangler d1 execute YOUR_D1_DATABASE --remote --file=./migrations/0008_finance.sql
+npx wrangler d1 execute YOUR_D1_DATABASE --remote --file=./migrations/0009_finance_backfill.sql
 ```
+
+If `0008_finance.sql` is already applied, run only `0009_finance_backfill.sql`. Migration 0009 adds the system-managed historical import account and pending-statement-balance state; it does not modify or delete existing transactions.
 
 The migration is additive and uses `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, and `INSERT OR IGNORE`. It never inserts validation controls as transactions. Current Wrangler syntax is documented in [Cloudflare's D1 command reference](https://developers.cloudflare.com/d1/wrangler-commands/).
 
@@ -90,16 +95,16 @@ Do not use either `FINANCE_LOCAL_AUTH_BYPASS` setting in preview or production.
 
 ## Import workflow
 
-1. Open `/board/finance`, sign in as Finance editor, and select the fiscal year.
-2. Open **Finance administration → Imports**.
-3. Select the statement month and account, choose the monthly CSV/XLSX, and enter the official statement opening and ending balances.
-4. Select **Parse and preview**. XLSX parsing happens in the browser; the annual and monthly Summary sheets are ignored.
+1. Open `/board/finance`, sign in as Finance editor, and open **Finance administration → Imports**.
+2. Select any number of monthly CSV/XLSX files at once. Each filename must contain exactly one month and year; annual/multi-month workbooks are rejected.
+3. The queue is sorted chronologically. The app detects each statement month and October–September fiscal year from the filename. No account or balance selection is required.
+4. Select **Parse and preview current file**. XLSX parsing happens in the browser; workbook Summary sheets are ignored.
 5. Review every row. Correct dates, signed amounts, descriptions, normalized categories, reconciliation status, and one-time/internal-transfer/restricted flags.
-6. Resolve every duplicate warning with an explicit **Include anyway** or **Skip this row** decision. A fingerprint uses account, date, signed cents, and normalized description.
-7. Review the live reconciliation difference and check the confirmation box.
-8. Confirm the import. The batch and transactions are saved, but the month remains unreconciled and unpublished.
-9. In **Reconciliation**, attach a protected supporting document if available. A month can be marked reconciled only at a $0.00 difference with every transaction reviewed.
-10. Publish only after every account for that month is reconciled. Board viewers see transaction actuals only from published months.
+6. Resolve every duplicate warning with an explicit **Include anyway** or **Skip this row** decision. A fingerprint uses the consolidated historical account, date, signed cents, and normalized description.
+7. Confirm the import and continue through the queue. Each batch is saved under `Consolidated historical source` with statement balances explicitly pending.
+8. When a statement becomes available, open **Reconciliation → Add statement balances**, enter both official balances, and optionally attach its protected supporting document.
+9. A month can be marked reconciled only at a $0.00 difference with every transaction reviewed. Pending balances cannot be reconciled or published.
+10. Publish only after the month is reconciled. Board viewers see transaction actuals only from published months.
 
 Imported batches can be rolled back. Rollback soft-deletes the batch's transactions, marks the reconciliation incomplete, unpublishes the month, and writes an audit event.
 
@@ -158,6 +163,7 @@ When Access is active, the app records Cloudflare's authenticated email header a
 - Test unauthenticated finance API requests return `401`.
 - Test a Board viewer can read but receives `403` on mutations.
 - Test an editor import cannot confirm with unresolved duplicate decisions or invalid rows.
+- Test a historical import requires neither an account selection nor placeholder statement balances and remains explicitly pending.
 - Test a nonzero reconciliation difference cannot be marked reconciled.
 - Test an unreconciled month cannot be published.
 - Inspect phone and desktop widths for overflow, charts, forms, modals, reconciliation cards, and transaction cards.
@@ -165,4 +171,3 @@ When Access is active, the app records Cloudflare's authenticated email header a
 - Confirm raw source files, local reports, secrets, and full account/routing numbers are absent from `git status` and `git ls-files`.
 - Back up/review D1 before the remote migration.
 - Obtain explicit approval before a production deployment.
-
