@@ -71,7 +71,7 @@ export default function Coach() {
   const [coachKey, setCoachKey] = useState(getSavedCoachKey());
   const [isAuthed, setIsAuthed] = useState(false);
 
-  const [teamSlug, setTeamSlug] = useState(getTeamSlug());
+  const teamSlug = useMemo(() => getTeamSlug(), []);
   const [teamName, setTeamName] = useState(getTeamName());
   const [availableTeams, setAvailableTeams] = useState([]);
   const [currentSeason, setCurrentSeason] = useState(null);
@@ -135,27 +135,6 @@ export default function Coach() {
     setTeamName(next);
     sessionStorage.setItem("TEAM_NAME", next);
     sessionStorage.setItem("teamName", next);
-  }
-
-  function selectTeam(slug) {
-    const nextSlug = String(slug || "").trim().toLowerCase();
-    const selected = availableTeams.find(
-      (team) => String(team.slug || "").toLowerCase() === nextSlug
-    );
-    setTeamSlug(nextSlug);
-    setTeamName(selected?.name || "");
-
-    if (nextSlug) {
-      sessionStorage.setItem("TEAM_SLUG", nextSlug);
-      sessionStorage.setItem("teamSlug", nextSlug);
-      sessionStorage.setItem("TEAM_NAME", selected?.name || nextSlug);
-      sessionStorage.setItem("teamName", selected?.name || nextSlug);
-    } else {
-      sessionStorage.removeItem("TEAM_SLUG");
-      sessionStorage.removeItem("teamSlug");
-      sessionStorage.removeItem("TEAM_NAME");
-      sessionStorage.removeItem("teamName");
-    }
   }
 
   async function fetchRoster(key, silent = false) {
@@ -263,8 +242,6 @@ export default function Coach() {
       setIsAuthed(true);
       setCoachKey(key);
       saveCoachKey(key);
-      sessionStorage.setItem("TEAM_SLUG", teamSlug);
-      sessionStorage.setItem("teamSlug", teamSlug);
       setLoginKey("");
 
       const ids = Array.isArray(json.lineupIds) ? json.lineupIds : [];
@@ -462,25 +439,13 @@ export default function Coach() {
         // Sort teams alphabetically by name
         const sortedTeams = teams.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
         setAvailableTeams(sortedTeams);
-        if (!teams.some((team) => String(team.slug || "") === teamSlug)) {
+        if (teamSlug && !teams.some((team) => String(team.slug || "") === teamSlug)) {
           clearCoachKey();
-          setCoachKey("");
-          setIsAuthed(false);
-          const firstTeam = sortedTeams[0];
-          const nextSlug = String(firstTeam?.slug || "").toLowerCase();
-          setTeamSlug(nextSlug);
-          setTeamName(firstTeam?.name || "");
-          if (nextSlug) {
-            sessionStorage.setItem("TEAM_SLUG", nextSlug);
-            sessionStorage.setItem("teamSlug", nextSlug);
-            sessionStorage.setItem("TEAM_NAME", firstTeam?.name || nextSlug);
-            sessionStorage.setItem("teamName", firstTeam?.name || nextSlug);
-          } else {
-            sessionStorage.removeItem("TEAM_SLUG");
-            sessionStorage.removeItem("teamSlug");
-            sessionStorage.removeItem("TEAM_NAME");
-            sessionStorage.removeItem("teamName");
-          }
+          sessionStorage.removeItem("TEAM_SLUG");
+          sessionStorage.removeItem("TEAM_NAME");
+          sessionStorage.removeItem("teamSlug");
+          sessionStorage.removeItem("teamName");
+          window.location.reload();
         }
       } catch {
         // Team discovery errors are displayed by the login flow when it retries.
@@ -499,25 +464,69 @@ export default function Coach() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthed, coachKey]);
 
+  // If team isn't selected, show a selection UI so coach can pick a team then enter key
+  if (!teamSlug) {
+    return (
+      <div className="page">
+        <div className="card">
+          <h1 style={{ marginTop: 0 }}>Coach — Select Team</h1>
+          <div style={{ marginTop: 6, fontWeight: 900 }}>
+            Current season: {currentSeason?.label || "Loading…"}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <a className="btn-secondary" href="/archive">Browse Archived Seasons</a>
+          </div>
+
+          <div style={{ marginTop: 8 }}>
+            <label className="label">Team</label>
+            <select className="input" defaultValue="" onChange={(e) => {
+              const slug = e.target.value;
+              const t = availableTeams.find(x => String(x.slug || '') === slug);
+              if (!t) return;
+              sessionStorage.setItem('TEAM_SLUG', String(t.slug || '').toLowerCase());
+              sessionStorage.setItem('TEAM_NAME', String(t.name || t.slug || ''));
+              // reload to pick up selection
+              window.location.reload();
+            }}>
+              <option value="">Choose a team…</option>
+              {availableTeams.map((t) => (
+                <option key={t.slug} value={t.slug}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ marginTop: 12, opacity: 0.8 }}>
+            After choosing a team, enter the coach key on the Coach page.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!isAuthed) {
     return (
       <div className="page">
         <div className="card">
-          <h1 style={{ marginTop: 0, marginBottom: 6 }}>Coach Login</h1>
           <div style={{ fontWeight: 900 }}>
             Current season: {currentSeason?.label || "Loading…"}
           </div>
-
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: 10 }}>
+            <a className="btn-secondary" href="/archive">Browse Archived Seasons</a>
+          </div>
+          <div className="cardTitle">Team</div>
+          <div style={{ marginTop: 6 }}>
             <label className="label">Team</label>
-            <select
-              className="input"
-              value={teamSlug}
-              onChange={(e) => selectTeam(e.target.value)}
-              disabled={availableTeams.length === 0}
-            >
+            <select className="input" value={teamSlug} onChange={(e) => {
+              const slug = e.target.value;
+              const t = availableTeams.find(x => String(x.slug || '') === slug);
+              if (!t) return;
+              sessionStorage.setItem('TEAM_SLUG', String(t.slug || '').toLowerCase());
+              sessionStorage.setItem('TEAM_NAME', String(t.name || t.slug || ''));
+              // reload to pick up selection
+              window.location.reload();
+            }}>
               {availableTeams.length === 0 ? (
-                <option value="">No current-season teams available</option>
+                <option value="">No teams</option>
               ) : (
                 availableTeams.map((t) => (
                   <option key={t.slug} value={t.slug}>{t.name}</option>
@@ -525,6 +534,8 @@ export default function Coach() {
               )}
             </select>
           </div>
+
+          <h1 style={{ marginTop: 12 }}>Coach Login</h1>
 
           <div style={{ marginTop: 14 }}>
             <label className="label">Coach Key</label>
@@ -544,12 +555,7 @@ export default function Coach() {
             </div>
           </div>
 
-          <button
-            className="btn"
-            onClick={() => tryLogin(loginKey)}
-            disabled={!teamSlug || !loginKey || loading}
-            style={{ marginTop: 12, width: "100%" }}
-          >
+          <button className="btn" onClick={() => tryLogin(loginKey)} disabled={!loginKey || loading} style={{ marginTop: 12, width: "100%" }}>
             {loading ? "Logging in…" : "Log in"}
           </button>
 
@@ -558,18 +564,6 @@ export default function Coach() {
               <strong>Error:</strong> {err}
             </div>
           ) : null}
-
-          <div className="coach-archive-access">
-            <span>Looking for an older team?</span>
-            <button
-              type="button"
-              className="btn-secondary btn-sm"
-              style={{ marginLeft: 6 }}
-              onClick={() => window.location.assign("/archive")}
-            >
-              Browse archived seasons →
-            </button>
-          </div>
         </div>
       </div>
     );
@@ -586,25 +580,16 @@ export default function Coach() {
       ) : null}
 
       <div className="card" style={{ marginBottom: 24 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
-            <div className="cardTitle">Team</div>
-            <div style={{ fontWeight: 1000 }}>{teamName || teamSlug}</div>
-          </div>
-          <button
-            className="btn-secondary btn-sm"
-            onClick={() => {
-              stopAudio();
-              clearCoachKey();
-              setIsAuthed(false);
-              setCoachKey("");
-              setLoginKey("");
-              setErr("");
-            }}
-          >
-            Log out
-          </button>
+        <div className="cardTitle">Team</div>
+        <div style={{ fontWeight: 1000, marginTop: 6 }}>{teamName || teamSlug}</div>
+        {currentSeason?.label ? (
+          <div style={{ marginTop: 4, fontSize: 13, opacity: 0.75 }}>{currentSeason.label}</div>
+        ) : null}
+        <div style={{ marginTop: 10 }}>
+          <a className="btn-secondary" href="/archive">Browse Previous Seasons</a>
         </div>
+
+        <div className="cardTitle" style={{ marginTop: 14 }}>Game mode</div>
 
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>LAST UP</div>
@@ -674,6 +659,7 @@ export default function Coach() {
             {isPlaying && playingPlayerId ? ` • Playing` : ""}
           </div>
 
+          {/* logout moved below Back/Next */}
         </div>
 
         <div style={{ marginTop: 8, display: "flex", gap: 0, alignItems: "center" }}>
@@ -685,6 +671,24 @@ export default function Coach() {
           </button>
         </div>
 
+        <div style={{ marginTop: 8 }}>
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              stopAudio();
+              clearCoachKey();
+              // allow switching teams on logout
+              sessionStorage.removeItem('TEAM_SLUG');
+              sessionStorage.removeItem('TEAM_NAME');
+              setIsAuthed(false);
+              setCoachKey("");
+              setLoginKey("");
+              setErr("");
+            }}
+          >
+            Log out
+          </button>
+        </div>
       </div>
 
       <div className="card">

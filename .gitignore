@@ -11,6 +11,13 @@ node_modules
 dist
 dist-ssr
 *.local
+.dev.vars
+.dev.vars.*
+
+# Local-only financial source documents and import intermediates.
+# Never commit bank statements, transaction exports, or derived datasets.
+/private/
+/.wrangler/
 
 # Editor directories and files
 .vscode/*
