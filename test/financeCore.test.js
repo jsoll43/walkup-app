@@ -11,7 +11,7 @@ import {
   projectFiscalYear,
   summarizeTransactions,
 } from "../shared/financeCore.js";
-import { inferImportMonth, parseBgslWorkbook, validateImportRows } from "../shared/financeImport.js";
+import { buildImportChecklist, inferImportMonth, parseBgslWorkbook, validateImportRows } from "../shared/financeImport.js";
 import { requireFinanceAuth } from "../functions/lib/financeAuth.js";
 
 function transaction(overrides = {}) {
@@ -148,6 +148,23 @@ test("detects monthly import periods from filenames and rejects annual workbooks
   assert.equal(inferImportMonth("Sept 2025- BGSL.xlsx"), "2025-09");
   assert.equal(inferImportMonth("transactions-2026-06.csv"), "2026-06");
   assert.throws(() => inferImportMonth("BGSL Oct 2024-Sept 2025 Financials.xlsx"), /multi-month files are not accepted/i);
+});
+
+test("builds a fiscal-year checklist from confirmed and preview import batches", () => {
+  const checklist = buildImportChecklist(
+    { startsOn: "2025-10-01" },
+    [
+      { statementMonth: "2025-10", status: "imported", sourceFilename: "October 2025.xlsx", importedCount: 24 },
+      { statementMonth: "2025-11", status: "preview", sourceFilename: "November 2025.xlsx", rowCount: 18 },
+      { statementMonth: "2025-12", status: "rolled_back", sourceFilename: "December 2025.xlsx", rowCount: 20 },
+    ],
+  );
+  assert.equal(checklist.length, 12);
+  assert.deepEqual(checklist.map((item) => item.statementMonth), ["2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"]);
+  assert.equal(checklist[0].imported, true);
+  assert.equal(checklist[0].rowCount, 24);
+  assert.equal(checklist[1].status, "preview");
+  assert.equal(checklist[2].status, "not_imported");
 });
 
 test("enforces Board viewer versus finance editor permissions", async () => {

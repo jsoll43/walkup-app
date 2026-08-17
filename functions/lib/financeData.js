@@ -721,7 +721,7 @@ export async function updateFinanceTransaction(env, session, transactionId, body
 
 export async function getFinanceAdmin(env, fiscalYearId) {
   const [imports, funds, commitments, mappings, audit, documents, forecasts] = await Promise.all([
-    all(env, `SELECT b.*, a.name AS account_name FROM finance_import_batches b JOIN finance_accounts a ON a.id = b.account_id WHERE b.fiscal_year_id = ? ORDER BY b.created_at DESC LIMIT 200`, [fiscalYearId]),
+    all(env, `SELECT b.*, a.name AS account_name FROM finance_import_batches b JOIN finance_accounts a ON a.id = b.account_id ORDER BY b.created_at DESC LIMIT 500`),
     all(env, `SELECT * FROM finance_restricted_funds WHERE fiscal_year_id = ? OR fiscal_year_id IS NULL ORDER BY is_active DESC, name`, [fiscalYearId]),
     all(env, `SELECT * FROM finance_commitments WHERE fiscal_year_id = ? OR fiscal_year_id IS NULL ORDER BY status, due_date, created_at DESC`, [fiscalYearId]),
     all(env, `SELECT m.*, c.name AS category_name FROM finance_category_mappings m JOIN finance_categories c ON c.id = m.category_id ORDER BY m.priority DESC, m.id`),
@@ -730,7 +730,7 @@ export async function getFinanceAdmin(env, fiscalYearId) {
     all(env, `SELECT * FROM finance_forecasts WHERE fiscal_year_id = ? ORDER BY statement_month, classification`, [fiscalYearId]),
   ]);
   return {
-    imports: imports.map((row) => ({ id: row.id, statementMonth: row.statement_month, accountId: row.account_id, accountName: row.account_name, sourceFilename: row.source_filename, status: row.status, rowCount: Number(row.row_count), duplicateCount: Number(row.duplicate_count), importedCount: Number(row.imported_count), skippedCount: Number(row.skipped_count), createdBy: row.created_by, createdAt: row.created_at })),
+    imports: imports.map((row) => ({ id: row.id, fiscalYearId: row.fiscal_year_id, statementMonth: row.statement_month, accountId: row.account_id, accountName: row.account_name, sourceFilename: row.source_filename, status: row.status, rowCount: Number(row.row_count), duplicateCount: Number(row.duplicate_count), importedCount: Number(row.imported_count), skippedCount: Number(row.skipped_count), createdBy: row.created_by, createdAt: row.created_at })),
     funds: funds.map((row) => ({ id: row.id, name: row.name, amountCents: Number(row.amount_cents), fiscalYearId: row.fiscal_year_id || "", notes: row.notes, isActive: bool(row.is_active) })),
     commitments: commitments.map((row) => ({ id: row.id, description: row.description, payee: row.payee, amountCents: Number(row.amount_cents), dueDate: row.due_date || "", accountId: row.account_id || "", fiscalYearId: row.fiscal_year_id || "", commitmentType: row.commitment_type, status: row.status, checkLastFour: row.check_last_four || "", notes: row.notes })),
     mappings: mappings.map((row) => ({ id: row.id, classification: row.classification, sourceCategory: row.source_category, descriptionContains: row.description_contains, categoryId: row.category_id, categoryName: row.category_name, priority: Number(row.priority) })),

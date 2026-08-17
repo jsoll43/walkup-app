@@ -1,4 +1,5 @@
 import {
+  fiscalMonths,
   fiscalYearForDate,
   normalizeDate,
   normalizeDescription,
@@ -29,6 +30,24 @@ export function inferImportMonth(filename) {
     throw new Error(`${filename}: use one monthly file whose name includes its month and year. Annual or multi-month files are not accepted.`);
   }
   return [...matches][0];
+}
+
+export function buildImportChecklist(fiscalYear, imports = []) {
+  const startYear = Number(String(fiscalYear?.startsOn || "").slice(0, 4));
+  if (!Number.isInteger(startYear)) return [];
+  return fiscalMonths(startYear).map((statementMonth) => {
+    const batches = imports.filter((batch) => batch.statementMonth === statementMonth);
+    const importedBatch = batches.find((batch) => batch.status === "imported") || null;
+    const previewBatch = batches.find((batch) => batch.status === "preview") || null;
+    const displayBatch = importedBatch || previewBatch || batches[0] || null;
+    return {
+      statementMonth,
+      imported: Boolean(importedBatch),
+      status: importedBatch ? "imported" : previewBatch ? "preview" : "not_imported",
+      sourceFilename: displayBatch?.sourceFilename || "",
+      rowCount: importedBatch?.importedCount || displayBatch?.rowCount || 0,
+    };
+  });
 }
 
 function inferFlags(classification, description, amountCents) {

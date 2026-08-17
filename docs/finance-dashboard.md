@@ -96,6 +96,7 @@ Do not use either `FINANCE_LOCAL_AUTH_BYPASS` setting in preview or production.
 ## Import workflow
 
 1. Open `/board/finance`, sign in as Finance editor, and open **Finance administration → Imports**.
+   The checklist groups all 12 months under every configured fiscal year. Confirmed imports are checked and include their source filename and imported row count; previews are labeled separately, and rolled-back batches return to pending.
 2. Select any number of monthly CSV/XLSX files at once. Each filename must contain exactly one month and year; annual/multi-month workbooks are rejected.
 3. The queue is sorted chronologically. The app detects each statement month and October–September fiscal year from the filename. No account or balance selection is required.
 4. Select **Parse and preview current file**. XLSX parsing happens in the browser; workbook Summary sheets are ignored.

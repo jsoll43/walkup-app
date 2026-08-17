@@ -950,6 +950,105 @@ button:disabled {
   white-space: nowrap;
 }
 
+.finance-import-checklist {
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid #dbe4ee;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.finance-import-checklist .finance-section-heading {
+  margin-bottom: 10px;
+}
+
+.finance-import-checklist .finance-section-heading h3,
+.finance-import-checklist .finance-section-heading p {
+  margin: 0;
+}
+
+.finance-import-checklist .finance-section-heading p {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.finance-import-checklist-year + .finance-import-checklist-year {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #dbe4ee;
+}
+
+.finance-import-checklist-year-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: #334155;
+  font-size: 12px;
+}
+
+.finance-import-checklist-year-heading span {
+  color: #64748b;
+  font-weight: 800;
+}
+
+.finance-import-checklist-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.finance-import-checklist-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #dbe4ee;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.finance-import-checklist-item.is-imported {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.finance-import-checklist-item input {
+  width: 17px;
+  height: 17px;
+  accent-color: #15803d;
+}
+
+.finance-import-checklist-item span,
+.finance-import-checklist-item small {
+  display: block;
+  min-width: 0;
+}
+
+.finance-import-checklist-item small {
+  overflow: hidden;
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.finance-import-checklist-item em {
+  color: #64748b;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.finance-import-checklist-item.is-imported em {
+  color: #15803d;
+}
+
 .finance-transaction-list,
 .finance-import-rows {
   display: grid;
@@ -1171,7 +1270,8 @@ button:disabled {
   .finance-recon-grid,
   .finance-form-grid,
   .finance-form-grid.is-compact,
-  .finance-filter-grid {
+  .finance-filter-grid,
+  .finance-import-checklist-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
