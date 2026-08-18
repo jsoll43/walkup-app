@@ -485,14 +485,39 @@ function Comparison({ dashboard }) {
       <div className={`finance-alert ${comparison.prior.transactionCount ? "is-info" : "is-warning"}`}>
         {comparison.prior.transactionCount ? comparisonNote : "Prior fiscal-year activity is not available, so changes cannot yet be compared."}
       </div>
-      <div className="finance-metric-grid is-three">
-        <MoneyMetric label="Current fiscal year income" cents={comparison.current.externalIncomeCents} note={currentCoverage} />
-        <MoneyMetric label="Prior fiscal year income" cents={comparison.prior.externalIncomeCents} note={priorCoverage} />
-        <MoneyMetric label="Income change" cents={comparison.incomeChangeCents} note={scope === "full" ? "Full fiscal-year view" : "Fiscal year to date"} tone={comparison.incomeChangeCents < 0 ? "danger" : "positive"} />
-        <MoneyMetric label="Current fiscal year expenses" cents={comparison.current.expensesCents} note={currentCoverage} />
-        <MoneyMetric label="Prior fiscal year expenses" cents={comparison.prior.expensesCents} note={priorCoverage} />
-        <MoneyMetric label="Expense change" cents={comparison.expenseChangeCents} note={scope === "full" ? "Full fiscal-year view" : "Fiscal year to date"} tone={comparison.expenseChangeCents > 0 ? "danger" : "positive"} />
-      </div>
+      <section className="card finance-comparison-year is-current" aria-labelledby="current-fiscal-year-heading">
+        <div className="finance-comparison-year-heading">
+          <div><div className="finance-eyebrow">Current year</div><h2 id="current-fiscal-year-heading">Current fiscal year</h2></div>
+          <strong>{currentCoverage}</strong>
+        </div>
+        <div className="finance-metric-grid is-three">
+          <MoneyMetric label="Income" cents={comparison.current.externalIncomeCents} />
+          <MoneyMetric label="Expenses" cents={comparison.current.expensesCents} />
+          <MoneyMetric label="Surplus / deficit" cents={comparison.current.surplusCents} tone={comparison.current.surplusCents < 0 ? "danger" : "positive"} />
+        </div>
+      </section>
+      <section className="card finance-comparison-year is-prior" aria-labelledby="prior-fiscal-year-heading">
+        <div className="finance-comparison-year-heading">
+          <div><div className="finance-eyebrow">Prior year</div><h2 id="prior-fiscal-year-heading">Prior fiscal year</h2></div>
+          <strong>{priorCoverage}</strong>
+        </div>
+        <div className="finance-metric-grid is-three">
+          <MoneyMetric label="Income" cents={comparison.prior.externalIncomeCents} />
+          <MoneyMetric label="Expenses" cents={comparison.prior.expensesCents} />
+          <MoneyMetric label="Surplus / deficit" cents={comparison.prior.surplusCents} tone={comparison.prior.surplusCents < 0 ? "danger" : "positive"} />
+        </div>
+      </section>
+      <section className="finance-comparison-change" aria-labelledby="fiscal-year-change-heading">
+        <div className="finance-comparison-year-heading">
+          <div><div className="finance-eyebrow">Difference</div><h2 id="fiscal-year-change-heading">Change from prior fiscal year</h2></div>
+          <span>Current minus prior</span>
+        </div>
+        <div className="finance-metric-grid is-three">
+          <MoneyMetric label="Income change" cents={comparison.incomeChangeCents} tone={comparison.incomeChangeCents < 0 ? "danger" : "positive"} />
+          <MoneyMetric label="Expense change" cents={comparison.expenseChangeCents} tone={comparison.expenseChangeCents > 0 ? "danger" : "positive"} />
+          <MoneyMetric label="Surplus / deficit change" cents={comparison.surplusChangeCents} tone={comparison.surplusChangeCents < 0 ? "danger" : "positive"} />
+        </div>
+      </section>
       <section className="card finance-panel">
         <h2>Largest category changes</h2>
         {comparison.prior.transactionCount && comparison.categoryChanges.length

@@ -463,6 +463,58 @@ button:disabled {
   max-width: 520px;
 }
 
+.finance-comparison-year,
+.finance-comparison-change {
+  display: grid;
+  gap: 14px;
+  padding: clamp(16px, 3vw, 22px);
+  border-radius: 18px;
+}
+
+.finance-comparison-year.is-current {
+  border: 1px solid rgba(211, 165, 28, 0.55);
+  background: linear-gradient(135deg, #fff8df, #ffedb5);
+}
+
+.finance-comparison-year.is-prior {
+  border: 1px solid rgba(76, 104, 133, 0.28);
+  background: linear-gradient(135deg, #e8eff6, #d9e5f0);
+}
+
+.finance-comparison-change {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.finance-comparison-year-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.finance-comparison-year-heading h2 {
+  margin: 2px 0 0;
+  color: var(--bgsl-navy-dark);
+}
+
+.finance-comparison-year-heading > strong,
+.finance-comparison-year-heading > span {
+  color: #40566d;
+  font-size: 13px;
+}
+
+.finance-comparison-change .finance-comparison-year-heading h2,
+.finance-comparison-change .finance-comparison-year-heading .finance-eyebrow,
+.finance-comparison-change .finance-comparison-year-heading > span {
+  color: white;
+}
+
+.finance-comparison-year .finance-metric,
+.finance-comparison-change .finance-metric {
+  box-shadow: 0 5px 16px rgba(16, 46, 79, 0.1);
+}
+
 .finance-content,
 .finance-section-stack {
   display: grid;
@@ -1664,6 +1716,7 @@ button:disabled {
   }
 
   .finance-section-heading,
+  .finance-comparison-year-heading,
   .finance-transaction-top {
     align-items: flex-start;
     flex-direction: column;
