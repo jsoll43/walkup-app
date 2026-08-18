@@ -32,3 +32,22 @@ test("finance API rejects viewer mutations", async () => {
   assert.equal(response.status, 403);
   assert.match((await response.json()).error, /editor access is required/i);
 });
+
+test("finance AI reports allow an authenticated Board viewer without granting editor writes", async () => {
+  const response = await onRequest({
+    request: new Request("http://127.0.0.1/api/board/finance/ai-insights?fiscalYear=fy_2025_2026", {
+      method: "POST",
+      headers: { origin: "http://127.0.0.1", "content-type": "application/json" },
+      body: JSON.stringify({ reportType: "treasurer_report" }),
+    }),
+    env: {
+      DB: {},
+      FINANCE_LOCAL_AUTH_BYPASS: "true",
+      FINANCE_LOCAL_AUTH_ROLE: "viewer",
+    },
+    params: { path: ["ai-insights"] },
+  });
+
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /AI binding named AI/i);
+});

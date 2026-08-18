@@ -23,6 +23,7 @@ import {
   updateFinanceTransaction,
   upsertFinanceAdminEntity,
 } from "../../../lib/financeData.js";
+import { getFinanceAiInsight } from "../../../lib/financeAi.js";
 
 function pathParts(params) {
   if (Array.isArray(params.path)) return params.path.filter(Boolean);
@@ -62,10 +63,12 @@ async function handle(request, env, params) {
       : financeAuthJson({ ok: false, error: session.error }, session.status);
   }
 
-  const needsEditor = method !== "GET" && method !== "HEAD";
+  const isAiInsightRequest = parts[0] === "ai-insights" && parts.length === 1 && method === "POST";
+  const isMutation = method !== "GET" && method !== "HEAD";
+  const needsEditor = isMutation && !isAiInsightRequest;
   const session = await requireFinanceAuth(request, env, { editor: needsEditor });
   if (!session.ok) return financeAuthJson({ ok: false, error: session.error }, session.status);
-  if (needsEditor) assertSameOrigin(request);
+  if (isMutation) assertSameOrigin(request);
 
   const url = new URL(request.url);
   const fiscalYearId = url.searchParams.get("fiscalYear") || "";
@@ -76,6 +79,9 @@ async function handle(request, env, params) {
   if (parts[0] === "dashboard" && method === "GET") {
     if (!fiscalYearId) throw Object.assign(new Error("fiscalYear is required."), { status: 400 });
     return financeAuthJson({ ok: true, dashboard: await getFinanceDashboard(env, session, fiscalYearId) });
+  }
+  if (isAiInsightRequest) {
+    return financeAuthJson({ ok: true, insight: await getFinanceAiInsight(env, session, fiscalYearId, await bodyJson(request)) });
   }
   if (parts[0] === "transactions" && parts.length === 1 && method === "GET") {
     if (!fiscalYearId) throw Object.assign(new Error("fiscalYear is required."), { status: 400 });
@@ -157,4 +163,3 @@ export const onRequest = async ({ request, env, params }) => {
     return errorResponse(error);
   }
 };
-

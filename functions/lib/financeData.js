@@ -210,6 +210,8 @@ function monthlyCashFlow(transactions, months, forecasts) {
     runningNetCents += summary.surplusCents;
     return {
       month,
+      hasActual: rows.length > 0,
+      transactionCount: rows.length,
       incomeCents: summary.externalIncomeCents,
       expensesCents: summary.expensesCents,
       netCents: summary.surplusCents,
@@ -387,7 +389,11 @@ export async function getFinanceDashboard(env, session, fiscalYearId) {
   const projection = projectFiscalYear({ currentBalanceCents: bankBalancesCents + reconciledCashOnHandCents, actualMonths, monthlyForecasts: forecastMonthly });
   const completedMonthNumbers = actualMonths.map((month) => month.slice(5, 7));
   const comparison = compareSamePeriod(transactions, priorTransactions, completedMonthNumbers);
-  const changes = categoryChanges(transactions, priorTransactions);
+  const completedMonthSet = new Set(completedMonthNumbers);
+  const currentComparisonTransactions = transactions.filter((transaction) => completedMonthSet.has(transaction.statementMonth?.slice(5, 7)));
+  const priorComparisonTransactions = priorTransactions.filter((transaction) => completedMonthSet.has(transaction.statementMonth?.slice(5, 7)));
+  const changes = categoryChanges(currentComparisonTransactions, priorComparisonTransactions);
+  const monthly = monthlyCashFlow(transactions, months, forecasts);
   const missingMonths = months.filter((month) => month <= (actualMonths.at(-1) || "") && !reconciliations.some((item) => item.statementMonth === month));
   const duplicateCount = imports.reduce((sum, batch) => sum + Number(batch.duplicate_count || 0), 0);
   const mappedIssues = issues.map((issue) => ({ issueType: issue.issue_type, severity: issue.severity, description: issue.description, amountCents: issue.amount_cents == null ? null : Number(issue.amount_cents), status: issue.status }));
@@ -424,7 +430,7 @@ export async function getFinanceDashboard(env, session, fiscalYearId) {
       latestReconciledMonth,
       hasUnreconciled: reconciliations.length === 0 || reconciliations.some((item) => item.status !== "reconciled" || !item.balancesKnown) || missingMonths.length > 0,
     },
-    monthly: monthlyCashFlow(transactions, months, forecasts),
+    monthly,
     historicalBalances,
     spending: {
       byCategory: categoryTotals(transactions, "expense"),
@@ -435,6 +441,7 @@ export async function getFinanceDashboard(env, session, fiscalYearId) {
     },
     income: { byCategory: categoryTotals(transactions, "income") },
     yearOverYear: { ...comparison, categoryChanges: changes },
+    ai: { availableMonths: actualMonths, comparedMonths: completedMonthNumbers },
     reconciliations,
     insights: deterministicInsights({ comparison, categoryChanges: changes.filter((change) => change.changeCents !== 0), oneTimeExpenses: transactions.filter((transaction) => transaction.isOneTime || transaction.isCapital).sort((left, right) => Math.abs(right.amountCents) - Math.abs(left.amountCents)), reconciliations, missingMonths, duplicateCount, projection, dataIssues: mappedIssues }),
     discrepancies,

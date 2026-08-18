@@ -14,7 +14,8 @@ The finance experience extends the existing application at `/board/finance`; it 
 - Internal transfers are visible but excluded from league-wide income, expenses, and results.
 - A manually entered ending balance never reconciles a month. Reconciliation requires a zero calculated difference and no unreviewed transactions. Publishing requires every account in the month to be reconciled.
 - Historical transaction backfills do not require an account or statement balances at import time. The server assigns them to `Consolidated historical source`; balances remain explicitly pending and cannot contribute to cash, reconciliation, or publication until an editor enters both official statement balances.
-- Version 1 insights are exact calculations and templates. No AI binding or paid SaaS is used.
+- Deterministic dashboard calculations remain the source of truth. Optional Workers AI reports receive only pre-calculated aggregate totals; they receive no account balances, reconciliation data, transaction descriptions, payees, or documents and cannot mutate any record.
+- Workers AI is limited to four prepared reports, a 256-token response, cached identical results, and at most 50 new inferences across the app per UTC day. Cloudflare's platform allocation is still the ultimate account-wide limit.
 
 ## Repository files and local data
 
@@ -53,6 +54,7 @@ Apply to a local Wrangler D1 database:
 ```sh
 npx wrangler d1 execute YOUR_D1_DATABASE --local --file=./migrations/0008_finance.sql
 npx wrangler d1 execute YOUR_D1_DATABASE --local --file=./migrations/0009_finance_backfill.sql
+npx wrangler d1 execute YOUR_D1_DATABASE --local --file=./migrations/0010_finance_ai.sql
 ```
 
 Inspect the local schema:
@@ -66,9 +68,10 @@ After reviewing the local result, apply to the existing remote D1 database:
 ```sh
 npx wrangler d1 execute YOUR_D1_DATABASE --remote --file=./migrations/0008_finance.sql
 npx wrangler d1 execute YOUR_D1_DATABASE --remote --file=./migrations/0009_finance_backfill.sql
+npx wrangler d1 execute YOUR_D1_DATABASE --remote --file=./migrations/0010_finance_ai.sql
 ```
 
-If `0008_finance.sql` is already applied, run only `0009_finance_backfill.sql`. Migration 0009 adds the system-managed historical import account and pending-statement-balance state; it does not modify or delete existing transactions.
+If `0008_finance.sql` and `0009_finance_backfill.sql` are already applied, run only `0010_finance_ai.sql`. Migration 0010 adds the aggregate-report cache and daily AI usage counter; it does not modify transactions, balances, or reconciliation records.
 
 The migration is additive and uses `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, and `INSERT OR IGNORE`. It never inserts validation controls as transactions. Current Wrangler syntax is documented in [Cloudflare's D1 command reference](https://developers.cloudflare.com/d1/wrangler-commands/).
 
@@ -80,7 +83,7 @@ Build the client, apply the local migration, then run the static output and Func
 
 ```sh
 npm run build
-npx wrangler pages dev dist --d1 DB=YOUR_D1_DATABASE_ID --r2=FINANCE_DOCUMENTS --binding=FINANCE_EDITOR_KEY=CHOOSE_A_LOCAL_ONLY_EDITOR_KEY
+npx wrangler pages dev dist --d1 DB=YOUR_D1_DATABASE_ID --r2=FINANCE_DOCUMENTS --ai=AI --binding=FINANCE_EDITOR_KEY=CHOOSE_A_LOCAL_ONLY_EDITOR_KEY
 ```
 
 Wrangler normally serves this at `http://localhost:8788`. Cloudflare documents the current binding flags in [Pages Functions bindings](https://developers.cloudflare.com/pages/functions/bindings/) and local Pages execution in [Pages local development](https://developers.cloudflare.com/pages/functions/local-development/).
@@ -92,6 +95,8 @@ npx wrangler pages dev dist --d1 DB=YOUR_D1_DATABASE_ID --r2=FINANCE_DOCUMENTS -
 ```
 
 Do not use either `FINANCE_LOCAL_AUTH_BYPASS` setting in preview or production.
+
+Workers AI local requests use the Cloudflare account's real allocation. The app's D1-backed cache and 50-inference UTC daily ceiling still apply, but avoid repeatedly bypassing or clearing local D1 state during AI testing.
 
 ## Import workflow
 
@@ -142,12 +147,22 @@ In **Workers & Pages → the existing BGSL Pages project** configure both Previe
 
 1. Confirm the existing D1 database binding is named exactly `DB`.
 2. Create or select a private R2 bucket for finance documents and add an R2 binding named exactly `FINANCE_DOCUMENTS`. Do not enable a public bucket domain.
-3. Under **Settings → Variables and Secrets**, add secret `FINANCE_EDITOR_KEY` with a strong unique value. Do not put it in source or a plain environment variable. Existing `ADMIN_KEY` remains an accepted administrator fallback.
-4. Confirm the existing Board Scheduling password is configured from the Admin scheduling section. Replace weak/shared values with a strong Board-only password.
-5. Do not configure `FINANCE_LOCAL_AUTH_BYPASS` in Cloudflare.
-6. Redeploy is required for new bindings/secrets to reach Pages Functions. Deployment is not performed by these implementation steps.
+3. Add a Workers AI binding named exactly `AI` to both Preview and Production. No provider API key is needed.
+4. Under **Settings → Variables and Secrets**, add secret `FINANCE_EDITOR_KEY` with a strong unique value. Do not put it in source or a plain environment variable. Existing `ADMIN_KEY` remains an accepted administrator fallback.
+5. Confirm the existing Board Scheduling password is configured from the Admin scheduling section. Replace weak/shared values with a strong Board-only password.
+6. Do not configure `FINANCE_LOCAL_AUTH_BYPASS` in Cloudflare.
+7. Redeploy is required for new bindings/secrets to reach Pages Functions. Deployment is not performed by these implementation steps.
 
 Cloudflare's current dashboard binding steps are in [Pages Functions bindings](https://developers.cloudflare.com/pages/functions/bindings/).
+
+## Workers AI financial-report guardrails
+
+- The browser can request only `explain_month`, `year_over_year`, `expense_increases`, or `treasurer_report`; there is no user-authored prompt.
+- The Pages Function recalculates the authorized viewer's aggregates server-side and constructs the model input itself. The browser cannot supply financial facts to the model.
+- The model is `@cf/meta/llama-3.2-3b-instruct`, with a 256-token output ceiling. It is instructed to explain exact supplied figures without arithmetic, balance calculation, reconciliation, legitimacy decisions, or speculation.
+- Identical report type and calculated facts reuse the D1 cache and make no Workers AI call. Changed source totals produce a new cache key automatically.
+- `finance_ai_daily_usage` atomically permits at most 50 uncached inferences per UTC day. This intentionally leaves substantial room below Cloudflare's account-wide free allocation, but other Workers AI applications on the same Cloudflare account also consume that allocation.
+- Generated wording is displayed as plain text, never executable HTML, and is labeled as AI-generated. Dashboard calculations remain authoritative.
 
 ## Cloudflare Access: required production defense in depth
 
