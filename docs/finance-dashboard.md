@@ -109,6 +109,18 @@ Do not use either `FINANCE_LOCAL_AUTH_BYPASS` setting in preview or production.
 
 Imported batches can be rolled back. Rollback soft-deletes the batch's transactions, marks the reconciliation incomplete, unpublishes the month, and writes an audit event.
 
+### Consolidated historical backfill
+
+For the supplied October 2024–June 2026 workbook set, the local-only consolidation command replaces the repetitive monthly review flow:
+
+```sh
+npm run finance:consolidate
+```
+
+It reads the 21 monthly workbooks from `private/finance-source/` and writes a master CSV, an import report, and transactional D1 SQL under `private/finance-consolidated/`. Both directories are excluded from Git. The generator records every included, corrected, skipped, and invalid source row; applies the statement-backed February corrections; preserves legitimate exact-match rows; and refuses to generate an import when a transaction date is outside its statement month.
+
+Before a remote backfill, export a recovery copy of D1, rehearse the SQL against an isolated local copy, and review `import-report.json`. The generated SQL preserves the already-confirmed December 2024 batch, supersedes abandoned previews, creates one auditable batch per month, and leaves periods unpublished. It is a dataset-specific backfill and should not be rerun after a successful import.
+
 ### Supplied workbook validation result
 
 Raw workbook transaction rows currently produce:
@@ -116,13 +128,13 @@ Raw workbook transaction rows currently produce:
 | Period | Source income | Source expenses | Source net | Control result |
 | --- | ---: | ---: | ---: | --- |
 | FY 2024–25 | $34,878.05 | $45,017.86 | −$10,139.81 | Income is $95.65 low; expenses are $100.00 low |
-| FY 2025–26 through June | $32,847.54 | $25,957.25 | $6,890.29 | Before the known February and May statement corrections |
+| FY 2025–26 through June | $32,847.54 | $25,982.45 | $6,865.09 | Before the known February and May statement corrections |
 
-The FY 2025–26 statement-backed corrections exactly reconcile the annual controls as a validation scenario: February external income −$274.35 and May expenses +$595.19 produce income $32,573.19, expenses $26,552.44, and net $6,020.75. They are not inserted as balancing entries. The February source rows must be corrected/reviewed, and May still requires the seven actual missing statement withdrawals.
+The consolidated import corrects February external income by −$274.35, producing the exact $32,573.19 control. The current May workbook remains $569.99 below the statement-backed expense control; no balancing transaction is inserted, so imported expenses are $25,982.45 and May remains unreconciled until actual statement rows are available. Adding those actual rows would produce the $26,552.44 expense and $6,020.75 net controls.
 
-FY 2024–25's $14,975 landscape transaction is detected as one-time/capital. The $95.65 income difference traces to two invalid April source rows (one malformed year and one amount with three decimal places). The $100 expense difference traces to a March row without a valid date. If those source rows are resolved from statements, annual income and expense controls match, but the beginning-cash/activity/ending-cash roll-forward still has an unresolved $50.99 difference. At least $3,318 of snack-stand cash also lacks a clear deposit trail.
+FY 2024–25's $14,975 landscape transaction is detected as one-time/capital. The $95.65 income difference traces to two invalid April source rows (one missing date and one amount with three decimal places). The $100 expense difference traces to a March row without a valid date. If those source rows are resolved from statements, annual income and expense controls match, but the beginning-cash/activity/ending-cash roll-forward still has an unresolved $50.99 difference. At least $3,318 of snack-stand cash also lacks a clear deposit trail.
 
-Seven fingerprint groups are flagged across the workbooks. A fingerprint match is only a warning because same-day equal sponsorships or purchases may be legitimate. No group is silently removed.
+Seven fingerprint groups were reviewed across the workbooks. The known extra February 2026 sponsorship row was removed using the statement-backed control; the remaining same-day equal sponsorships and purchases were retained because removing them would break the supplied controls. Every decision is recorded in the private master CSV and import report.
 
 ## Required Cloudflare dashboard configuration
 

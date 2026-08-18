@@ -149,7 +149,7 @@ if (current) {
     disclosure: "Validation scenario only. Corrections are not inserted as balancing transactions.",
     adjustments: [
       { statementMonth: "2026-02", metric: "externalIncomeCents", amountCents: -27435, reason: "Remove one duplicated $275 sponsorship and correct $120.00 to $120.65." },
-      { statementMonth: "2026-05", metric: "expensesCents", amountCents: 59519, reason: "Seven statement withdrawals are absent from the workbook and require actual statement rows." },
+      { statementMonth: "2026-05", metric: "expensesCents", amountCents: 56999, reason: "The current workbook remains $569.99 below the statement-backed withdrawal control and requires actual statement rows." },
     ],
     adjustedExternalIncomeCents: current.sourceSummary.externalIncomeCents - 27435,
     adjustedExpensesCents: current.sourceSummary.expensesCents + 59519,
@@ -164,7 +164,7 @@ if (current) {
 report.unresolvedIssues.push(
   { fiscalYearId: "fy_2024_2025", type: "unreconciled_snack_cash", amountCents: 331800, status: "open", message: "Snack-stand cash lacks a clear deposit trail in the supplied spreadsheets." },
   { fiscalYearId: "fy_2025_2026", statementMonth: "2026-02", type: "source_amount_error", amountCents: 65, status: "open", message: "The source row is $120.00; the statement-backed control is $120.65." },
-  { fiscalYearId: "fy_2025_2026", statementMonth: "2026-05", type: "missing_statement_transactions", amountCents: 59519, status: "open", message: "Seven withdrawals are absent from the supplied workbook; no balancing entries were created." },
+  { fiscalYearId: "fy_2025_2026", statementMonth: "2026-05", type: "missing_statement_transactions", amountCents: 56999, status: "open", message: "The current workbook remains $569.99 below the statement-backed withdrawal control; no balancing entries were created." },
 );
 
 await writeFile(path.join(OUTPUT_DIR, "reconciliation-report.json"), `${JSON.stringify(report, null, 2)}\n`);
