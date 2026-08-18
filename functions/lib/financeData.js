@@ -165,7 +165,7 @@ async function loadTransactions(env, { fiscalYearId, session, filters = {}, incl
 }
 
 export async function getFinanceTransactions(env, session, fiscalYearId, filters) {
-  return loadTransactions(env, { fiscalYearId, session, filters });
+  return loadTransactions(env, { fiscalYearId, session, filters, includeDraft: true });
 }
 
 function groupBy(items, keyFn) {

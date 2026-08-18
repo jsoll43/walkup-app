@@ -987,7 +987,7 @@ button:disabled {
 }
 
 .finance-balance-chart-area {
-  fill: rgba(218, 166, 17, 0.16);
+  fill: rgba(218, 166, 17, 0.28);
 }
 
 .finance-balance-chart-line.is-calculated {

@@ -5,7 +5,7 @@
 The finance experience extends the existing application at `/board/finance`; it is not a separate app. Every API is under `/api/board/finance/*` and validates authorization in the Pages Function.
 
 - Board viewers authenticate with the existing server-side Board Scheduling password hash and receive a short-lived `HttpOnly`, `SameSite=Strict` finance cookie. They can only use read APIs.
-- Board viewers can see aggregate recorded activity from draft months so cash-flow and historical-balance charts remain useful before statements arrive. Draft figures are labeled preliminary; transaction-level detail and CSV exports remain restricted to published months.
+- Board viewers can see recorded activity and transaction detail from draft months so the dashboard remains useful before statements arrive. Draft figures and transaction rows are labeled preliminary; access still requires an authenticated Board session.
 - Finance editors authenticate with `FINANCE_EDITOR_KEY`; the existing `ADMIN_KEY` is accepted as an administrator fallback. The key is exchanged once for the same HttpOnly session and is never stored in `sessionStorage`.
 - Mutation requests require an editor session and same-origin request. Imports, transaction edits, reconciliation, publishing, funds, commitments, reserve changes, mappings, forecasts, documents, and rollbacks are enforced on the server.
 - `FINANCE_LOCAL_AUTH_BYPASS=true` only works for requests whose hostname is exactly `localhost` or `127.0.0.1`. It defaults off. Never configure it in Cloudflare.
