@@ -152,10 +152,12 @@ function MoneyMetric({ label, cents, note, tone }) {
 
 function ChartNavigation({ ariaLabel, windowStart, maxStart, startMonth, endMonth, onChange }) {
   return (
-    <div className="finance-chart-nav" aria-label={ariaLabel}>
-      <button type="button" className="btn-secondary btn-sm" disabled={windowStart === 0} onClick={() => onChange(Math.max(0, windowStart - 1))}>← Earlier</button>
-      <strong>{monthLabel(startMonth)} – {monthLabel(endMonth)}</strong>
-      <button type="button" className="btn-secondary btn-sm" disabled={windowStart >= maxStart} onClick={() => onChange(Math.min(maxStart, windowStart + 1))}>Later →</button>
+    <div className="finance-chart-nav-row">
+      <div className="finance-chart-nav" aria-label={ariaLabel}>
+        <button type="button" className="btn-secondary btn-sm" disabled={windowStart === 0} onClick={() => onChange(Math.max(0, windowStart - 1))}>← Earlier</button>
+        <strong>{monthLabel(startMonth)} – {monthLabel(endMonth)}</strong>
+        <button type="button" className="btn-secondary btn-sm" disabled={windowStart >= maxStart} onClick={() => onChange(Math.min(maxStart, windowStart + 1))}>Later →</button>
+      </div>
     </div>
   );
 }
