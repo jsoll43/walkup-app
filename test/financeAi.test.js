@@ -5,8 +5,10 @@ import { DatabaseSync } from "node:sqlite";
 
 import {
   buildFinanceAiFacts,
+  calculateFinanceAiNeuronsMilli,
   createFinanceAiInsight,
-  FINANCE_AI_DAILY_INFERENCE_LIMIT,
+  FINANCE_AI_DAILY_NEURON_LIMIT_MILLI,
+  getFinanceAiUsage,
 } from "../functions/lib/financeAi.js";
 
 function d1(database) {
@@ -120,18 +122,29 @@ test("identical AI reports are cached and do not consume a second inference", as
   assert.doesNotMatch(prompt, /PROMPT_SECRET/);
   assert.doesNotMatch(prompt, /bankBalances|availableCash|accountNumber/i);
   assert.equal(database.prepare("SELECT inference_count FROM finance_ai_daily_usage").get().inference_count, 1);
+  assert.equal(database.prepare("SELECT estimated_neurons_milli FROM finance_ai_daily_usage").get().estimated_neurons_milli, 1766);
+  assert.equal(first.usage.neuronsUsedMilli, 1766);
+  assert.equal(second.usage.neuronsUsedMilli, 1766);
   assert.equal(database.prepare("SELECT COUNT(*) AS count FROM finance_ai_insights").get().count, 1);
   database.close();
 });
 
-test("the app-level daily ceiling blocks additional Workers AI calls", async () => {
+test("converts model token usage to thousandths of a neuron", () => {
+  assert.equal(calculateFinanceAiNeuronsMilli(250, 20), 1766);
+});
+
+test("reports daily neuron usage and blocks requests that could exceed the free allocation", async () => {
   const database = await aiDatabase();
   const today = new Date().toISOString().slice(0, 10);
   database.prepare(
-    "INSERT INTO finance_ai_daily_usage (usage_date, inference_count, input_tokens, output_tokens, estimated_neurons_milli, updated_at) VALUES (?, ?, 0, 0, 0, ?)",
-  ).run(today, FINANCE_AI_DAILY_INFERENCE_LIMIT, new Date().toISOString());
+    "INSERT INTO finance_ai_daily_usage (usage_date, inference_count, input_tokens, output_tokens, estimated_neurons_milli, updated_at) VALUES (?, 1, 0, 0, ?, ?)",
+  ).run(today, FINANCE_AI_DAILY_NEURON_LIMIT_MILLI - 1, new Date().toISOString());
   let calls = 0;
   const env = { DB: d1(database), AI: { async run() { calls += 1; return { response: "should not run" }; } } };
+
+  const usage = await getFinanceAiUsage(env);
+  assert.equal(usage.neuronsUsedMilli, FINANCE_AI_DAILY_NEURON_LIMIT_MILLI - 1);
+  assert.equal(usage.remainingNeuronsMilli, 1);
 
   await assert.rejects(
     createFinanceAiInsight(env, { dashboard: dashboard(), fiscalYearId: "fy_2025_2026", reportType: "explain_month", statementMonth: "2026-06" }),

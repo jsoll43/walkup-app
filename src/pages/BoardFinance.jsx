@@ -9,6 +9,7 @@ const TABS = [
   ["spending", "Spending"],
   ["income", "Income"],
   ["comparison", "Year over year"],
+  ["ai", "AI reports"],
   ["reconciliation", "Reconciliation"],
   ["transactions", "Transactions"],
 ];
@@ -287,9 +288,26 @@ function AiInsights({ dashboard, fiscalYearId }) {
   const [requestedMonth, setRequestedMonth] = useState(latestMonth);
   const [loadingReport, setLoadingReport] = useState("");
   const [result, setResult] = useState(null);
+  const [usage, setUsage] = useState(null);
+  const [usageLoading, setUsageLoading] = useState(true);
+  const [allowanceBlocked, setAllowanceBlocked] = useState(false);
   const [error, setError] = useState("");
   const selectedMonth = availableMonths.includes(requestedMonth) ? requestedMonth : latestMonth;
   const comparisonAvailable = Number(dashboard.yearOverYear?.prior?.transactionCount || 0) > 0;
+  const usagePercent = usage ? Math.min(100, (usage.neuronsUsedMilli / Math.max(1, usage.neuronLimitMilli)) * 100) : 0;
+  const usageUnavailable = !usageLoading && !usage;
+  const allowanceReached = allowanceBlocked || Boolean(usage && usage.remainingNeuronsMilli <= 0);
+  const neurons = (milli) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(Number(milli || 0) / 1_000);
+
+  useEffect(() => {
+    let current = true;
+    setUsageLoading(true);
+    api("ai-usage")
+      .then((data) => { if (current) setUsage(data.usage); })
+      .catch((nextError) => { if (current) setError(nextError.message); })
+      .finally(() => { if (current) setUsageLoading(false); });
+    return () => { current = false; };
+  }, []);
 
   async function generate(reportType) {
     setLoadingReport(reportType);
@@ -300,8 +318,12 @@ function AiInsights({ dashboard, fiscalYearId }) {
         statementMonth: reportType === "explain_month" ? selectedMonth : "",
       }));
       setResult({ ...data.insight, reportType });
+      setUsage(data.insight.usage);
+      setAllowanceBlocked(false);
     } catch (nextError) {
       setError(nextError.message);
+      if (nextError.status === 429) setAllowanceBlocked(true);
+      api("ai-usage").then((data) => setUsage(data.usage)).catch(() => {});
     } finally {
       setLoadingReport("");
     }
@@ -316,21 +338,26 @@ function AiInsights({ dashboard, fiscalYearId }) {
       <div className="finance-ai-toolbar">
         <label><span>Month to explain</span><select className="input" value={selectedMonth} disabled={!availableMonths.length || Boolean(loadingReport)} onChange={(event) => setRequestedMonth(event.target.value)}>{availableMonths.map((month) => <option key={month} value={month}>{monthLabel(month)}</option>)}</select></label>
       </div>
+      <div className="finance-ai-usage">
+        <div><strong>Daily AI usage</strong><span>{usageLoading ? "Loading usage…" : usageUnavailable ? "Usage unavailable" : `${neurons(usage.neuronsUsedMilli)} of ${neurons(usage.neuronLimitMilli)} neurons`}</span></div>
+        <div className="finance-ai-usage-track" role="progressbar" aria-label="Daily finance AI neuron usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(usagePercent)}><span style={{ width: `${usagePercent}%` }} /></div>
+        <small>{usage ? `Resets ${new Date(usage.resetAt).toLocaleString([], { timeZoneName: "short" })}. ` : ""}The server will not start an uncached report that could exceed 10,000 neurons. This meter covers this finance dashboard; other Workers AI use on the Cloudflare account is separate.</small>
+      </div>
       <div className="finance-ai-actions">
-        <button className="btn" disabled={!selectedMonth || Boolean(loadingReport)} onClick={() => generate("explain_month")}>{loadingReport === "explain_month" ? "Writing…" : "Explain this month"}</button>
-        <button className="btn-secondary" disabled={!comparisonAvailable || Boolean(loadingReport)} onClick={() => generate("year_over_year")}>{loadingReport === "year_over_year" ? "Writing…" : "Summarize the biggest year-over-year changes"}</button>
-        <button className="btn-secondary" disabled={!comparisonAvailable || Boolean(loadingReport)} onClick={() => generate("expense_increases")}>{loadingReport === "expense_increases" ? "Writing…" : "What expenses increased the most?"}</button>
-        <button className="btn-secondary" disabled={Boolean(loadingReport)} onClick={() => generate("treasurer_report")}>{loadingReport === "treasurer_report" ? "Writing…" : "Create a short treasurer's report for the board meeting"}</button>
+        <button className="btn" disabled={!selectedMonth || Boolean(loadingReport) || allowanceReached} onClick={() => generate("explain_month")}>{loadingReport === "explain_month" ? "Writing…" : "Explain this month"}</button>
+        <button className="btn-secondary" disabled={!comparisonAvailable || Boolean(loadingReport) || allowanceReached} onClick={() => generate("year_over_year")}>{loadingReport === "year_over_year" ? "Writing…" : "Summarize the biggest year-over-year changes"}</button>
+        <button className="btn-secondary" disabled={!comparisonAvailable || Boolean(loadingReport) || allowanceReached} onClick={() => generate("expense_increases")}>{loadingReport === "expense_increases" ? "Writing…" : "What expenses increased the most?"}</button>
+        <button className="btn-secondary" disabled={Boolean(loadingReport) || allowanceReached} onClick={() => generate("treasurer_report")}>{loadingReport === "treasurer_report" ? "Writing…" : "Create a short treasurer's report for the board meeting"}</button>
       </div>
       {!comparisonAvailable ? <p className="finance-ai-note">Year-over-year reports become available when the same published months exist in the prior reporting period.</p> : null}
       <div className="finance-ai-guardrail"><strong>What AI cannot do:</strong> It receives no account balances, reconciliation data, transaction descriptions, payees, or documents. It cannot change any financial record.</div>
       {error ? <div className="finance-alert is-warning" role="alert">{error}</div> : null}
-      {result ? <div className="finance-ai-result" aria-live="polite"><div className="finance-ai-result-meta"><strong>AI-generated wording</strong><span>{result.cached ? "Reused cached report · no new AI usage" : `New report · ${result.remainingDailyInferences} of ${result.dailyInferenceLimit} shared daily generations remain`}</span></div><div className="finance-ai-result-copy">{result.content}</div><small>Verify the wording against the calculated dashboard totals above; those totals remain the source of truth.</small></div> : null}
+      {result ? <div className="finance-ai-result" aria-live="polite"><div className="finance-ai-result-meta"><strong>AI-generated wording</strong><span>{result.cached ? "Reused cached report · no new AI usage" : "New report · daily neuron meter updated"}</span></div><div className="finance-ai-result-copy">{result.content}</div><small>Verify the wording against the calculated dashboard totals above; those totals remain the source of truth.</small></div> : null}
     </section>
   );
 }
 
-function Overview({ dashboard, fiscalYearId }) {
+function Overview({ dashboard }) {
   const { overview } = dashboard;
   return (
     <div className="finance-section-stack">
@@ -355,7 +382,6 @@ function Overview({ dashboard, fiscalYearId }) {
           <MoneyMetric label={overview.projectedEndingBalance.isProjected ? "Projected year end" : "Current reconciled balance"} cents={overview.projectedEndingBalance.valueCents} note={overview.projectedEndingBalance.isProjected ? "Includes disclosed forecasts" : "No future forecast loaded"} />
         </div>
       </section>
-      <AiInsights key={`${dashboard.fiscalYear.id}-${dashboard.ai?.availableMonths?.at(-1) || "empty"}`} dashboard={dashboard} fiscalYearId={fiscalYearId} />
       <div className="finance-two-column">
         <section className="card finance-panel"><h2>Financial insights</h2>{dashboard.insights.length ? <div className="finance-insights">{dashboard.insights.map((insight, index) => <div className={`finance-insight is-${insight.tone || "neutral"}`} key={`${insight.type}-${index}`}><span>{insight.text}</span>{Number.isSafeInteger(insight.amountCents) ? <strong>{money(insight.amountCents)}</strong> : null}</div>)}</div> : <EmptyState>Insights appear after transactions are published.</EmptyState>}</section>
         <section className="card finance-panel"><h2>Close status</h2><dl className="finance-definition-list"><div><dt>Latest reconciled month</dt><dd>{monthLabel(overview.latestReconciledMonth)}</dd></div><div><dt>Reporting basis</dt><dd>October 1–September 30</dd></div><div><dt>Internal transfers</dt><dd>Excluded from league-wide results</dd></div></dl></section>
@@ -637,5 +663,5 @@ export default function BoardFinance() {
   if (authState === "error") return <div className="page"><div className="finance-alert is-danger">{error}</div></div>;
   if (!bootstrap || !fiscalYearId) return <LoadingCard />;
 
-  return <div className="finance-page"><header className="finance-page-header"><div><div className="finance-eyebrow">Board Member Area</div><h1>Financial dashboard</h1><p>Reconciled cash, reporting-period performance, transaction detail, and plain-language financial insights.</p></div><div className="finance-header-actions"><label><span>Reporting period</span><select className="input" value={fiscalYearId} onChange={(event) => setFiscalYearId(event.target.value)}>{bootstrap.fiscalYears.map((year) => <option key={year.id} value={year.id}>{year.label}</option>)}</select></label><span className={`finance-role-badge is-${bootstrap.session.role}`}>{isEditor ? "Finance editor" : "Board viewer"}</span><button className="btn-secondary" onClick={logout}>Sign out</button></div></header><nav className="finance-tabs" aria-label="Finance dashboard sections">{tabList.map(([id, label]) => <button key={id} className={activeTab === id ? "is-active" : ""} onClick={() => setActiveTab(id)}>{label}</button>)}</nav>{error ? <div className="finance-alert is-danger" role="alert"><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div> : null}{loading || !dashboard ? <LoadingCard /> : <main className="finance-content">{activeTab === "overview" ? <Overview dashboard={dashboard} fiscalYearId={fiscalYearId} /> : null}{activeTab === "cash-flow" ? <CashFlow dashboard={dashboard} /> : null}{activeTab === "spending" ? <Spending dashboard={dashboard} onTransactions={() => setActiveTab("transactions")} /> : null}{activeTab === "income" ? <Income dashboard={dashboard} /> : null}{activeTab === "comparison" ? <Comparison dashboard={dashboard} /> : null}{activeTab === "reconciliation" ? <Reconciliation dashboard={dashboard} isEditor={isEditor} documents={admin.documents} onSave={saveReconciliation} onPublish={publish} busy={busy} /> : null}{activeTab === "transactions" ? <Transactions rows={transactions} filters={filters} setFilters={setFilters} bootstrap={bootstrap} isEditor={isEditor} onEdit={setEditingTransaction} onExport={exportCsv} loading={transactionsLoading} /> : null}{activeTab === "admin" && isEditor ? <FinanceAdmin bootstrap={bootstrap} fiscalYearId={fiscalYearId} admin={admin} onRefresh={loadFinance} busy={busy} setBusy={setBusy} /> : null}</main>}{editingTransaction ? <TransactionEditor transaction={editingTransaction} categories={bootstrap.categories} onSave={saveTransaction} onClose={() => setEditingTransaction(null)} busy={busy} /> : null}</div>;
+  return <div className="finance-page"><header className="finance-page-header"><div><div className="finance-eyebrow">Board Member Area</div><h1>Financial dashboard</h1><p>Reconciled cash, reporting-period performance, transaction detail, and plain-language financial insights.</p></div><div className="finance-header-actions"><label><span>Reporting period</span><select className="input" value={fiscalYearId} onChange={(event) => setFiscalYearId(event.target.value)}>{bootstrap.fiscalYears.map((year) => <option key={year.id} value={year.id}>{year.label}</option>)}</select></label><span className={`finance-role-badge is-${bootstrap.session.role}`}>{isEditor ? "Finance editor" : "Board viewer"}</span><button className="btn-secondary" onClick={logout}>Sign out</button></div></header><nav className="finance-tabs" aria-label="Finance dashboard sections">{tabList.map(([id, label]) => <button key={id} className={activeTab === id ? "is-active" : ""} onClick={() => setActiveTab(id)}>{label}</button>)}</nav>{error ? <div className="finance-alert is-danger" role="alert"><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div> : null}{loading || !dashboard ? <LoadingCard /> : <main className="finance-content">{activeTab === "overview" ? <Overview dashboard={dashboard} /> : null}{activeTab === "cash-flow" ? <CashFlow dashboard={dashboard} /> : null}{activeTab === "spending" ? <Spending dashboard={dashboard} onTransactions={() => setActiveTab("transactions")} /> : null}{activeTab === "income" ? <Income dashboard={dashboard} /> : null}{activeTab === "comparison" ? <Comparison dashboard={dashboard} /> : null}{activeTab === "ai" ? <AiInsights key={`${dashboard.fiscalYear.id}-${dashboard.ai?.availableMonths?.at(-1) || "empty"}`} dashboard={dashboard} fiscalYearId={fiscalYearId} /> : null}{activeTab === "reconciliation" ? <Reconciliation dashboard={dashboard} isEditor={isEditor} documents={admin.documents} onSave={saveReconciliation} onPublish={publish} busy={busy} /> : null}{activeTab === "transactions" ? <Transactions rows={transactions} filters={filters} setFilters={setFilters} bootstrap={bootstrap} isEditor={isEditor} onEdit={setEditingTransaction} onExport={exportCsv} loading={transactionsLoading} /> : null}{activeTab === "admin" && isEditor ? <FinanceAdmin bootstrap={bootstrap} fiscalYearId={fiscalYearId} admin={admin} onRefresh={loadFinance} busy={busy} setBusy={setBusy} /> : null}</main>}{editingTransaction ? <TransactionEditor transaction={editingTransaction} categories={bootstrap.categories} onSave={saveTransaction} onClose={() => setEditingTransaction(null)} busy={busy} /> : null}</div>;
 }

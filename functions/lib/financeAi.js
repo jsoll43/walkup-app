@@ -2,11 +2,14 @@ import { sha256Hex } from "../../shared/financeCore.js";
 import { getFinanceDashboard } from "./financeData.js";
 
 export const FINANCE_AI_MODEL = "@cf/meta/llama-3.2-3b-instruct";
-export const FINANCE_AI_DAILY_INFERENCE_LIMIT = 50;
+export const FINANCE_AI_DAILY_NEURON_LIMIT_MILLI = 10_000_000;
 
 const PROMPT_VERSION = "finance-board-summary-v1";
 const MAX_FACTS_CHARACTERS = 8_000;
 const MAX_OUTPUT_TOKENS = 256;
+const PROMPT_TOKEN_RESERVATION_OVERHEAD = 512;
+const INPUT_NEURONS_PER_MILLION_TOKENS = 4_625;
+const OUTPUT_NEURONS_PER_MILLION_TOKENS = 30_475;
 
 export const FINANCE_AI_REPORTS = Object.freeze({
   explain_month: "Explain this month",
@@ -179,25 +182,67 @@ function usageDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
-async function usageCount(env, date) {
-  const row = await env.DB.prepare(`SELECT inference_count FROM finance_ai_daily_usage WHERE usage_date = ?`).bind(date).first();
-  return Number(row?.inference_count || 0);
+export function calculateFinanceAiNeuronsMilli(inputTokens, outputTokens) {
+  const safeInputTokens = Number.isSafeInteger(inputTokens) && inputTokens >= 0 ? inputTokens : 0;
+  const safeOutputTokens = Number.isSafeInteger(outputTokens) && outputTokens >= 0 ? outputTokens : 0;
+  return Math.ceil((safeInputTokens * INPUT_NEURONS_PER_MILLION_TOKENS + safeOutputTokens * OUTPUT_NEURONS_PER_MILLION_TOKENS) / 1_000);
 }
 
-async function reserveDailyInference(env, date) {
+function maximumInferenceNeuronsMilli(messages) {
+  const promptTokenUpperBound = new TextEncoder().encode(JSON.stringify(messages)).byteLength + PROMPT_TOKEN_RESERVATION_OVERHEAD;
+  return calculateFinanceAiNeuronsMilli(promptTokenUpperBound, MAX_OUTPUT_TOKENS);
+}
+
+async function dailyUsageRow(env, date) {
+  return env.DB.prepare(
+    `SELECT inference_count, input_tokens, output_tokens, estimated_neurons_milli
+     FROM finance_ai_daily_usage WHERE usage_date = ?`,
+  ).bind(date).first();
+}
+
+function dailyUsageSummary(row, date) {
+  const neuronsUsedMilli = Math.max(0, Number(row?.estimated_neurons_milli || 0));
+  const reset = new Date(`${date}T00:00:00.000Z`);
+  reset.setUTCDate(reset.getUTCDate() + 1);
+  return {
+    usageDate: date,
+    inferenceCount: Math.max(0, Number(row?.inference_count || 0)),
+    inputTokens: Math.max(0, Number(row?.input_tokens || 0)),
+    outputTokens: Math.max(0, Number(row?.output_tokens || 0)),
+    neuronsUsedMilli,
+    neuronLimitMilli: FINANCE_AI_DAILY_NEURON_LIMIT_MILLI,
+    remainingNeuronsMilli: Math.max(0, FINANCE_AI_DAILY_NEURON_LIMIT_MILLI - neuronsUsedMilli),
+    resetAt: reset.toISOString(),
+  };
+}
+
+async function reserveDailyNeurons(env, date, reservationMilli) {
   const row = await env.DB.prepare(
     `INSERT INTO finance_ai_daily_usage (usage_date, inference_count, input_tokens, output_tokens, estimated_neurons_milli, updated_at)
-     VALUES (?, 1, 0, 0, 0, ?)
-     ON CONFLICT(usage_date) DO UPDATE SET inference_count = inference_count + 1, updated_at = excluded.updated_at
-     WHERE inference_count < ?
-     RETURNING inference_count`,
-  ).bind(date, new Date().toISOString(), FINANCE_AI_DAILY_INFERENCE_LIMIT).first();
+     VALUES (?, 1, 0, 0, ?, ?)
+     ON CONFLICT(usage_date) DO UPDATE SET
+       inference_count = inference_count + 1,
+       estimated_neurons_milli = estimated_neurons_milli + excluded.estimated_neurons_milli,
+       updated_at = excluded.updated_at
+     WHERE estimated_neurons_milli + excluded.estimated_neurons_milli <= ?
+     RETURNING inference_count, input_tokens, output_tokens, estimated_neurons_milli`,
+  ).bind(date, reservationMilli, new Date().toISOString(), FINANCE_AI_DAILY_NEURON_LIMIT_MILLI).first();
   if (!row) throw httpError("The finance AI daily allowance has been reached. Try again after 00:00 UTC.", 429);
-  return Number(row.inference_count);
+  return row;
 }
 
 function isMissingAiMigration(error) {
   return /no such table:\s*finance_ai_/i.test(String(error?.message || error));
+}
+
+export async function getFinanceAiUsage(env) {
+  const date = usageDate();
+  try {
+    return dailyUsageSummary(await dailyUsageRow(env, date), date);
+  } catch (error) {
+    if (isMissingAiMigration(error)) throw httpError("Finance AI setup is incomplete. Apply migration 0010 before using AI insights.", 503);
+    throw error;
+  }
 }
 
 export async function createFinanceAiInsight(env, { dashboard, fiscalYearId, reportType, statementMonth = "" }) {
@@ -213,21 +258,21 @@ export async function createFinanceAiInsight(env, { dashboard, fiscalYearId, rep
       `SELECT content, created_at FROM finance_ai_insights WHERE cache_key = ?`,
     ).bind(factsHash).first();
     if (cached) {
-      const count = await usageCount(env, date);
       return {
         content: cached.content,
         cached: true,
         createdAt: cached.created_at,
-        remainingDailyInferences: Math.max(0, FINANCE_AI_DAILY_INFERENCE_LIMIT - count),
-        dailyInferenceLimit: FINANCE_AI_DAILY_INFERENCE_LIMIT,
+        usage: dailyUsageSummary(await dailyUsageRow(env, date), date),
       };
     }
 
-    const inferenceCount = await reserveDailyInference(env, date);
+    const messages = promptMessages(reportType, factsJson);
+    const reservedNeuronsMilli = maximumInferenceNeuronsMilli(messages);
+    await reserveDailyNeurons(env, date, reservedNeuronsMilli);
     let result;
     try {
       result = await env.AI.run(FINANCE_AI_MODEL, {
-        messages: promptMessages(reportType, factsJson),
+        messages,
         max_tokens: MAX_OUTPUT_TOKENS,
         temperature: 0.1,
         seed: 20260817,
@@ -244,9 +289,11 @@ export async function createFinanceAiInsight(env, { dashboard, fiscalYearId, rep
 
     const content = String(result?.response || "").trim().slice(0, 2_000);
     if (!content) throw httpError("AI wording is temporarily unavailable. The dashboard calculations were not affected.", 503);
-    const inputTokens = Number.isSafeInteger(result?.usage?.prompt_tokens) ? result.usage.prompt_tokens : 0;
-    const outputTokens = Number.isSafeInteger(result?.usage?.completion_tokens) ? result.usage.completion_tokens : 0;
-    const estimatedNeuronsMilli = Math.ceil((inputTokens * 4_625 + outputTokens * 30_475) / 1_000);
+    const hasUsage = Number.isSafeInteger(result?.usage?.prompt_tokens) && result.usage.prompt_tokens >= 0
+      && Number.isSafeInteger(result?.usage?.completion_tokens) && result.usage.completion_tokens >= 0;
+    const inputTokens = hasUsage ? result.usage.prompt_tokens : 0;
+    const outputTokens = hasUsage ? result.usage.completion_tokens : 0;
+    const usedNeuronsMilli = hasUsage ? calculateFinanceAiNeuronsMilli(inputTokens, outputTokens) : reservedNeuronsMilli;
     const createdAt = new Date().toISOString();
     await env.DB.batch([
       env.DB.prepare(
@@ -260,14 +307,13 @@ export async function createFinanceAiInsight(env, { dashboard, fiscalYearId, rep
          SET input_tokens = input_tokens + ?, output_tokens = output_tokens + ?,
              estimated_neurons_milli = estimated_neurons_milli + ?, updated_at = ?
          WHERE usage_date = ?`,
-      ).bind(inputTokens, outputTokens, estimatedNeuronsMilli, createdAt, date),
+      ).bind(inputTokens, outputTokens, usedNeuronsMilli - reservedNeuronsMilli, createdAt, date),
     ]);
     return {
       content,
       cached: false,
       createdAt,
-      remainingDailyInferences: Math.max(0, FINANCE_AI_DAILY_INFERENCE_LIMIT - inferenceCount),
-      dailyInferenceLimit: FINANCE_AI_DAILY_INFERENCE_LIMIT,
+      usage: dailyUsageSummary(await dailyUsageRow(env, date), date),
     };
   } catch (error) {
     if (isMissingAiMigration(error)) throw httpError("Finance AI setup is incomplete. Apply migration 0010 before using AI insights.", 503);

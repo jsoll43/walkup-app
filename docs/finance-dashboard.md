@@ -16,7 +16,7 @@ The finance experience extends the existing application at `/board/finance`; it 
 - Historical transaction backfills do not require an account or statement balances at import time. The server assigns them to `Consolidated historical source`; balances remain explicitly pending and cannot contribute to cash, reconciliation, or publication until an editor enters both official statement balances.
 - The historical balance chart can calculate display-only month-end balances from official balance anchors and recorded external cash activity. Calculated balances are labeled unvalidated, reset at every official balance, leave a gap when activity is missing, and never contribute to reconciled cash, available cash, publication, or reconciliation decisions.
 - Deterministic dashboard calculations remain the source of truth. Optional Workers AI reports receive only pre-calculated aggregate totals; they receive no account balances, reconciliation data, transaction descriptions, payees, or documents and cannot mutate any record.
-- Workers AI is limited to four prepared reports, a 256-token response, cached identical results, and at most 50 new inferences across the app per UTC day. Cloudflare's platform allocation is still the ultimate account-wide limit.
+- Workers AI is limited to four prepared reports, a 256-token response, and cached identical results. The app tracks token-based neuron use in D1, displays the daily meter, and atomically refuses an uncached request that could exceed 10,000 finance-dashboard neurons per UTC day. Cloudflare's account-wide allocation remains the ultimate limit.
 
 ## Repository files and local data
 
@@ -97,7 +97,7 @@ npx wrangler pages dev dist --d1 DB=YOUR_D1_DATABASE_ID --r2=FINANCE_DOCUMENTS -
 
 Do not use either `FINANCE_LOCAL_AUTH_BYPASS` setting in preview or production.
 
-Workers AI local requests use the Cloudflare account's real allocation. The app's D1-backed cache and 50-inference UTC daily ceiling still apply, but avoid repeatedly bypassing or clearing local D1 state during AI testing.
+Workers AI local requests use the Cloudflare account's real allocation. The app's D1-backed cache and 10,000-neuron UTC daily ceiling still apply, but avoid repeatedly bypassing or clearing local D1 state during AI testing.
 
 ## Import workflow
 
@@ -162,7 +162,8 @@ Cloudflare's current dashboard binding steps are in [Pages Functions bindings](h
 - The Pages Function recalculates the authorized viewer's aggregates server-side and constructs the model input itself. The browser cannot supply financial facts to the model.
 - The model is `@cf/meta/llama-3.2-3b-instruct`, with a 256-token output ceiling. It is instructed to explain exact supplied figures without arithmetic, balance calculation, reconciliation, legitimacy decisions, or speculation.
 - Identical report type and calculated facts reuse the D1 cache and make no Workers AI call. Changed source totals produce a new cache key automatically.
-- `finance_ai_daily_usage` atomically permits at most 50 uncached inferences per UTC day. This intentionally leaves substantial room below Cloudflare's account-wide free allocation, but other Workers AI applications on the same Cloudflare account also consume that allocation.
+- `finance_ai_daily_usage` stores input/output token counts and thousandths of a neuron. Before inference, the app atomically reserves a conservative maximum based on the bounded prompt and 256-token output limit; afterward it replaces that reservation with token-based usage reported by Workers AI. Cached reports consume no new neurons.
+- The site meter and hard cutoff cover this finance dashboard only. Other Workers AI applications and direct Cloudflare dashboard/API use share the same account-wide allocation and are visible only in Cloudflare's Workers AI dashboard.
 - Generated wording is displayed as plain text, never executable HTML, and is labeled as AI-generated. Dashboard calculations remain authoritative.
 
 ## Cloudflare Access: required production defense in depth

@@ -23,7 +23,7 @@ import {
   updateFinanceTransaction,
   upsertFinanceAdminEntity,
 } from "../../../lib/financeData.js";
-import { getFinanceAiInsight } from "../../../lib/financeAi.js";
+import { getFinanceAiInsight, getFinanceAiUsage } from "../../../lib/financeAi.js";
 
 function pathParts(params) {
   if (Array.isArray(params.path)) return params.path.filter(Boolean);
@@ -79,6 +79,9 @@ async function handle(request, env, params) {
   if (parts[0] === "dashboard" && method === "GET") {
     if (!fiscalYearId) throw Object.assign(new Error("fiscalYear is required."), { status: 400 });
     return financeAuthJson({ ok: true, dashboard: await getFinanceDashboard(env, session, fiscalYearId) });
+  }
+  if (parts[0] === "ai-usage" && parts.length === 1 && method === "GET") {
+    return financeAuthJson({ ok: true, usage: await getFinanceAiUsage(env) });
   }
   if (isAiInsightRequest) {
     return financeAuthJson({ ok: true, insight: await getFinanceAiInsight(env, session, fiscalYearId, await bodyJson(request)) });
