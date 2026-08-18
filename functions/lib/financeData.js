@@ -452,6 +452,11 @@ export async function getFinanceDashboard(env, session, fiscalYearId, options = 
   const priorComparisonTransactions = priorTransactions.filter((transaction) => completedMonthSet.has(transaction.statementMonth?.slice(5, 7)));
   const changes = categoryChanges(currentComparisonTransactions, priorComparisonTransactions);
   const monthly = monthlyCashFlow(transactions, months, forecasts);
+  const cashFlowHistory = monthlyCashFlow(
+    [...priorTransactions, ...transactions],
+    [...fiscalMonths(priorStartYear), ...months],
+    forecasts,
+  );
   const missingMonths = months.filter((month) => month <= (actualMonths.at(-1) || "") && !reconciliations.some((item) => item.statementMonth === month));
   const duplicateCount = imports.reduce((sum, batch) => sum + Number(batch.duplicate_count || 0), 0);
   const mappedIssues = issues.map((issue) => ({ issueType: issue.issue_type, severity: issue.severity, description: issue.description, amountCents: issue.amount_cents == null ? null : Number(issue.amount_cents), status: issue.status }));
@@ -491,6 +496,7 @@ export async function getFinanceDashboard(env, session, fiscalYearId, options = 
       hasUnreconciled: reconciliations.length === 0 || reconciliations.some((item) => item.status !== "reconciled" || !item.balancesKnown) || missingMonths.length > 0,
     },
     monthly,
+    cashFlowHistory,
     historicalBalances,
     spending: {
       byCategory: categoryTotals(transactions, "expense"),

@@ -136,5 +136,21 @@ test("historical import needs neither account selection nor statement balances",
   assert.equal(publishedDashboard.overview.bankBalancesCents, 12500);
   assert.equal(publishedDashboard.overview.balanceIsPreliminary, false);
   assert.equal((await getFinanceTransactions(env, viewer, "fy_2025_2026", {})).length, 1);
+
+  const priorPreview = await previewFinanceImport(env, session, {
+    fiscalYearId: "fy_2024_2025",
+    statementMonth: "2024-10",
+    sourceFilename: "October 2024- BGSL.xlsx",
+    sourceSha256: "prior123",
+    openingBalanceCents: null,
+    statementEndingBalanceCents: null,
+    rows: [{ ...row, transactionDate: "2024-10-03", amountCents: 7500, description: "Prior registration deposit" }],
+  });
+  await confirmFinanceImport(env, session, priorPreview.batchId, { confirm: true, rows: priorPreview.rows });
+  const dashboardWithPriorCashFlow = await getFinanceDashboard(env, viewer, "fy_2025_2026");
+  assert.equal(dashboardWithPriorCashFlow.cashFlowHistory[0].month, "2024-10");
+  assert.equal(dashboardWithPriorCashFlow.cashFlowHistory.at(-1).month, "2026-09");
+  assert.equal(dashboardWithPriorCashFlow.cashFlowHistory.find((month) => month.month === "2024-10").incomeCents, 7500);
+  assert.equal(dashboardWithPriorCashFlow.monthly[0].month, "2025-10");
   database.close();
 });
