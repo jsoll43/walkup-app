@@ -840,6 +840,7 @@ button:disabled {
   align-items: center;
   justify-content: center;
   gap: 7px;
+  flex-wrap: wrap;
   color: #526375;
   font-size: 12px;
 }
@@ -859,7 +860,7 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin: 4px 0 10px;
+  margin: 12px 0 0;
   color: #334155;
   font-size: 12px;
   text-align: center;
@@ -871,11 +872,16 @@ button:disabled {
 }
 
 .finance-balance-chart-line {
-  fill: none;
   stroke: #9a6f00;
   stroke-width: 4;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.finance-balance-chart-line.is-calculated {
+  stroke: #64748b;
+  stroke-width: 3;
+  stroke-dasharray: 7 6;
 }
 
 .finance-balance-chart-point {
@@ -887,6 +893,12 @@ button:disabled {
 .finance-balance-chart-point.is-control,
 .finance-balance-chart-point.is-unreconciled {
   fill: #d97706;
+}
+
+.finance-balance-chart-point.is-calculated {
+  fill: #fff;
+  stroke: #64748b;
+  stroke-width: 4;
 }
 
 .finance-balance-chart-missing {
@@ -908,6 +920,12 @@ button:disabled {
 .finance-chart-legend .is-balance-review {
   background: #d97706;
   border-radius: 50%;
+}
+
+.finance-chart-legend .is-balance-calculated {
+  border: 3px solid #64748b;
+  border-radius: 50%;
+  background: #fff;
 }
 
 .finance-chart-legend .is-balance-missing {

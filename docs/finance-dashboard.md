@@ -14,6 +14,7 @@ The finance experience extends the existing application at `/board/finance`; it 
 - Internal transfers are visible but excluded from league-wide income, expenses, and results.
 - A manually entered ending balance never reconciles a month. Reconciliation requires a zero calculated difference and no unreviewed transactions. Publishing requires every account in the month to be reconciled.
 - Historical transaction backfills do not require an account or statement balances at import time. The server assigns them to `Consolidated historical source`; balances remain explicitly pending and cannot contribute to cash, reconciliation, or publication until an editor enters both official statement balances.
+- The historical balance chart can calculate display-only month-end balances from official balance anchors and recorded external cash activity. Calculated balances are labeled unvalidated, reset at every official balance, leave a gap when activity is missing, and never contribute to reconciled cash, available cash, publication, or reconciliation decisions.
 - Deterministic dashboard calculations remain the source of truth. Optional Workers AI reports receive only pre-calculated aggregate totals; they receive no account balances, reconciliation data, transaction descriptions, payees, or documents and cannot mutate any record.
 - Workers AI is limited to four prepared reports, a 256-token response, cached identical results, and at most 50 new inferences across the app per UTC day. Cloudflare's platform allocation is still the ultimate account-wide limit.
 

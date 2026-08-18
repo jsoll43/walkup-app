@@ -176,6 +176,62 @@ export function summarizeTransactions(transactions) {
   };
 }
 
+export function calculateHistoricalBalances({ months, officialBalances, monthlyMovements }) {
+  const officialByMonth = new Map(officialBalances.map((row) => [row.statementMonth, row]));
+  const movementByMonth = new Map(monthlyMovements.map((row) => [row.statementMonth, assertIntegerCents(row.movementCents, "movementCents")]));
+  const rows = months.map((statementMonth) => {
+    const official = officialByMonth.get(statementMonth);
+    return official ? {
+      statementMonth,
+      balanceCents: assertIntegerCents(official.balanceCents, "balanceCents"),
+      status: official.status,
+      source: official.source,
+      movementCents: movementByMonth.get(statementMonth) ?? null,
+      calculationDirection: "",
+      rollforwardDifferenceCents: null,
+    } : {
+      statementMonth,
+      balanceCents: null,
+      status: "missing",
+      source: "",
+      movementCents: movementByMonth.get(statementMonth) ?? null,
+      calculationDirection: "",
+      rollforwardDifferenceCents: null,
+    };
+  });
+
+  let priorEndingBalanceCents = null;
+  rows.forEach((row) => {
+    const movementKnown = Number.isSafeInteger(row.movementCents);
+    if (row.status !== "missing") {
+      row.rollforwardDifferenceCents = Number.isSafeInteger(priorEndingBalanceCents) && movementKnown
+        ? row.balanceCents - (priorEndingBalanceCents + row.movementCents)
+        : null;
+      priorEndingBalanceCents = row.balanceCents;
+    } else if (Number.isSafeInteger(priorEndingBalanceCents) && movementKnown) {
+      row.balanceCents = assertIntegerCents(priorEndingBalanceCents + row.movementCents, "calculatedBalanceCents");
+      row.status = "calculated";
+      row.source = "transaction_rollforward";
+      row.calculationDirection = "forward";
+      priorEndingBalanceCents = row.balanceCents;
+    } else {
+      priorEndingBalanceCents = null;
+    }
+  });
+
+  for (let index = rows.length - 1; index > 0; index -= 1) {
+    const current = rows[index];
+    const previous = rows[index - 1];
+    if (previous.status !== "missing" || !Number.isSafeInteger(current.balanceCents) || !Number.isSafeInteger(current.movementCents)) continue;
+    previous.balanceCents = assertIntegerCents(current.balanceCents - current.movementCents, "calculatedBalanceCents");
+    previous.status = "calculated";
+    previous.source = "transaction_backcast";
+    previous.calculationDirection = "backward";
+  }
+
+  return rows;
+}
+
 export function calculateAvailableCash({
   bankBalancesCents,
   reconciledCashOnHandCents,

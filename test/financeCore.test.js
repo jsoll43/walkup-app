@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   calculateAvailableCash,
+  calculateHistoricalBalances,
   calculateReconciliation,
   compareSamePeriod,
   findDuplicateGroups,
@@ -64,6 +65,29 @@ test("separates one-time expenses from normalized operating expenses", () => {
   assert.equal(summary.expensesCents, 4511786);
   assert.equal(summary.oneTimeExpensesCents, 1497500);
   assert.equal(summary.normalizedExpensesCents, 3014286);
+});
+
+test("calculates unvalidated historical balances around official statement anchors", () => {
+  const rows = calculateHistoricalBalances({
+    months: ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"],
+    officialBalances: [
+      { statementMonth: "2026-03", balanceCents: 10000, status: "reconciled", source: "reconciliation" },
+      { statementMonth: "2026-05", balanceCents: 15000, status: "control", source: "statement_control" },
+    ],
+    monthlyMovements: [
+      { statementMonth: "2026-01", movementCents: -1000 },
+      { statementMonth: "2026-02", movementCents: 2000 },
+      { statementMonth: "2026-03", movementCents: 3000 },
+      { statementMonth: "2026-04", movementCents: -500 },
+      { statementMonth: "2026-05", movementCents: 1000 },
+    ],
+  });
+
+  assert.deepEqual(rows.map((row) => row.balanceCents), [5000, 7000, 10000, 9500, 15000, null]);
+  assert.deepEqual(rows.map((row) => row.status), ["calculated", "calculated", "reconciled", "calculated", "control", "missing"]);
+  assert.equal(rows[0].calculationDirection, "backward");
+  assert.equal(rows[3].calculationDirection, "forward");
+  assert.equal(rows[4].rollforwardDifferenceCents, 4500);
 });
 
 test("compares the same completed fiscal months year over year", () => {

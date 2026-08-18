@@ -1,5 +1,6 @@
 import {
   calculateAvailableCash,
+  calculateHistoricalBalances,
   calculateReconciliation,
   compareSamePeriod,
   deterministicInsights,
@@ -253,8 +254,9 @@ function monthRange(firstMonth, lastMonth) {
   return months;
 }
 
-async function loadHistoricalBalances(env) {
-  const [boundary, controls, reconciliations] = await Promise.all([
+async function loadHistoricalBalances(env, session) {
+  const publishedOnly = session.role === "editor" ? "" : "AND p.status = 'published'";
+  const [boundary, controls, reconciliations, movements] = await Promise.all([
     first(env, `SELECT MIN(substr(starts_on, 1, 7)) AS first_month FROM finance_fiscal_years`),
     all(env, `SELECT statement_month, expected_cents
               FROM finance_validation_controls
@@ -269,6 +271,17 @@ async function loadHistoricalBalances(env) {
               WHERE pending.statement_month IS NULL
               GROUP BY r.statement_month
               ORDER BY r.statement_month`),
+    all(env, `SELECT t.statement_month,
+                     SUM(CASE
+                           WHEN t.classification = 'income' AND t.is_internal_transfer = 0 THEN ABS(t.amount_cents)
+                           WHEN t.classification = 'expense' AND t.is_internal_transfer = 0 THEN -ABS(t.amount_cents)
+                           ELSE 0
+                         END) AS movement_cents
+              FROM finance_transactions t
+              LEFT JOIN finance_periods p ON p.statement_month = t.statement_month
+              WHERE t.deleted_at IS NULL AND t.reconciliation_status != 'void' ${publishedOnly}
+              GROUP BY t.statement_month
+              ORDER BY t.statement_month`),
   ]);
   const knownByMonth = new Map(controls.map((row) => [row.statement_month, {
     balanceCents: Number(row.expected_cents),
@@ -281,15 +294,16 @@ async function loadHistoricalBalances(env) {
     source: "reconciliation",
   }));
   const knownMonths = [...knownByMonth.keys()].sort();
-  const lastMonth = knownMonths.at(-1);
+  const movementMonths = movements.map((row) => row.statement_month).sort();
+  const lastMonth = [...knownMonths, ...movementMonths].sort().at(-1);
   if (!lastMonth) return [];
-  const firstMonth = boundary?.first_month && boundary.first_month <= lastMonth ? boundary.first_month : knownMonths[0];
-  return monthRange(firstMonth, lastMonth).map((statementMonth) => ({
-    statementMonth,
-    balanceCents: knownByMonth.get(statementMonth)?.balanceCents ?? null,
-    status: knownByMonth.get(statementMonth)?.status || "missing",
-    source: knownByMonth.get(statementMonth)?.source || "",
-  }));
+  const earliestDataMonth = [...knownMonths, ...movementMonths].sort()[0];
+  const firstMonth = boundary?.first_month && boundary.first_month <= lastMonth ? boundary.first_month : earliestDataMonth;
+  return calculateHistoricalBalances({
+    months: monthRange(firstMonth, lastMonth),
+    officialBalances: [...knownByMonth.entries()].map(([statementMonth, row]) => ({ statementMonth, ...row })),
+    monthlyMovements: movements.map((row) => ({ statementMonth: row.statement_month, movementCents: Number(row.movement_cents) })),
+  });
 }
 
 function latestReconciledBalances(reconciliations) {
@@ -367,7 +381,7 @@ export async function getFinanceDashboard(env, session, fiscalYearId) {
     all(env, `SELECT * FROM finance_data_issues WHERE status = 'open' AND (fiscal_year_id = ? OR fiscal_year_id IS NULL) ORDER BY severity DESC, statement_month`, [fiscalYearId]),
     all(env, `SELECT * FROM finance_validation_controls WHERE fiscal_year_id = ? ORDER BY statement_month, id`, [fiscalYearId]),
     all(env, `SELECT duplicate_count, status FROM finance_import_batches WHERE fiscal_year_id = ? AND status != 'rolled_back'`, [fiscalYearId]),
-    loadHistoricalBalances(env),
+    loadHistoricalBalances(env, session),
   ]);
   const months = fiscalMonths(Number(fiscalYear.starts_on.slice(0, 4)));
   const summary = summarizeTransactions(transactions);

@@ -123,30 +123,64 @@ function MoneyMetric({ label, cents, note, tone }) {
   return <Metric label={label} value={money(cents)} note={note} tone={tone} />;
 }
 
-function MonthlyChart({ rows }) {
-  const max = Math.max(1, ...rows.flatMap((row) => [row.incomeCents, row.expensesCents, row.hasForecast ? row.forecastIncomeCents : 0, row.hasForecast ? row.forecastExpensesCents : 0]));
-  const chartHeight = 180;
-  const baseline = 205;
-  const groupWidth = 58;
-  const width = Math.max(720, rows.length * groupWidth + 40);
+function ChartNavigation({ ariaLabel, windowStart, maxStart, startMonth, endMonth, onChange }) {
   return (
-    <div className="finance-chart" role="img" aria-label="Monthly income and expense chart">
-      <svg viewBox={`0 0 ${width} 245`} preserveAspectRatio="xMidYMid meet">
-        <line x1="22" y1={baseline} x2={width - 10} y2={baseline} className="finance-chart-axis" />
-        {rows.map((row, index) => {
-          const x = 30 + index * groupWidth;
-          const incomeHeight = Math.round((row.incomeCents / max) * chartHeight);
-          const expenseHeight = Math.round((row.expensesCents / max) * chartHeight);
-          return (
-            <g key={row.month}>
-              <rect x={x} y={baseline - incomeHeight} width="17" height={incomeHeight} rx="4" className="finance-chart-income"><title>{`${monthLabel(row.month)} income ${money(row.incomeCents)}`}</title></rect>
-              <rect x={x + 20} y={baseline - expenseHeight} width="17" height={expenseHeight} rx="4" className="finance-chart-expense"><title>{`${monthLabel(row.month)} expenses ${money(row.expensesCents)}`}</title></rect>
-              <text x={x + 18} y="226" textAnchor="middle">{monthLabel(row.month).split(" ")[0]}</text>
-            </g>
-          );
-        })}
-      </svg>
-      <div className="finance-chart-legend"><span className="is-income" /> Income <span className="is-expense" /> Expenses</div>
+    <div className="finance-chart-nav" aria-label={ariaLabel}>
+      <button type="button" className="btn-secondary btn-sm" disabled={windowStart === 0} onClick={() => onChange(Math.max(0, windowStart - 1))}>← Earlier</button>
+      <strong>{monthLabel(startMonth)} – {monthLabel(endMonth)}</strong>
+      <button type="button" className="btn-secondary btn-sm" disabled={windowStart >= maxStart} onClick={() => onChange(Math.min(maxStart, windowStart + 1))}>Later →</button>
+    </div>
+  );
+}
+
+function MonthlyChart({ rows }) {
+  const windowSize = 6;
+  const maxStart = Math.max(0, rows.length - windowSize);
+  const latestActualIndex = rows.reduce((latest, row, index) => row.hasActual ? index : latest, -1);
+  const initialStart = Math.min(maxStart, Math.max(0, latestActualIndex - windowSize + 1));
+  const [requestedStart, setRequestedStart] = useState(initialStart);
+  const windowStart = Math.min(requestedStart, maxStart);
+  if (!rows.length) return <EmptyState>No monthly cash-flow data is available.</EmptyState>;
+
+  const visibleRows = rows.slice(windowStart, windowStart + windowSize);
+  const maximum = Math.max(1, ...visibleRows.flatMap((row) => [row.incomeCents, row.expensesCents]));
+  const width = 560;
+  const height = 245;
+  const left = 58;
+  const right = 18;
+  const top = 18;
+  const bottom = 40;
+  const baseline = height - bottom;
+  const plotWidth = width - left - right;
+  const plotHeight = baseline - top;
+  const groupWidth = plotWidth / Math.max(1, visibleRows.length);
+  const gridLines = [0, 0.25, 0.5, 0.75, 1].map((fraction) => ({
+    fraction,
+    value: Math.round(maximum * fraction),
+    y: baseline - plotHeight * fraction,
+  }));
+
+  return (
+    <div>
+      <div className="finance-chart" role="img" aria-label={`Monthly income and expenses from ${monthLabel(visibleRows[0].month)} through ${monthLabel(visibleRows.at(-1).month)}`}>
+        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
+          {gridLines.map((line) => <g key={line.fraction}><line x1={left} y1={line.y} x2={width - right} y2={line.y} className={line.fraction === 0 ? "finance-chart-axis" : "finance-chart-grid"} /><text x={left - 8} y={line.y + 4} textAnchor="end">{compactMoney(line.value)}</text></g>)}
+          {visibleRows.map((row, index) => {
+            const x = left + index * groupWidth + Math.max(4, (groupWidth - 42) / 2);
+            const incomeHeight = Math.round((row.incomeCents / maximum) * plotHeight);
+            const expenseHeight = Math.round((row.expensesCents / maximum) * plotHeight);
+            return (
+              <g key={row.month}>
+                <rect x={x} y={baseline - incomeHeight} width="19" height={incomeHeight} rx="4" className="finance-chart-income"><title>{`${monthLabel(row.month)} income ${money(row.incomeCents)}`}</title></rect>
+                <rect x={x + 23} y={baseline - expenseHeight} width="19" height={expenseHeight} rx="4" className="finance-chart-expense"><title>{`${monthLabel(row.month)} expenses ${money(row.expensesCents)}`}</title></rect>
+                <text x={x + 21} y={height - 16} textAnchor="middle">{monthLabel(row.month).split(" ")[0]}</text>
+              </g>
+            );
+          })}
+        </svg>
+        <div className="finance-chart-legend"><span className="is-income" /> Income <span className="is-expense" /> Expenses</div>
+      </div>
+      <ChartNavigation ariaLabel="Monthly cash flow date range" windowStart={windowStart} maxStart={maxStart} startMonth={visibleRows[0].month} endMonth={visibleRows.at(-1).month} onChange={setRequestedStart} />
     </div>
   );
 }
@@ -164,7 +198,7 @@ function HistoricalBalanceChart({ rows = [] }) {
   const rawMinimum = values.length ? Math.min(...values) : 0;
   const rawMaximum = values.length ? Math.max(...values) : 1;
   const padding = Math.max(100, Math.round(Math.max(1, rawMaximum - rawMinimum) * 0.12));
-  const minimum = Math.max(0, rawMinimum - padding);
+  const minimum = rawMinimum >= 0 ? Math.max(0, rawMinimum - padding) : rawMinimum - padding;
   const maximum = rawMaximum + padding;
   const width = 560;
   const height = 245;
@@ -176,41 +210,41 @@ function HistoricalBalanceChart({ rows = [] }) {
   const plotHeight = height - top - bottom;
   const x = (index) => left + (visibleRows.length === 1 ? plotWidth / 2 : (index * plotWidth) / (visibleRows.length - 1));
   const y = (value) => top + ((maximum - value) / Math.max(1, maximum - minimum)) * plotHeight;
-  const segments = [];
-  let segment = [];
-  visibleRows.forEach((row, index) => {
-    if (Number.isSafeInteger(row.balanceCents)) segment.push(`${x(index)},${y(row.balanceCents)}`);
-    else if (segment.length) { segments.push(segment); segment = []; }
-  });
-  if (segment.length) segments.push(segment);
-  const statusLabel = (status) => status === "reconciled" ? "Reconciled" : status === "unreconciled" ? "Unreconciled statement balance" : "Statement control";
+  const gridLines = [0, 0.25, 0.5, 0.75, 1].map((fraction) => ({
+    fraction,
+    value: Math.round(minimum + (maximum - minimum) * fraction),
+    y: top + plotHeight * (1 - fraction),
+  }));
+  const lineSegments = visibleRows.slice(1).map((row, index) => {
+    const previous = visibleRows[index];
+    if (!Number.isSafeInteger(previous.balanceCents) || !Number.isSafeInteger(row.balanceCents)) return null;
+    return { previous, row, x1: x(index), y1: y(previous.balanceCents), x2: x(index + 1), y2: y(row.balanceCents) };
+  }).filter(Boolean);
+  const statusLabel = (row) => row.status === "reconciled" ? "Reconciled" : row.status === "unreconciled" ? "Unreconciled statement balance" : row.status === "calculated" ? `Calculated ${row.calculationDirection === "backward" ? "backward from the next official balance" : "forward from the prior official balance"}; not validated` : "Statement control";
+  const rollforwardNote = (row) => Number.isSafeInteger(row.rollforwardDifferenceCents) && row.rollforwardDifferenceCents !== 0
+    ? ` · official balance is ${money(Math.abs(row.rollforwardDifferenceCents))} ${row.rollforwardDifferenceCents > 0 ? "higher" : "lower"} than recorded activity projected`
+    : "";
   const visibleRange = `${monthLabel(visibleRows[0].statementMonth)} – ${monthLabel(visibleRows.at(-1).statementMonth)}`;
 
   return (
     <div>
-      <div className="finance-chart-nav" aria-label="Historical balance date range">
-        <button className="btn-secondary btn-sm" disabled={windowStart === 0} onClick={() => setRequestedStart(Math.max(0, windowStart - 1))}>← Earlier</button>
-        <strong>{visibleRange}</strong>
-        <button className="btn-secondary btn-sm" disabled={windowStart >= maxStart} onClick={() => setRequestedStart(Math.min(maxStart, windowStart + 1))}>Later →</button>
-      </div>
-      <div className="finance-chart is-balance" role="img" aria-label={`Historical statement balances from ${visibleRange}`}>
+      <div className="finance-chart is-balance" role="img" aria-label={`Official and calculated historical balances from ${visibleRange}`}>
         <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
-          <line x1={left} y1={top} x2={width - right} y2={top} className="finance-chart-grid" />
-          <line x1={left} y1={top + plotHeight} x2={width - right} y2={top + plotHeight} className="finance-chart-axis" />
-          {knownRows.length ? <><text x={left - 8} y={top + 4} textAnchor="end">{compactMoney(maximum)}</text><text x={left - 8} y={top + plotHeight + 4} textAnchor="end">{compactMoney(minimum)}</text></> : null}
-          {segments.map((points, index) => <polyline key={index} points={points.join(" ")} className="finance-balance-chart-line" />)}
+          {gridLines.map((line) => <g key={line.fraction}><line x1={left} y1={line.y} x2={width - right} y2={line.y} className={line.fraction === 0 ? "finance-chart-axis" : "finance-chart-grid"} />{knownRows.length ? <text x={left - 8} y={line.y + 4} textAnchor="end">{compactMoney(line.value)}</text> : null}</g>)}
+          {lineSegments.map((segment) => <line key={`${segment.previous.statementMonth}-${segment.row.statementMonth}`} x1={segment.x1} y1={segment.y1} x2={segment.x2} y2={segment.y2} className={`finance-balance-chart-line ${segment.previous.status === "calculated" || segment.row.status === "calculated" ? "is-calculated" : ""}`} />)}
           {visibleRows.map((row, index) => (
             <g key={row.statementMonth}>
               {Number.isSafeInteger(row.balanceCents)
-                ? <circle cx={x(index)} cy={y(row.balanceCents)} r="6" className={`finance-balance-chart-point is-${row.status}`}><title>{`${monthLabel(row.statementMonth)}: ${money(row.balanceCents)} · ${statusLabel(row.status)}`}</title></circle>
-                : <circle cx={x(index)} cy={top + plotHeight} r="4" className="finance-balance-chart-missing"><title>{`${monthLabel(row.statementMonth)}: official balance unavailable`}</title></circle>}
+                ? <circle cx={x(index)} cy={y(row.balanceCents)} r="6" className={`finance-balance-chart-point is-${row.status}`}><title>{`${monthLabel(row.statementMonth)}: ${money(row.balanceCents)} · ${statusLabel(row)}${rollforwardNote(row)}`}</title></circle>
+                : <circle cx={x(index)} cy={top + plotHeight} r="4" className="finance-balance-chart-missing"><title>{`${monthLabel(row.statementMonth)}: recorded activity is missing, so the balance cannot be calculated`}</title></circle>}
               <text x={x(index)} y={height - 19} textAnchor="middle">{monthLabel(row.statementMonth).split(" ")[0]}</text>
             </g>
           ))}
-          {!knownRows.length ? <text x={left + plotWidth / 2} y={top + plotHeight / 2} textAnchor="middle" className="finance-balance-chart-empty">No official balances in this window</text> : null}
+          {!knownRows.length ? <text x={left + plotWidth / 2} y={top + plotHeight / 2} textAnchor="middle" className="finance-balance-chart-empty">No balance can be calculated in this window</text> : null}
         </svg>
-        <div className="finance-chart-legend"><span className="is-balance-known" /> Reconciled <span className="is-balance-review" /> Control or unreconciled <span className="is-balance-missing" /> Missing</div>
+        <div className="finance-chart-legend"><span className="is-balance-known" /> Reconciled <span className="is-balance-review" /> Control or unreconciled <span className="is-balance-calculated" /> Calculated, not validated <span className="is-balance-missing" /> Missing activity</div>
       </div>
+      <ChartNavigation ariaLabel="Historical balance date range" windowStart={windowStart} maxStart={maxStart} startMonth={visibleRows[0].statementMonth} endMonth={visibleRows.at(-1).statementMonth} onChange={setRequestedStart} />
     </div>
   );
 }
@@ -314,7 +348,7 @@ function Overview({ dashboard, fiscalYearId }) {
 }
 
 function CashFlow({ dashboard }) {
-  return <div className="finance-section-stack"><div className="finance-two-column finance-align-start"><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Actuals</div><h2>Monthly cash flow</h2></div></div><MonthlyChart rows={dashboard.monthly} /></section><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Balance history</div><h2>Historical balance</h2><p>Official balance points only; missing months are not estimated.</p></div></div><HistoricalBalanceChart key={dashboard.historicalBalances.at(-1)?.statementMonth || "empty"} rows={dashboard.historicalBalances} /></section></div><div className="finance-month-cards">{dashboard.monthly.map((row) => <div className="card finance-month-card" key={row.month}><h3>{monthLabel(row.month)}</h3><dl><div><dt>Income</dt><dd>{money(row.incomeCents)}</dd></div><div><dt>Expenses</dt><dd>{money(row.expensesCents)}</dd></div><div><dt>Net</dt><dd className={row.netCents < 0 ? "is-negative" : "is-positive"}>{money(row.netCents)}</dd></div><div><dt>Running net</dt><dd>{money(row.runningNetCents)}</dd></div>{row.hasForecast ? <div><dt>Forecast net</dt><dd>{money(row.forecastNetCents)} <small>Projected</small></dd></div> : null}</dl></div>)}</div></div>;
+  return <div className="finance-section-stack"><div className="finance-two-column finance-align-start"><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Actuals</div><h2>Monthly cash flow</h2><p>Use the controls below the graph to move through the reporting period.</p></div></div><MonthlyChart key={dashboard.ai?.availableMonths?.at(-1) || dashboard.fiscalYear.id} rows={dashboard.monthly} /></section><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Balance history</div><h2>Historical balance</h2><p>Official points anchor calculated balances. Hollow points are based on recorded activity and are not yet validated or reconciled.</p></div></div><HistoricalBalanceChart key={dashboard.historicalBalances.at(-1)?.statementMonth || "empty"} rows={dashboard.historicalBalances} /></section></div><div className="finance-month-cards">{dashboard.monthly.map((row) => <div className="card finance-month-card" key={row.month}><h3>{monthLabel(row.month)}</h3><dl><div><dt>Income</dt><dd>{money(row.incomeCents)}</dd></div><div><dt>Expenses</dt><dd>{money(row.expensesCents)}</dd></div><div><dt>Net</dt><dd className={row.netCents < 0 ? "is-negative" : "is-positive"}>{money(row.netCents)}</dd></div><div><dt>Running net</dt><dd>{money(row.runningNetCents)}</dd></div>{row.hasForecast ? <div><dt>Forecast net</dt><dd>{money(row.forecastNetCents)} <small>Projected</small></dd></div> : null}</dl></div>)}</div></div>;
 }
 
 function Spending({ dashboard, onTransactions }) {
