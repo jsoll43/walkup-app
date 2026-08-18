@@ -4,7 +4,7 @@ import { getFinanceDashboard } from "./financeData.js";
 export const FINANCE_AI_MODEL = "@cf/meta/llama-3.2-3b-instruct";
 export const FINANCE_AI_DAILY_NEURON_LIMIT_MILLI = 10_000_000;
 
-const PROMPT_VERSION = "finance-board-summary-v3";
+const PROMPT_VERSION = "finance-board-summary-v4";
 const MAX_FACTS_CHARACTERS = 8_000;
 const MAX_QUESTION_CHARACTERS = 240;
 const MAX_OUTPUT_TOKENS = 256;
@@ -110,11 +110,7 @@ export function buildFinanceAiFacts(dashboard, reportType) {
   };
   return {
     ...base,
-    selectedPeriodPerformance: {
-      ...moneyTotals(range.current),
-      routineExpenses: dollars(range.routineExpensesCents),
-      oneTimeOrCapitalExpenses: dollars(range.oneTimeExpensesCents),
-    },
+    selectedPeriodPerformance: moneyTotals(range.current),
     topExpenseCategories: categoryRows(range.topExpenseCategories, 5),
     topIncomeCategories: categoryRows(range.topIncomeCategories, 5),
     yearOverYearComparison: comparisonAvailable ? {

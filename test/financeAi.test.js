@@ -54,8 +54,7 @@ function dashboard(overrides = {}) {
       { month: "2026-06", hasActual: true, incomeCents: 105844, expensesCents: 293186, netCents: -187342 },
     ],
     spending: {
-      routineCents: 1100745,
-      oneTimeCents: 1497500,
+      totalCents: 2598245,
       byCategory: [{ name: "Field maintenance", amountCents: 1600000 }],
     },
     income: { byCategory: [{ name: "Registration", amountCents: 2500000 }] },
@@ -85,8 +84,6 @@ function dashboard(overrides = {}) {
         categoryChanges: [{ name: "Field maintenance", currentCents: 500000, priorCents: 400000, changeCents: 100000 }],
         topExpenseCategories: [{ name: "Field maintenance", amountCents: 500000 }],
         topIncomeCategories: [{ name: "Registration", amountCents: 219270 }],
-        routineExpensesCents: 554876,
-        oneTimeExpensesCents: 200000,
       },
     },
     reconciliations: [{ accountNumber: "PROMPT_SECRET_ACCOUNT" }],
@@ -112,6 +109,7 @@ test("AI facts contain calculated aggregates but exclude balances, accounts, and
   assert.match(serialized, /Field maintenance/);
   assert.doesNotMatch(serialized, /PROMPT_SECRET/);
   assert.doesNotMatch(serialized, /bankBalances|availableCash|reconciliation|accountNumber/i);
+  assert.doesNotMatch(serialized, /routine|oneTimeOrCapital/i);
 
   const range = buildFinanceAiFacts(dashboard(), "explain_month");
   assert.deepEqual(range.selectedDateRange, { startDate: "2026-05-15", endDate: "2026-06-30" });

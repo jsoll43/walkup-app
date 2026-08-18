@@ -5,6 +5,7 @@ import {
   calculateHistoricalBalances,
   calculateReconciliation,
   compareSamePeriod,
+  deterministicInsights,
   findDuplicateGroups,
   fiscalYearForDate,
   labelProjection,
@@ -65,6 +66,21 @@ test("separates one-time expenses from normalized operating expenses", () => {
   assert.equal(summary.expensesCents, 4511786);
   assert.equal(summary.oneTimeExpensesCents, 1497500);
   assert.equal(summary.normalizedExpensesCents, 3014286);
+});
+
+test("calls out a capital project as a year-over-year insight without splitting expense totals", () => {
+  const insights = deterministicInsights({
+    comparison: {
+      current: { transactionCount: 2, externalIncomeCents: 2000000, expensesCents: 1000000 },
+      prior: { transactionCount: 3, externalIncomeCents: 2000000, expensesCents: 2497500 },
+      incomeChangeCents: 0,
+      expenseChangeCents: -1497500,
+    },
+    notableCapitalExpenses: [{ comparisonPeriod: "prior", description: "Landscape project", amountCents: -1497500 }],
+  });
+  const capitalInsight = insights.find((insight) => insight.type === "capital_expense_difference");
+  assert.match(capitalInsight.text, /last year's capital project: Landscape project/i);
+  assert.equal(capitalInsight.amountCents, 1497500);
 });
 
 test("calculates unvalidated historical balances around official statement anchors", () => {

@@ -17,7 +17,8 @@ The finance experience extends the existing application at `/board/finance`; it 
 - Historical transaction backfills do not require an account or statement balances at import time. The server assigns them to `Consolidated historical source`; balances remain explicitly pending and cannot contribute to cash, reconciliation, or publication until an editor enters both official statement balances.
 - The historical balance chart can calculate display-only month-end balances from official balance anchors and recorded external cash activity. Calculated balances are labeled unvalidated, reset at every official balance, leave a gap when activity is missing, and never contribute to reconciled cash, available cash, publication, or reconciliation decisions.
 - The monthly cash-flow chart includes the selected reporting period and the immediately preceding reporting period so its Earlier control can cross the October fiscal-year boundary. The month cards remain scoped to the selected reporting period.
-- Deterministic dashboard calculations remain the source of truth. Optional Workers AI reports receive only pre-calculated aggregate totals; they receive no account balances, reconciliation data, transaction descriptions, payees, or documents and cannot mutate any record.
+- Deterministic dashboard calculations remain the source of truth. The beta Workers AI reports receive only pre-calculated aggregate totals; they receive no account balances, reconciliation data, transaction descriptions, payees, or documents and cannot mutate any record.
+- Board reporting presents all expenses together. Capital-project metadata remains internal and may produce a financial insight when it materially explains a year-over-year difference.
 - Workers AI is limited to four prepared reports, a 256-token response, and cached identical results. The app tracks token-based neuron use in D1, displays the daily meter, and atomically refuses an uncached request that could exceed 10,000 finance-dashboard neurons per UTC day. Cloudflare's account-wide allocation remains the ultimate limit.
 
 ## Repository files and local data
@@ -108,7 +109,7 @@ Workers AI local requests use the Cloudflare account's real allocation. The app'
 2. Select any number of monthly CSV/XLSX files at once. Each filename must contain exactly one month and year; annual/multi-month workbooks are rejected.
 3. The queue is sorted chronologically. The app detects each statement month and October–September fiscal year from the filename. No account or balance selection is required.
 4. Select **Parse and preview current file**. XLSX parsing happens in the browser; workbook Summary sheets are ignored.
-5. Review every row. Correct dates, signed amounts, descriptions, normalized categories, reconciliation status, and one-time/internal-transfer/restricted flags.
+5. Review every row. Correct dates, signed amounts, descriptions, normalized categories, reconciliation status, and capital-project/internal-transfer/restricted flags.
 6. Resolve every duplicate warning with an explicit **Include anyway** or **Skip this row** decision. A fingerprint uses the consolidated historical account, date, signed cents, and normalized description.
 7. Confirm the import and continue through the queue. Each batch is saved under `Consolidated historical source` with statement balances explicitly pending.
 8. When a statement becomes available, open **Reconciliation → Add statement balances**, enter both official balances, and optionally attach its protected supporting document.
@@ -140,7 +141,7 @@ Raw workbook transaction rows currently produce:
 
 The consolidated import corrects February external income by −$274.35, producing the exact $32,573.19 control. The current May workbook remains $569.99 below the statement-backed expense control; no balancing transaction is inserted, so imported expenses are $25,982.45 and May remains unreconciled until actual statement rows are available. Adding those actual rows would produce the $26,552.44 expense and $6,020.75 net controls.
 
-FY 2024–25's $14,975 landscape transaction is detected as one-time/capital. The $95.65 income difference traces to two invalid April source rows (one missing date and one amount with three decimal places). The $100 expense difference traces to a March row without a valid date. If those source rows are resolved from statements, annual income and expense controls match, but the beginning-cash/activity/ending-cash roll-forward still has an unresolved $50.99 difference. At least $3,318 of snack-stand cash also lacks a clear deposit trail.
+FY 2024–25's $14,975 landscape transaction is detected as a capital project. The $95.65 income difference traces to two invalid April source rows (one missing date and one amount with three decimal places). The $100 expense difference traces to a March row without a valid date. If those source rows are resolved from statements, annual income and expense controls match, but the beginning-cash/activity/ending-cash roll-forward still has an unresolved $50.99 difference. At least $3,318 of snack-stand cash also lacks a clear deposit trail.
 
 Seven fingerprint groups were reviewed across the workbooks. The known extra February 2026 sponsorship row was removed using the statement-backed control; the remaining same-day equal sponsorships and purchases were retained because removing them would break the supplied controls. Every decision is recorded in the private master CSV and import report.
 

@@ -361,8 +361,6 @@ function aiRangeFacts(transactions, priorTransactions, fiscalYear, range) {
     categoryChanges: categoryChanges(currentRows, priorRows),
     topExpenseCategories: categoryTotals(currentRows, "expense").slice(0, 5),
     topIncomeCategories: categoryTotals(currentRows, "income").slice(0, 5),
-    routineExpensesCents: current.normalizedExpensesCents,
-    oneTimeExpensesCents: current.oneTimeExpensesCents,
   };
 }
 
@@ -460,7 +458,9 @@ export async function getFinanceDashboard(env, session, fiscalYearId, options = 
   const missingMonths = months.filter((month) => month <= (actualMonths.at(-1) || "") && !reconciliations.some((item) => item.statementMonth === month));
   const duplicateCount = imports.reduce((sum, batch) => sum + Number(batch.duplicate_count || 0), 0);
   const mappedIssues = issues.map((issue) => ({ issueType: issue.issue_type, severity: issue.severity, description: issue.description, amountCents: issue.amount_cents == null ? null : Number(issue.amount_cents), status: issue.status }));
-  const mappedControls = controls.map((control) => ({ ...control, expectedCents: Number(control.expected_cents) }));
+  const mappedControls = controls
+    .filter((control) => !["one_time_expenses", "normalized_expenses"].includes(control.metric))
+    .map((control) => ({ ...control, expectedCents: Number(control.expected_cents) }));
   const actuals = controlsActuals(controls, transactions, reconciliations);
   const discrepancies = mappedControls.map((control) => {
     const actualCents = actuals[control.id];
@@ -477,6 +477,18 @@ export async function getFinanceDashboard(env, session, fiscalYearId, options = 
       sourceRows: status === "mismatch" ? discrepancyRows(control, transactions) : [],
     };
   });
+  const capitalInsightThresholdCents = Math.max(100_000, Math.round(Math.abs(comparison.expenseChangeCents) * 0.25));
+  const notableCapitalExpenses = comparison.prior.transactionCount > 0
+    ? [
+      ...currentComparisonTransactions.map((transaction) => ({ ...transaction, comparisonPeriod: "current" })),
+      ...priorComparisonTransactions.map((transaction) => ({ ...transaction, comparisonPeriod: "prior" })),
+    ]
+      .filter((transaction) => transaction.classification === "expense"
+        && !transaction.isInternalTransfer
+        && (transaction.isOneTime || transaction.isCapital)
+        && Math.abs(transaction.amountCents) >= capitalInsightThresholdCents)
+      .sort((left, right) => Math.abs(right.amountCents) - Math.abs(left.amountCents))
+    : [];
   return {
     fiscalYear: { id: fiscalYear.id, label: fiscalYearRangeLabel(fiscalYear.starts_on, fiscalYear.ends_on), startsOn: fiscalYear.starts_on, endsOn: fiscalYear.ends_on },
     overview: {
@@ -500,8 +512,7 @@ export async function getFinanceDashboard(env, session, fiscalYearId, options = 
     historicalBalances,
     spending: {
       byCategory: categoryTotals(transactions, "expense"),
-      routineCents: summary.normalizedExpensesCents,
-      oneTimeCents: summary.oneTimeExpensesCents,
+      totalCents: summary.expensesCents,
       categoryChanges: changes,
       topVendors: vendorTotals(transactions),
     },
@@ -509,7 +520,16 @@ export async function getFinanceDashboard(env, session, fiscalYearId, options = 
     yearOverYear: { ...comparison, categoryChanges: changes },
     ai: { availableMonths: actualMonths, comparedMonths: completedMonthNumbers, availableStartDate, availableEndDate, selectedRange },
     reconciliations,
-    insights: deterministicInsights({ comparison, categoryChanges: changes.filter((change) => change.changeCents !== 0), oneTimeExpenses: transactions.filter((transaction) => transaction.isOneTime || transaction.isCapital).sort((left, right) => Math.abs(right.amountCents) - Math.abs(left.amountCents)), reconciliations, missingMonths, duplicateCount, projection, dataIssues: mappedIssues }),
+    insights: deterministicInsights({
+      comparison,
+      categoryChanges: changes.filter((change) => change.changeCents !== 0),
+      notableCapitalExpenses,
+      reconciliations,
+      missingMonths,
+      duplicateCount,
+      projection,
+      dataIssues: mappedIssues,
+    }),
     discrepancies,
     dataIssues: mappedIssues,
   };
@@ -921,11 +941,11 @@ export function transactionsToCsv(transactions) {
     if (/^[=+\-@]/.test(text)) text = `'${text}`;
     return `"${text.replaceAll('"', '""')}"`;
   };
-  const rows = [["Transaction date", "Posted date", "Amount", "Classification", "Category", "Source category", "Description", "Account", "Reporting period", "Statement month", "One-time", "Capital", "Internal transfer", "Restricted", "Reconciliation", "Notes"]];
+  const rows = [["Transaction date", "Posted date", "Amount", "Classification", "Category", "Source category", "Description", "Account", "Reporting period", "Statement month", "Capital project", "Internal transfer", "Restricted", "Reconciliation", "Notes"]];
   transactions.forEach((transaction) => rows.push([
     transaction.transactionDate, transaction.postedDate, (transaction.amountCents / 100).toFixed(2), transaction.classification,
     transaction.categoryName, transaction.sourceCategory, transaction.description, transaction.accountName, fiscalYearForDate(transaction.transactionDate).label,
-    transaction.statementMonth, transaction.isOneTime ? "yes" : "no", transaction.isCapital ? "yes" : "no",
+    transaction.statementMonth, transaction.isOneTime || transaction.isCapital ? "yes" : "no",
     transaction.isInternalTransfer ? "yes" : "no", transaction.isRestricted ? "yes" : "no", transaction.reconciliationStatus,
     transaction.notes,
   ]));

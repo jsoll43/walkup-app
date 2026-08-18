@@ -339,7 +339,7 @@ function percentChange(current, previous) {
   return Math.round(((current - previous) * 1000) / previous) / 10;
 }
 
-export function deterministicInsights({ comparison, categoryChanges = [], oneTimeExpenses = [], reconciliations = [], missingMonths = [], duplicateCount = 0, projection = null, dataIssues = [] }) {
+export function deterministicInsights({ comparison, categoryChanges = [], notableCapitalExpenses = [], reconciliations = [], missingMonths = [], duplicateCount = 0, projection = null, dataIssues = [] }) {
   const insights = [];
   if (comparison) {
     if (comparison.prior.transactionCount === 0) {
@@ -371,10 +371,10 @@ export function deterministicInsights({ comparison, categoryChanges = [], oneTim
     text: `${change.name} changed by ${change.changeCents >= 0 ? "an increase" : "a decrease"}.`,
     amountCents: Math.abs(change.changeCents),
   }));
-  oneTimeExpenses.slice(0, 3).forEach((transaction) => insights.push({
-    type: "one_time_expense",
+  notableCapitalExpenses.slice(0, 3).forEach((transaction) => insights.push({
+    type: "capital_expense_difference",
     tone: "neutral",
-    text: `One-time expense: ${transaction.description}.`,
+    text: `A major year-over-year difference is ${transaction.comparisonPeriod === "prior" ? "last year's" : "this year's"} capital project: ${transaction.description}.`,
     amountCents: Math.abs(transaction.amountCents),
   }));
   const unreconciled = reconciliations.filter((item) => item.status !== "reconciled");
