@@ -30,6 +30,32 @@ function compactMoney(cents) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 }).format(Number(cents) / 100);
 }
 
+function niceChartScale(values, includeZero = false) {
+  const numbers = values.filter(Number.isSafeInteger);
+  if (!numbers.length) return { minimum: 0, maximum: 100, ticks: [0, 100] };
+  let dataMinimum = Math.min(...numbers);
+  let dataMaximum = Math.max(...numbers);
+  if (includeZero) {
+    dataMinimum = Math.min(0, dataMinimum);
+    dataMaximum = Math.max(0, dataMaximum);
+  }
+  if (dataMinimum === dataMaximum) {
+    const padding = Math.max(100, Math.round(Math.abs(dataMaximum) * 0.2));
+    dataMinimum = includeZero ? Math.min(0, dataMinimum - padding) : dataMinimum - padding;
+    dataMaximum += padding;
+  }
+  const roughStep = (dataMaximum - dataMinimum) / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(roughStep));
+  const normalizedStep = roughStep / magnitude;
+  const multiplier = normalizedStep <= 1 ? 1 : normalizedStep <= 2 ? 2 : normalizedStep <= 2.5 ? 2.5 : normalizedStep <= 5 ? 5 : 10;
+  const step = Math.max(1, Math.round(multiplier * magnitude));
+  const minimum = Math.floor(dataMinimum / step) * step;
+  let maximum = Math.ceil(dataMaximum / step) * step;
+  if (maximum === minimum) maximum += step;
+  const ticks = Array.from({ length: Math.round((maximum - minimum) / step) + 1 }, (_, index) => minimum + index * step);
+  return { minimum, maximum, ticks };
+}
+
 function centsInput(value) {
   return Number.isSafeInteger(Number(value)) ? (Number(value) / 100).toFixed(2) : "";
 }
@@ -143,7 +169,7 @@ function MonthlyChart({ rows }) {
   if (!rows.length) return <EmptyState>No monthly cash-flow data is available.</EmptyState>;
 
   const visibleRows = rows.slice(windowStart, windowStart + windowSize);
-  const maximum = Math.max(1, ...visibleRows.flatMap((row) => [row.incomeCents, row.expensesCents]));
+  const { minimum, maximum, ticks } = niceChartScale(rows.flatMap((row) => [row.incomeCents, row.expensesCents]), true);
   const width = 560;
   const height = 245;
   const left = 58;
@@ -154,21 +180,17 @@ function MonthlyChart({ rows }) {
   const plotWidth = width - left - right;
   const plotHeight = baseline - top;
   const groupWidth = plotWidth / Math.max(1, visibleRows.length);
-  const gridLines = [0, 0.25, 0.5, 0.75, 1].map((fraction) => ({
-    fraction,
-    value: Math.round(maximum * fraction),
-    y: baseline - plotHeight * fraction,
-  }));
+  const y = (value) => baseline - ((value - minimum) / Math.max(1, maximum - minimum)) * plotHeight;
 
   return (
     <div>
       <div className="finance-chart" role="img" aria-label={`Monthly income and expenses from ${monthLabel(visibleRows[0].month)} through ${monthLabel(visibleRows.at(-1).month)}`}>
         <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
-          {gridLines.map((line) => <g key={line.fraction}><line x1={left} y1={line.y} x2={width - right} y2={line.y} className={line.fraction === 0 ? "finance-chart-axis" : "finance-chart-grid"} /><text x={left - 8} y={line.y + 4} textAnchor="end">{compactMoney(line.value)}</text></g>)}
+          {ticks.map((value) => <g key={value}><line x1={left} y1={y(value)} x2={width - right} y2={y(value)} className={value === minimum ? "finance-chart-axis" : "finance-chart-grid"} /><text x={left - 8} y={y(value) + 4} textAnchor="end">{compactMoney(value)}</text></g>)}
           {visibleRows.map((row, index) => {
             const x = left + index * groupWidth + Math.max(4, (groupWidth - 42) / 2);
-            const incomeHeight = Math.round((row.incomeCents / maximum) * plotHeight);
-            const expenseHeight = Math.round((row.expensesCents / maximum) * plotHeight);
+            const incomeHeight = baseline - y(row.incomeCents);
+            const expenseHeight = baseline - y(row.expensesCents);
             return (
               <g key={row.month}>
                 <rect x={x} y={baseline - incomeHeight} width="19" height={incomeHeight} rx="4" className="finance-chart-income"><title>{`${monthLabel(row.month)} income ${money(row.incomeCents)}`}</title></rect>
@@ -194,12 +216,8 @@ function HistoricalBalanceChart({ rows = [] }) {
 
   const visibleRows = rows.slice(windowStart, windowStart + windowSize);
   const knownRows = visibleRows.filter((row) => Number.isSafeInteger(row.balanceCents));
-  const values = knownRows.map((row) => row.balanceCents);
-  const rawMinimum = values.length ? Math.min(...values) : 0;
-  const rawMaximum = values.length ? Math.max(...values) : 1;
-  const padding = Math.max(100, Math.round(Math.max(1, rawMaximum - rawMinimum) * 0.12));
-  const minimum = rawMinimum >= 0 ? Math.max(0, rawMinimum - padding) : rawMinimum - padding;
-  const maximum = rawMaximum + padding;
+  const allKnownRows = rows.filter((row) => Number.isSafeInteger(row.balanceCents));
+  const { minimum, maximum, ticks } = niceChartScale(allKnownRows.map((row) => row.balanceCents));
   const width = 560;
   const height = 245;
   const left = 58;
@@ -210,11 +228,6 @@ function HistoricalBalanceChart({ rows = [] }) {
   const plotHeight = height - top - bottom;
   const x = (index) => left + (visibleRows.length === 1 ? plotWidth / 2 : (index * plotWidth) / (visibleRows.length - 1));
   const y = (value) => top + ((maximum - value) / Math.max(1, maximum - minimum)) * plotHeight;
-  const gridLines = [0, 0.25, 0.5, 0.75, 1].map((fraction) => ({
-    fraction,
-    value: Math.round(minimum + (maximum - minimum) * fraction),
-    y: top + plotHeight * (1 - fraction),
-  }));
   const lineSegments = visibleRows.slice(1).map((row, index) => {
     const previous = visibleRows[index];
     if (!Number.isSafeInteger(previous.balanceCents) || !Number.isSafeInteger(row.balanceCents)) return null;
@@ -230,7 +243,7 @@ function HistoricalBalanceChart({ rows = [] }) {
     <div>
       <div className="finance-chart is-balance" role="img" aria-label={`Official and calculated historical balances from ${visibleRange}`}>
         <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
-          {gridLines.map((line) => <g key={line.fraction}><line x1={left} y1={line.y} x2={width - right} y2={line.y} className={line.fraction === 0 ? "finance-chart-axis" : "finance-chart-grid"} />{knownRows.length ? <text x={left - 8} y={line.y + 4} textAnchor="end">{compactMoney(line.value)}</text> : null}</g>)}
+          {ticks.map((value) => <g key={value}><line x1={left} y1={y(value)} x2={width - right} y2={y(value)} className={value === minimum ? "finance-chart-axis" : "finance-chart-grid"} />{allKnownRows.length ? <text x={left - 8} y={y(value) + 4} textAnchor="end">{compactMoney(value)}</text> : null}</g>)}
           {lineSegments.map((segment) => <line key={`${segment.previous.statementMonth}-${segment.row.statementMonth}`} x1={segment.x1} y1={segment.y1} x2={segment.x2} y2={segment.y2} className={`finance-balance-chart-line ${segment.previous.status === "calculated" || segment.row.status === "calculated" ? "is-calculated" : ""}`} />)}
           {visibleRows.map((row, index) => (
             <g key={row.statementMonth}>
