@@ -532,6 +532,8 @@ export async function getFinanceDashboard(env, session, fiscalYearId, options = 
       ytdIncomeCents: summary.externalIncomeCents,
       ytdExpensesCents: summary.expensesCents,
       ytdSurplusCents: summary.surplusCents,
+      activityStartMonth: fiscalYear.starts_on.slice(0, 7),
+      activityEndMonth: actualMonths.at(-1) || "",
       projectedEndingBalance: projection,
       latestReconciledMonth,
       hasReconciledBalances: latestBalances.length > 0,

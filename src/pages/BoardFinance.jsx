@@ -417,6 +417,9 @@ function AiInsights({ dashboard, fiscalYearId }) {
 
 function Overview({ dashboard }) {
   const { overview } = dashboard;
+  const activityRange = overview.activityEndMonth
+    ? monthRangeLabel(overview.activityStartMonth, overview.activityEndMonth)
+    : "No recorded activity";
   const balanceStatus = !overview.hasReconciledBalances
     ? { label: "No reconciled balance", tone: "is-warning" }
     : overview.balanceIsPreliminary
@@ -426,12 +429,12 @@ function Overview({ dashboard }) {
     <div className="finance-section-stack">
       {overview.hasUnreconciled || overview.balanceIsPreliminary ? <div className="finance-alert is-warning"><strong>Preliminary figures.</strong> <span>{overview.hasUnreconciled ? "At least one expected month is missing or unreconciled. " : ""}The bank balance uses the latest reconciled statements only.{overview.balanceIsPreliminary ? " The latest reconciled balance is shown even though its reporting period is not yet published." : ""}</span></div> : null}
       <section>
-        <div className="finance-section-heading"><div><div className="finance-eyebrow">Financial summary</div><h2>{dashboard.fiscalYear.label}</h2></div><span className={`finance-status-pill ${balanceStatus.tone}`}>{balanceStatus.label}</span></div>
+        <div className="finance-section-heading"><div><div className="finance-eyebrow">Fiscal-year-to-date summary</div><h2>{activityRange} recorded activity</h2></div><span className={`finance-status-pill ${balanceStatus.tone}`}>{balanceStatus.label}</span></div>
         <div className="finance-metric-grid is-four">
           <MoneyMetric label="Reconciled bank balance" cents={overview.bankBalancesCents} note={overview.balanceIsPreliminary ? "Latest reconciled balance; reporting period not yet published" : "Latest reconciled statement balance"} />
-          <MoneyMetric label="External income" cents={overview.ytdIncomeCents} />
-          <MoneyMetric label="Expenses" cents={overview.ytdExpensesCents} />
-          <MoneyMetric label="Surplus / deficit" cents={overview.ytdSurplusCents} tone={overview.ytdSurplusCents < 0 ? "danger" : "positive"} />
+          <MoneyMetric label="Fiscal-year-to-date income" cents={overview.ytdIncomeCents} note={activityRange} />
+          <MoneyMetric label="Fiscal-year-to-date expenses" cents={overview.ytdExpensesCents} note={activityRange} />
+          <MoneyMetric label="Fiscal-year-to-date surplus / deficit" cents={overview.ytdSurplusCents} note="Recorded income minus expenses; not a full-year forecast" tone={overview.ytdSurplusCents < 0 ? "danger" : "positive"} />
         </div>
       </section>
       <div className="finance-two-column">

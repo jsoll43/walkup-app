@@ -92,6 +92,8 @@ test("historical import needs neither account selection nor statement balances",
   const october = draftDashboard.monthly.find((month) => month.month === "2025-10");
   assert.equal(october.incomeCents, 12500);
   assert.equal(october.isPreliminary, true);
+  assert.equal(draftDashboard.overview.activityStartMonth, "2025-10");
+  assert.equal(draftDashboard.overview.activityEndMonth, "2025-10");
   const preliminaryTransactions = await getFinanceTransactions(env, viewer, "fy_2025_2026", {});
   assert.equal(preliminaryTransactions.length, 1);
   assert.equal(preliminaryTransactions[0].periodStatus, "draft");
