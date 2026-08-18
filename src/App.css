@@ -858,12 +858,16 @@ button:disabled {
 .finance-chart-nav {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: center;
+  gap: 14px;
   margin: 12px 0 0;
   color: #334155;
   font-size: 12px;
   text-align: center;
+}
+
+.finance-chart-nav strong {
+  margin: 0 4px;
 }
 
 .finance-chart-nav button:disabled {
@@ -876,6 +880,10 @@ button:disabled {
   stroke-width: 4;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.finance-balance-chart-area {
+  fill: rgba(218, 166, 17, 0.16);
 }
 
 .finance-balance-chart-line.is-calculated {
@@ -1500,9 +1508,7 @@ button:disabled {
   }
 
   .finance-chart-nav {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 6px;
+    gap: 8px;
   }
 
   .finance-chart-nav strong {

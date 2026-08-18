@@ -233,6 +233,13 @@ function HistoricalBalanceChart({ rows = [] }) {
     if (!Number.isSafeInteger(previous.balanceCents) || !Number.isSafeInteger(row.balanceCents)) return null;
     return { previous, row, x1: x(index), y1: y(previous.balanceCents), x2: x(index + 1), y2: y(row.balanceCents) };
   }).filter(Boolean);
+  const areaSegments = [];
+  let activeArea = [];
+  visibleRows.forEach((row, index) => {
+    if (Number.isSafeInteger(row.balanceCents)) activeArea.push({ x: x(index), y: y(row.balanceCents) });
+    else if (activeArea.length) { areaSegments.push(activeArea); activeArea = []; }
+  });
+  if (activeArea.length) areaSegments.push(activeArea);
   const statusLabel = (row) => row.status === "reconciled" ? "Reconciled" : row.status === "unreconciled" ? "Unreconciled statement balance" : row.status === "calculated" ? `Calculated ${row.calculationDirection === "backward" ? "backward from the next official balance" : "forward from the prior official balance"}; not validated` : "Statement control";
   const rollforwardNote = (row) => Number.isSafeInteger(row.rollforwardDifferenceCents) && row.rollforwardDifferenceCents !== 0
     ? ` · official balance is ${money(Math.abs(row.rollforwardDifferenceCents))} ${row.rollforwardDifferenceCents > 0 ? "higher" : "lower"} than recorded activity projected`
@@ -243,6 +250,7 @@ function HistoricalBalanceChart({ rows = [] }) {
     <div>
       <div className="finance-chart is-balance" role="img" aria-label={`Official and calculated historical balances from ${visibleRange}`}>
         <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
+          {areaSegments.filter((segment) => segment.length > 1).map((segment, index) => <polygon key={index} points={`${segment[0].x},${y(minimum)} ${segment.map((point) => `${point.x},${point.y}`).join(" ")} ${segment.at(-1).x},${y(minimum)}`} className="finance-balance-chart-area" />)}
           {ticks.map((value) => <g key={value}><line x1={left} y1={y(value)} x2={width - right} y2={y(value)} className={value === minimum ? "finance-chart-axis" : "finance-chart-grid"} />{allKnownRows.length ? <text x={left - 8} y={y(value) + 4} textAnchor="end">{compactMoney(value)}</text> : null}</g>)}
           {lineSegments.map((segment) => <line key={`${segment.previous.statementMonth}-${segment.row.statementMonth}`} x1={segment.x1} y1={segment.y1} x2={segment.x2} y2={segment.y2} className={`finance-balance-chart-line ${segment.previous.status === "calculated" || segment.row.status === "calculated" ? "is-calculated" : ""}`} />)}
           {visibleRows.map((row, index) => (
