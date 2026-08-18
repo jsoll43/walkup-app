@@ -469,6 +469,9 @@ function Comparison({ dashboard }) {
   const comparison = scope === "full"
     ? (yearOverYear.fullFiscalYear || yearOverYear)
     : (yearOverYear.fiscalYearToDate || yearOverYear);
+  const yearToDate = yearOverYear.fiscalYearToDate || yearOverYear;
+  const yearToDateCoverage = monthRangeLabel(yearToDate.currentStartMonth, yearToDate.currentEndMonth);
+  const fullFiscalYearCoverage = monthRangeLabel(dashboard.fiscalYear.startsOn.slice(0, 7), dashboard.fiscalYear.endsOn.slice(0, 7));
   const currentCoverage = monthRangeLabel(comparison.currentStartMonth, comparison.currentEndMonth);
   const priorCoverage = monthRangeLabel(comparison.priorStartMonth, comparison.priorEndMonth);
   const comparisonNote = scope === "full"
@@ -479,8 +482,8 @@ function Comparison({ dashboard }) {
   return (
     <div className="finance-section-stack">
       <div className="finance-subtabs finance-comparison-tabs" aria-label="Year-over-year comparison range">
-        <button type="button" className={scope === "ytd" ? "is-active" : ""} aria-pressed={scope === "ytd"} onClick={() => setScope("ytd")}>Fiscal year to date</button>
-        <button type="button" className={scope === "full" ? "is-active" : ""} aria-pressed={scope === "full"} onClick={() => setScope("full")}>Full fiscal year</button>
+        <button type="button" className={scope === "ytd" ? "is-active" : ""} aria-pressed={scope === "ytd"} onClick={() => setScope("ytd")}>Year to date: {yearToDateCoverage}</button>
+        <button type="button" className={scope === "full" ? "is-active" : ""} aria-pressed={scope === "full"} onClick={() => setScope("full")}>Full fiscal year: {fullFiscalYearCoverage}</button>
       </div>
       <div className={`finance-alert ${comparison.prior.transactionCount ? "is-info" : "is-warning"}`}>
         {comparison.prior.transactionCount ? comparisonNote : "Prior fiscal-year activity is not available, so changes cannot yet be compared."}
