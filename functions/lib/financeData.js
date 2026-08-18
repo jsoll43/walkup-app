@@ -130,7 +130,7 @@ export async function getFinanceBootstrap(env, session) {
   };
 }
 
-async function loadTransactions(env, { fiscalYearId, session, filters = {}, includePrior = false }) {
+async function loadTransactions(env, { fiscalYearId, session, filters = {}, includePrior = false, includeDraft = false }) {
   const where = [`t.deleted_at IS NULL`];
   const binds = [];
   if (fiscalYearId && !includePrior) {
@@ -148,7 +148,7 @@ async function loadTransactions(env, { fiscalYearId, session, filters = {}, incl
     const value = `%${String(filters.search).toLowerCase().slice(0, 100)}%`;
     binds.push(value, value, value);
   }
-  if (session.role !== "editor") where.push(`p.status = 'published'`);
+  if (session.role !== "editor" && !includeDraft) where.push(`p.status = 'published'`);
   const rows = await all(
     env,
     `SELECT t.*, c.name AS category_name, a.name AS account_name, COALESCE(p.status, 'draft') AS period_status
@@ -212,6 +212,7 @@ function monthlyCashFlow(transactions, months, forecasts) {
     return {
       month,
       hasActual: rows.length > 0,
+      isPreliminary: rows.some((row) => row.periodStatus !== "published"),
       transactionCount: rows.length,
       incomeCents: summary.externalIncomeCents,
       expensesCents: summary.expensesCents,
@@ -254,8 +255,7 @@ function monthRange(firstMonth, lastMonth) {
   return months;
 }
 
-async function loadHistoricalBalances(env, session) {
-  const publishedOnly = session.role === "editor" ? "" : "AND p.status = 'published'";
+async function loadHistoricalBalances(env) {
   const [boundary, controls, reconciliations, movements] = await Promise.all([
     first(env, `SELECT MIN(substr(starts_on, 1, 7)) AS first_month FROM finance_fiscal_years`),
     all(env, `SELECT statement_month, expected_cents
@@ -278,8 +278,7 @@ async function loadHistoricalBalances(env, session) {
                            ELSE 0
                          END) AS movement_cents
               FROM finance_transactions t
-              LEFT JOIN finance_periods p ON p.statement_month = t.statement_month
-              WHERE t.deleted_at IS NULL AND t.reconciliation_status != 'void' ${publishedOnly}
+              WHERE t.deleted_at IS NULL AND t.reconciliation_status != 'void'
               GROUP BY t.statement_month
               ORDER BY t.statement_month`),
   ]);
@@ -371,8 +370,8 @@ export async function getFinanceDashboard(env, session, fiscalYearId) {
   const priorStartYear = Number(fiscalYear.starts_on.slice(0, 4)) - 1;
   const priorFiscalYearId = `fy_${priorStartYear}_${priorStartYear + 1}`;
   const [transactions, priorTransactions, reconciliations, restrictedFunds, commitments, settings, forecasts, issues, controls, imports, historicalBalances] = await Promise.all([
-    loadTransactions(env, { fiscalYearId, session }),
-    loadTransactions(env, { fiscalYearId: priorFiscalYearId, session }),
+    loadTransactions(env, { fiscalYearId, session, includeDraft: true }),
+    loadTransactions(env, { fiscalYearId: priorFiscalYearId, session, includeDraft: true }),
     loadReconciliations(env, fiscalYearId),
     all(env, `SELECT * FROM finance_restricted_funds WHERE is_active = 1 AND (fiscal_year_id = ? OR fiscal_year_id IS NULL)`, [fiscalYearId]),
     all(env, `SELECT * FROM finance_commitments WHERE status = 'outstanding' AND (fiscal_year_id = ? OR fiscal_year_id IS NULL)`, [fiscalYearId]),
@@ -381,7 +380,7 @@ export async function getFinanceDashboard(env, session, fiscalYearId) {
     all(env, `SELECT * FROM finance_data_issues WHERE status = 'open' AND (fiscal_year_id = ? OR fiscal_year_id IS NULL) ORDER BY severity DESC, statement_month`, [fiscalYearId]),
     all(env, `SELECT * FROM finance_validation_controls WHERE fiscal_year_id = ? ORDER BY statement_month, id`, [fiscalYearId]),
     all(env, `SELECT duplicate_count, status FROM finance_import_batches WHERE fiscal_year_id = ? AND status != 'rolled_back'`, [fiscalYearId]),
-    loadHistoricalBalances(env, session),
+    loadHistoricalBalances(env),
   ]);
   const months = fiscalMonths(Number(fiscalYear.starts_on.slice(0, 4)));
   const summary = summarizeTransactions(transactions);

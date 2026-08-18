@@ -5,6 +5,8 @@ import { DatabaseSync } from "node:sqlite";
 
 import {
   confirmFinanceImport,
+  getFinanceDashboard,
+  getFinanceTransactions,
   previewFinanceImport,
   saveFinanceReconciliation,
   setFinancePeriodPublication,
@@ -85,6 +87,13 @@ test("historical import needs neither account selection nor statement balances",
   assert.equal(reconciliation.opening_balance_cents, 0);
   assert.equal(reconciliation.statement_ending_balance_cents, 0);
 
+  const viewer = { actor: "test board viewer", role: "viewer" };
+  const draftDashboard = await getFinanceDashboard(env, viewer, "fy_2025_2026");
+  const october = draftDashboard.monthly.find((month) => month.month === "2025-10");
+  assert.equal(october.incomeCents, 12500);
+  assert.equal(october.isPreliminary, true);
+  assert.deepEqual(await getFinanceTransactions(env, viewer, "fy_2025_2026", {}), []);
+
   await assert.rejects(
     setFinancePeriodPublication(env, session, "2025-10", true),
     /must be reconciled/i,
@@ -100,5 +109,6 @@ test("historical import needs neither account selection nor statement balances",
   assert.equal(saved.differenceCents, 0);
   assert.equal(database.prepare("SELECT COUNT(*) AS count FROM finance_pending_statement_balances").get().count, 0);
   assert.equal((await setFinancePeriodPublication(env, session, "2025-10", true)).status, "published");
+  assert.equal((await getFinanceTransactions(env, viewer, "fy_2025_2026", {})).length, 1);
   database.close();
 });

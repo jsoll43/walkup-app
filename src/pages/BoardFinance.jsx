@@ -167,7 +167,7 @@ function MonthlyChart({ rows }) {
   const initialStart = Math.min(maxStart, Math.max(0, latestActualIndex - windowSize + 1));
   const [requestedStart, setRequestedStart] = useState(initialStart);
   const windowStart = Math.min(requestedStart, maxStart);
-  if (!rows.length) return <EmptyState>No monthly cash-flow data is available.</EmptyState>;
+  if (!rows.length || !rows.some((row) => row.incomeCents || row.expensesCents)) return <EmptyState>No recorded income or expenses are available for this reporting period.</EmptyState>;
 
   const visibleRows = rows.slice(windowStart, windowStart + windowSize);
   const { minimum, maximum, ticks } = niceChartScale(rows.flatMap((row) => [row.incomeCents, row.expensesCents]), true);
@@ -218,7 +218,7 @@ function HistoricalBalanceChart({ rows = [] }) {
   const visibleRows = rows.slice(windowStart, windowStart + windowSize);
   const knownRows = visibleRows.filter((row) => Number.isSafeInteger(row.balanceCents));
   const allKnownRows = rows.filter((row) => Number.isSafeInteger(row.balanceCents));
-  const { minimum, maximum, ticks } = niceChartScale(allKnownRows.map((row) => row.balanceCents));
+  const { minimum, maximum, ticks } = niceChartScale(allKnownRows.map((row) => row.balanceCents), true);
   const width = 560;
   const height = 245;
   const left = 58;
@@ -251,14 +251,14 @@ function HistoricalBalanceChart({ rows = [] }) {
     <div>
       <div className="finance-chart is-balance" role="img" aria-label={`Official and calculated historical balances from ${visibleRange}`}>
         <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
-          {areaSegments.filter((segment) => segment.length > 1).map((segment, index) => <polygon key={index} points={`${segment[0].x},${y(minimum)} ${segment.map((point) => `${point.x},${point.y}`).join(" ")} ${segment.at(-1).x},${y(minimum)}`} className="finance-balance-chart-area" />)}
+          {areaSegments.filter((segment) => segment.length > 1).map((segment, index) => <polygon key={index} points={`${segment[0].x},${y(0)} ${segment.map((point) => `${point.x},${point.y}`).join(" ")} ${segment.at(-1).x},${y(0)}`} className="finance-balance-chart-area" fill="#d9a514" fillOpacity="0.18" />)}
           {ticks.map((value) => <g key={value}><line x1={left} y1={y(value)} x2={width - right} y2={y(value)} className={value === minimum ? "finance-chart-axis" : "finance-chart-grid"} />{allKnownRows.length ? <text x={left - 8} y={y(value) + 4} textAnchor="end">{compactMoney(value)}</text> : null}</g>)}
-          {lineSegments.map((segment) => <line key={`${segment.previous.statementMonth}-${segment.row.statementMonth}`} x1={segment.x1} y1={segment.y1} x2={segment.x2} y2={segment.y2} className={`finance-balance-chart-line ${segment.previous.status === "calculated" || segment.row.status === "calculated" ? "is-calculated" : ""}`} />)}
+          {lineSegments.map((segment) => <line key={`${segment.previous.statementMonth}-${segment.row.statementMonth}`} x1={segment.x1} y1={segment.y1} x2={segment.x2} y2={segment.y2} stroke={segment.previous.status === "calculated" || segment.row.status === "calculated" ? "#64748b" : "#9a6f00"} className={`finance-balance-chart-line ${segment.previous.status === "calculated" || segment.row.status === "calculated" ? "is-calculated" : ""}`} />)}
           {visibleRows.map((row, index) => (
             <g key={row.statementMonth}>
               {Number.isSafeInteger(row.balanceCents)
-                ? <circle cx={x(index)} cy={y(row.balanceCents)} r="6" className={`finance-balance-chart-point is-${row.status}`}><title>{`${monthLabel(row.statementMonth)}: ${money(row.balanceCents)} · ${statusLabel(row)}${rollforwardNote(row)}`}</title></circle>
-                : <circle cx={x(index)} cy={top + plotHeight} r="4" className="finance-balance-chart-missing"><title>{`${monthLabel(row.statementMonth)}: recorded activity is missing, so the balance cannot be calculated`}</title></circle>}
+                ? <circle cx={x(index)} cy={y(row.balanceCents)} r="6" fill={row.status === "calculated" ? "#fff" : row.status === "control" || row.status === "unreconciled" ? "#d97706" : "#d9a514"} stroke={row.status === "calculated" ? "#64748b" : "#fff"} className={`finance-balance-chart-point is-${row.status}`}><title>{`${monthLabel(row.statementMonth)}: ${money(row.balanceCents)} · ${statusLabel(row)}${rollforwardNote(row)}`}</title></circle>
+                : <circle cx={x(index)} cy={top + plotHeight} r="4" fill="#cbd5e1" className="finance-balance-chart-missing"><title>{`${monthLabel(row.statementMonth)}: recorded activity is missing, so the balance cannot be calculated`}</title></circle>}
               <text x={x(index)} y={height - 19} textAnchor="middle">{monthLabel(row.statementMonth).split(" ")[0]}</text>
             </g>
           ))}
@@ -395,7 +395,8 @@ function Overview({ dashboard }) {
 }
 
 function CashFlow({ dashboard }) {
-  return <div className="finance-section-stack"><div className="finance-two-column finance-align-start"><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Actuals</div><h2>Monthly cash flow</h2><p>Use the controls below the graph to move through the reporting period.</p></div></div><MonthlyChart key={dashboard.ai?.availableMonths?.at(-1) || dashboard.fiscalYear.id} rows={dashboard.monthly} /></section><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Balance history</div><h2>Historical balance</h2><p>Official points anchor calculated balances. Hollow points are based on recorded activity and are not yet validated or reconciled.</p></div></div><HistoricalBalanceChart key={dashboard.historicalBalances.at(-1)?.statementMonth || "empty"} rows={dashboard.historicalBalances} /></section></div><div className="finance-month-cards">{dashboard.monthly.map((row) => <div className="card finance-month-card" key={row.month}><h3>{monthLabel(row.month)}</h3><dl><div><dt>Income</dt><dd>{money(row.incomeCents)}</dd></div><div><dt>Expenses</dt><dd>{money(row.expensesCents)}</dd></div><div><dt>Net</dt><dd className={row.netCents < 0 ? "is-negative" : "is-positive"}>{money(row.netCents)}</dd></div><div><dt>Running net</dt><dd>{money(row.runningNetCents)}</dd></div>{row.hasForecast ? <div><dt>Forecast net</dt><dd>{money(row.forecastNetCents)} <small>Projected</small></dd></div> : null}</dl></div>)}</div></div>;
+  const hasPreliminaryActuals = dashboard.monthly.some((row) => row.hasActual && row.isPreliminary);
+  return <div className="finance-section-stack">{hasPreliminaryActuals ? <div className="finance-alert is-warning"><strong>Preliminary activity.</strong> Recorded transactions are shown before statement validation or reconciliation.</div> : null}<div className="finance-two-column finance-align-start"><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Actuals</div><h2>Monthly cash flow</h2><p>Use the controls below the graph to move through the reporting period.</p></div></div><MonthlyChart key={dashboard.ai?.availableMonths?.at(-1) || dashboard.fiscalYear.id} rows={dashboard.monthly} /></section><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Balance history</div><h2>Historical balance</h2><p>Official points anchor calculated balances. Hollow points are based on recorded activity and are not yet validated or reconciled.</p></div></div><HistoricalBalanceChart key={dashboard.historicalBalances.at(-1)?.statementMonth || "empty"} rows={dashboard.historicalBalances} /></section></div><div className="finance-month-cards">{dashboard.monthly.map((row) => <div className="card finance-month-card" key={row.month}><div className="finance-month-card-heading"><h3>{monthLabel(row.month)}</h3>{row.isPreliminary ? <span>Preliminary</span> : null}</div><dl><div><dt>Income</dt><dd>{money(row.incomeCents)}</dd></div><div><dt>Expenses</dt><dd>{money(row.expensesCents)}</dd></div><div><dt>Net</dt><dd className={row.netCents < 0 ? "is-negative" : "is-positive"}>{money(row.netCents)}</dd></div><div><dt>Running net</dt><dd>{money(row.runningNetCents)}</dd></div>{row.hasForecast ? <div><dt>Forecast net</dt><dd>{money(row.forecastNetCents)} <small>Projected</small></dd></div> : null}</dl></div>)}</div></div>;
 }
 
 function Spending({ dashboard, onTransactions }) {

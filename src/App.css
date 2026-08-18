@@ -992,6 +992,24 @@ button:disabled {
   margin: 0;
 }
 
+.finance-month-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.finance-month-card-heading span {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #fff3cd;
+  color: #7a5600;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
 .finance-bars,
 .finance-ranked-list,
 .finance-audit-list {
