@@ -463,6 +463,23 @@ export async function getFinanceDashboard(env, session, fiscalYearId, options = 
   const currentComparisonTransactions = transactions.filter((transaction) => completedMonthSet.has(transaction.statementMonth?.slice(5, 7)));
   const priorComparisonTransactions = priorTransactions.filter((transaction) => completedMonthSet.has(transaction.statementMonth?.slice(5, 7)));
   const changes = categoryChanges(currentComparisonTransactions, priorComparisonTransactions);
+  const fullCurrent = summarizeTransactions(transactions);
+  const fullPrior = summarizeTransactions(priorTransactions);
+  const fullComparison = {
+    current: fullCurrent,
+    prior: fullPrior,
+    incomeChangeCents: fullCurrent.externalIncomeCents - fullPrior.externalIncomeCents,
+    expenseChangeCents: fullCurrent.expensesCents - fullPrior.expensesCents,
+    surplusChangeCents: fullCurrent.surplusCents - fullPrior.surplusCents,
+  };
+  const fullChanges = categoryChanges(transactions, priorTransactions);
+  const priorActualMonths = [...new Set(priorTransactions.map((transaction) => transaction.statementMonth))].sort();
+  const currentStartMonth = fiscalYear.starts_on.slice(0, 7);
+  const currentEndMonth = actualMonths.at(-1) || currentStartMonth;
+  const priorStartMonth = shiftDateByYears(fiscalYear.starts_on, -1).slice(0, 7);
+  const priorEndMonth = shiftDateByYears(`${currentEndMonth}-01`, -1).slice(0, 7);
+  const priorFiscalYearEndMonth = shiftDateByYears(fiscalYear.ends_on, -1).slice(0, 7);
+  const priorFullEndMonth = priorActualMonths.at(-1) || priorStartMonth;
   const monthly = monthlyCashFlow(transactions, months, forecasts);
   const cashFlowHistory = monthlyCashFlow(
     [...priorTransactions, ...transactions],
@@ -531,7 +548,28 @@ export async function getFinanceDashboard(env, session, fiscalYearId, options = 
       topVendors: vendorTotals(transactions),
     },
     income: { byCategory: categoryTotals(transactions, "income") },
-    yearOverYear: { ...comparison, categoryChanges: changes },
+    yearOverYear: {
+      ...comparison,
+      categoryChanges: changes,
+      fiscalYearToDate: {
+        ...comparison,
+        categoryChanges: changes,
+        currentStartMonth,
+        currentEndMonth,
+        priorStartMonth,
+        priorEndMonth,
+      },
+      fullFiscalYear: {
+        ...fullComparison,
+        categoryChanges: fullChanges,
+        currentStartMonth,
+        currentEndMonth,
+        priorStartMonth,
+        priorEndMonth: priorFullEndMonth,
+        currentIsComplete: currentEndMonth >= fiscalYear.ends_on.slice(0, 7),
+        priorIsComplete: priorFullEndMonth >= priorFiscalYearEndMonth,
+      },
+    },
     ai: { availableMonths: actualMonths, comparedMonths: completedMonthNumbers, availableStartDate, availableEndDate, selectedRange },
     reconciliations,
     insights: deterministicInsights({

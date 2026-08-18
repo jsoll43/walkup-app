@@ -27,6 +27,11 @@ function monthLabel(value) {
   return new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
 
+function monthRangeLabel(startMonth, endMonth) {
+  if (!startMonth || !endMonth) return "No recorded activity";
+  return startMonth === endMonth ? monthLabel(startMonth) : `${monthLabel(startMonth)} – ${monthLabel(endMonth)}`;
+}
+
 function compactMoney(cents) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 }).format(Number(cents) / 100);
 }
@@ -456,8 +461,43 @@ function Income({ dashboard }) {
 }
 
 function Comparison({ dashboard }) {
-  const comparison = dashboard.yearOverYear;
-  return <div className="finance-section-stack"><div className={`finance-alert ${comparison.prior.transactionCount ? "is-info" : "is-warning"}`}>{comparison.prior.transactionCount ? "Current results are compared with the same completed months in the prior reporting period. Projected values are not mixed into actual results." : "Prior-period transactions are not available. Changes remain withheld until both periods are loaded and published."}</div><div className="finance-metric-grid is-three"><MoneyMetric label="Current-period income" cents={comparison.current.externalIncomeCents} /><MoneyMetric label="Prior same-period income" cents={comparison.prior.externalIncomeCents} /><MoneyMetric label="Income change" cents={comparison.incomeChangeCents} tone={comparison.incomeChangeCents < 0 ? "danger" : "positive"} /><MoneyMetric label="Current-period expenses" cents={comparison.current.expensesCents} /><MoneyMetric label="Prior same-period expenses" cents={comparison.prior.expensesCents} /><MoneyMetric label="Expense change" cents={comparison.expenseChangeCents} tone={comparison.expenseChangeCents > 0 ? "danger" : "positive"} /></div><section className="card finance-panel"><h2>Largest category changes</h2>{comparison.prior.transactionCount && comparison.categoryChanges.length ? <div className="finance-ranked-list">{comparison.categoryChanges.slice(0, 10).map((row) => <div key={row.name}><span>{row.name}<small>{money(row.priorCents)} → {money(row.currentCents)}</small></span><strong className={row.changeCents > 0 ? "is-negative" : "is-positive"}>{row.changeCents > 0 ? "+" : ""}{money(row.changeCents)}</strong></div>)}</div> : <EmptyState>Two published reporting periods are needed for comparison.</EmptyState>}</section></div>;
+  const [scope, setScope] = useState("ytd");
+  const yearOverYear = dashboard.yearOverYear;
+  const comparison = scope === "full"
+    ? (yearOverYear.fullFiscalYear || yearOverYear)
+    : (yearOverYear.fiscalYearToDate || yearOverYear);
+  const currentCoverage = monthRangeLabel(comparison.currentStartMonth, comparison.currentEndMonth);
+  const priorCoverage = monthRangeLabel(comparison.priorStartMonth, comparison.priorEndMonth);
+  const comparisonNote = scope === "full"
+    ? comparison.currentIsComplete && comparison.priorIsComplete
+      ? "Both columns use all recorded activity for their full fiscal years."
+      : `This view uses all recorded activity: current through ${monthLabel(comparison.currentEndMonth)} and prior through ${monthLabel(comparison.priorEndMonth)}. Fiscal year to date remains the fair progress comparison.`
+    : `Both columns use the same fiscal-year months (${currentCoverage}) for a fair progress comparison.`;
+  return (
+    <div className="finance-section-stack">
+      <div className="finance-subtabs finance-comparison-tabs" aria-label="Year-over-year comparison range">
+        <button type="button" className={scope === "ytd" ? "is-active" : ""} aria-pressed={scope === "ytd"} onClick={() => setScope("ytd")}>Fiscal year to date</button>
+        <button type="button" className={scope === "full" ? "is-active" : ""} aria-pressed={scope === "full"} onClick={() => setScope("full")}>Full fiscal year</button>
+      </div>
+      <div className={`finance-alert ${comparison.prior.transactionCount ? "is-info" : "is-warning"}`}>
+        {comparison.prior.transactionCount ? comparisonNote : "Prior fiscal-year activity is not available, so changes cannot yet be compared."}
+      </div>
+      <div className="finance-metric-grid is-three">
+        <MoneyMetric label="Current fiscal year income" cents={comparison.current.externalIncomeCents} note={currentCoverage} />
+        <MoneyMetric label="Prior fiscal year income" cents={comparison.prior.externalIncomeCents} note={priorCoverage} />
+        <MoneyMetric label="Income change" cents={comparison.incomeChangeCents} note={scope === "full" ? "Full fiscal-year view" : "Fiscal year to date"} tone={comparison.incomeChangeCents < 0 ? "danger" : "positive"} />
+        <MoneyMetric label="Current fiscal year expenses" cents={comparison.current.expensesCents} note={currentCoverage} />
+        <MoneyMetric label="Prior fiscal year expenses" cents={comparison.prior.expensesCents} note={priorCoverage} />
+        <MoneyMetric label="Expense change" cents={comparison.expenseChangeCents} note={scope === "full" ? "Full fiscal-year view" : "Fiscal year to date"} tone={comparison.expenseChangeCents > 0 ? "danger" : "positive"} />
+      </div>
+      <section className="card finance-panel">
+        <h2>Largest category changes</h2>
+        {comparison.prior.transactionCount && comparison.categoryChanges.length
+          ? <div className="finance-ranked-list">{comparison.categoryChanges.slice(0, 10).map((row) => <div key={row.name}><span>{row.name}<small>{money(row.priorCents)} → {money(row.currentCents)}</small></span><strong className={row.changeCents > 0 ? "is-negative" : "is-positive"}>{row.changeCents > 0 ? "+" : ""}{money(row.changeCents)}</strong></div>)}</div>
+          : <EmptyState>Activity in both fiscal years is needed for comparison.</EmptyState>}
+      </section>
+    </div>
+  );
 }
 
 function ReconciliationEditor({ item, documents, onSave, busy }) {

@@ -158,6 +158,15 @@ test("historical import needs neither account selection nor statement balances",
   assert.equal(dashboardWithPriorCashFlow.cashFlowHistory.find((month) => month.month === "2024-10").incomeCents, 7500);
   assert.equal(dashboardWithPriorCashFlow.cashFlowHistory.find((month) => month.month === "2024-10").expensesCents, 1497500);
   assert.equal(dashboardWithPriorCashFlow.monthly[0].month, "2025-10");
+  assert.equal(dashboardWithPriorCashFlow.yearOverYear.fiscalYearToDate.current.externalIncomeCents, 12500);
+  assert.equal(dashboardWithPriorCashFlow.yearOverYear.fiscalYearToDate.prior.externalIncomeCents, 7500);
+  assert.equal(dashboardWithPriorCashFlow.yearOverYear.fiscalYearToDate.currentEndMonth, "2025-10");
+  assert.equal(dashboardWithPriorCashFlow.yearOverYear.fiscalYearToDate.priorEndMonth, "2024-10");
+  assert.equal(dashboardWithPriorCashFlow.yearOverYear.fullFiscalYear.current.externalIncomeCents, 12500);
+  assert.equal(dashboardWithPriorCashFlow.yearOverYear.fullFiscalYear.prior.expensesCents, 1497500);
+  assert.equal(dashboardWithPriorCashFlow.yearOverYear.fullFiscalYear.priorEndMonth, "2024-10");
+  assert.equal(dashboardWithPriorCashFlow.yearOverYear.fullFiscalYear.currentIsComplete, false);
+  assert.equal(dashboardWithPriorCashFlow.yearOverYear.fullFiscalYear.priorIsComplete, false);
   assert.match(dashboardWithPriorCashFlow.insights.find((insight) => insight.type === "category_change").text, /Field improvements \[Oct 2024\]/);
   database.close();
 });

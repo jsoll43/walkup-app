@@ -459,6 +459,10 @@ button:disabled {
   box-shadow: none;
 }
 
+.finance-comparison-tabs {
+  max-width: 520px;
+}
+
 .finance-content,
 .finance-section-stack {
   display: grid;
