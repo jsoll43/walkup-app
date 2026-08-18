@@ -521,7 +521,7 @@ function Comparison({ dashboard }) {
       <section className="card finance-panel">
         <h2>Largest category changes</h2>
         {comparison.prior.transactionCount && comparison.categoryChanges.length
-          ? <div className="finance-ranked-list">{comparison.categoryChanges.slice(0, 10).map((row) => <div key={row.name}><span>{row.name}<small>{money(row.priorCents)} → {money(row.currentCents)}</small></span><strong className={row.changeCents > 0 ? "is-negative" : "is-positive"}>{row.changeCents > 0 ? "+" : ""}{money(row.changeCents)}</strong></div>)}</div>
+          ? <div className="finance-ranked-list">{comparison.categoryChanges.slice(0, 10).map((row) => <div key={row.name}><span>{row.name}<small>[Prior fiscal year] {money(row.priorCents)} → [Current fiscal year] {money(row.currentCents)}</small></span><strong className={row.changeCents > 0 ? "is-negative" : "is-positive"}>{row.changeCents > 0 ? "+" : ""}{money(row.changeCents)}</strong></div>)}</div>
           : <EmptyState>Activity in both fiscal years is needed for comparison.</EmptyState>}
       </section>
     </div>
