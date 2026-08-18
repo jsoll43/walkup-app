@@ -506,6 +506,17 @@ button:disabled {
   color: white;
 }
 
+.finance-comparison-caveat {
+  margin: -3px 0 0;
+  padding: 8px 11px;
+  border-left: 3px solid var(--bgsl-gold);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f1f5f9;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .finance-comparison-year .finance-metric,
 .finance-comparison-change .finance-metric {
   box-shadow: 0 5px 16px rgba(16, 46, 79, 0.1);
@@ -1325,6 +1336,51 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+.finance-member-add {
+  display: grid;
+  align-items: end;
+  grid-template-columns: minmax(220px, 1fr) minmax(150px, 220px) auto;
+  gap: 10px;
+  margin: 16px 0 20px;
+}
+
+.finance-member-add label > span {
+  display: block;
+  margin-bottom: 5px;
+  color: #526375;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.finance-member-list {
+  display: grid;
+  gap: 8px;
+}
+
+.finance-member-row {
+  display: grid;
+  align-items: center;
+  grid-template-columns: minmax(190px, 1fr) minmax(150px, 210px) auto auto;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(16, 46, 79, 0.12);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.finance-member-row.is-inactive {
+  opacity: 0.72;
+  background: #e8edf3;
+}
+
+.finance-member-row small {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .finance-form-stack {
   display: grid;
   gap: 9px;
@@ -1748,8 +1804,15 @@ button:disabled {
   .finance-form-grid,
   .finance-form-grid.is-compact,
   .finance-filter-grid,
-  .finance-import-checklist-grid {
+  .finance-import-checklist-grid,
+  .finance-member-add,
+  .finance-member-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .finance-member-row .btn-secondary,
+  .finance-member-row .btn-danger {
+    width: 100%;
   }
 
   .finance-ai-actions {

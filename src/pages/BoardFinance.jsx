@@ -14,7 +14,7 @@ const TABS = [
   ["transactions", "Transactions"],
 ];
 
-const EMPTY_ADMIN = { imports: [], funds: [], commitments: [], mappings: [], audit: [], documents: [], forecasts: [] };
+const EMPTY_ADMIN = { imports: [], funds: [], commitments: [], mappings: [], audit: [], documents: [], forecasts: [], boardMembers: [] };
 
 function money(cents) {
   if (!Number.isSafeInteger(Number(cents))) return "—";
@@ -92,7 +92,7 @@ function JsonRequest(method, body) {
 
 function FinanceLogin({ onLogin }) {
   const [role, setRole] = useState("viewer");
-  const [password, setPassword] = useState("");
+  const [credential, setCredential] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -102,8 +102,8 @@ function FinanceLogin({ onLogin }) {
     setError("");
     setLoading(true);
     try {
-      await api("session/login", JsonRequest("POST", { role, password }));
-      setPassword("");
+      await api("session/login", JsonRequest("POST", role === "viewer" ? { role, pin: credential } : { role, password: credential }));
+      setCredential("");
       await onLogin();
     } catch (nextError) {
       setError(nextError.message);
@@ -117,17 +117,17 @@ function FinanceLogin({ onLogin }) {
       <form className="card finance-login-card" onSubmit={submit}>
         <div className="finance-eyebrow">Board Member Area</div>
         <h1>BGSL Finance</h1>
-        <p>Financial records are restricted to Board members and authorized finance editors.</p>
+        <p>Financial records are restricted to named Board members and authorized finance editors.</p>
         <div className="finance-role-switch" aria-label="Finance role">
-          <button type="button" className={role === "viewer" ? "is-active" : ""} onClick={() => setRole("viewer")}>Board viewer</button>
-          <button type="button" className={role === "editor" ? "is-active" : ""} onClick={() => setRole("editor")}>Finance editor</button>
+          <button type="button" className={role === "viewer" ? "is-active" : ""} onClick={() => { setRole("viewer"); setCredential(""); setError(""); }}>Board member</button>
+          <button type="button" className={role === "editor" ? "is-active" : ""} onClick={() => { setRole("editor"); setCredential(""); setError(""); }}>Finance editor</button>
         </div>
-        <label className="label" htmlFor="finance-password">{role === "viewer" ? "Board password" : "Finance editor / admin key"}</label>
-        <input id="finance-password" className="input" type={show ? "text" : "password"} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
-        <label className="finance-check"><input type="checkbox" checked={show} onChange={() => setShow((value) => !value)} /> Show password</label>
+        <label className="label" htmlFor="finance-password">{role === "viewer" ? "Your six-digit Board PIN" : "Finance editor / admin key"}</label>
+        <input id="finance-password" className="input" type={show ? "text" : "password"} inputMode={role === "viewer" ? "numeric" : undefined} maxLength={role === "viewer" ? 6 : undefined} autoComplete="current-password" value={credential} onChange={(event) => setCredential(role === "viewer" ? event.target.value.replace(/\D/g, "").slice(0, 6) : event.target.value)} />
+        <label className="finance-check"><input type="checkbox" checked={show} onChange={() => setShow((value) => !value)} /> Show {role === "viewer" ? "PIN" : "key"}</label>
         {error ? <div className="finance-alert is-danger" role="alert">{error}</div> : null}
-        <button className="btn" disabled={loading || !password.trim()}>{loading ? "Signing in…" : "Sign in"}</button>
-        <p className="finance-security-note">Your credential is exchanged for a short-lived, HttpOnly session and is not stored in the browser.</p>
+        <button className="btn" disabled={loading || (role === "viewer" ? credential.length !== 6 : !credential.trim())}>{loading ? "Signing in…" : "Sign in"}</button>
+        <p className="finance-security-note">Your credential is exchanged for a short-lived, HttpOnly session. Board PINs are stored only as salted one-way hashes.</p>
       </form>
     </div>
   );
@@ -505,6 +505,7 @@ function Comparison({ dashboard }) {
           <div><div className="finance-eyebrow">Difference</div><h2 id="fiscal-year-change-heading">Change from prior fiscal year</h2></div>
           <span>Current minus prior</span>
         </div>
+        {!comparison.currentIsComplete || !comparison.priorIsComplete ? <p className="finance-comparison-caveat"><strong>Timeframes differ:</strong> Current-year totals include uploaded data only through {monthLabel(comparison.currentEndMonth)}, while prior-year totals include data through {monthLabel(comparison.priorEndMonth)}. These changes are not a comparison of two completed fiscal years.</p> : null}
         <div className="finance-metric-grid is-three">
           <MoneyMetric label="Income change" cents={comparison.incomeChangeCents} tone={comparison.incomeChangeCents < 0 ? "danger" : "positive"} />
           <MoneyMetric label="Expense change" cents={comparison.expenseChangeCents} tone={comparison.expenseChangeCents > 0 ? "danger" : "positive"} />
@@ -692,11 +693,69 @@ function SimpleAdminForms({ bootstrap, fiscalYearId, admin, onMutate, busy }) {
   return <div className="finance-section-stack"><section className="card finance-panel"><h2>Reserve setting</h2><div className="finance-inline-form"><input className="input" inputMode="decimal" placeholder="0.00" value={reserve} onChange={(event) => setReserve(event.target.value)} /><button className="btn" disabled={busy} onClick={() => act(() => onMutate("admin/reserve", JsonRequest("PUT", { fiscalYearId, reserveCents: parseCentsInput(reserve) })))}>Save reserve</button></div></section><div className="finance-two-column finance-align-start"><section className="card finance-panel"><h2>Restricted / designated fund</h2><div className="finance-form-stack"><input className="input" placeholder="Fund name" value={fund.name} onChange={(event) => setFund({ ...fund, name: event.target.value })} /><input className="input" inputMode="decimal" placeholder="Amount" value={fund.amount} onChange={(event) => setFund({ ...fund, amount: event.target.value })} /><input className="input" placeholder="Notes" value={fund.notes} onChange={(event) => setFund({ ...fund, notes: event.target.value })} /><button className="btn" disabled={busy} onClick={() => act(async () => { await onMutate("admin/fund", JsonRequest("POST", { name: fund.name, amountCents: parseCentsInput(fund.amount), fiscalYearId, notes: fund.notes })); setFund({ name: "", amount: "", notes: "" }); })}>Add fund</button></div><div className="finance-ranked-list">{admin.funds.map((item) => <div key={item.id}><span>{item.name}</span><strong>{money(item.amountCents)}</strong></div>)}</div></section><section className="card finance-panel"><h2>Commitment / outstanding check</h2><div className="finance-form-stack"><input className="input" placeholder="Description" value={commitment.description} onChange={(event) => setCommitment({ ...commitment, description: event.target.value })} /><input className="input" placeholder="Payee" value={commitment.payee} onChange={(event) => setCommitment({ ...commitment, payee: event.target.value })} /><input className="input" inputMode="decimal" placeholder="Amount" value={commitment.amount} onChange={(event) => setCommitment({ ...commitment, amount: event.target.value })} /><input className="input" type="date" value={commitment.dueDate} onChange={(event) => setCommitment({ ...commitment, dueDate: event.target.value })} /><select className="input" value={commitment.commitmentType} onChange={(event) => setCommitment({ ...commitment, commitmentType: event.target.value })}><option value="commitment">Commitment</option><option value="outstanding_check">Outstanding check</option></select>{commitment.commitmentType === "outstanding_check" ? <input className="input" inputMode="numeric" maxLength="4" placeholder="Check last four only" value={commitment.checkLastFour} onChange={(event) => setCommitment({ ...commitment, checkLastFour: event.target.value.replace(/\D/g, "").slice(0, 4) })} /> : null}<button className="btn" disabled={busy} onClick={() => act(async () => { await onMutate("admin/commitment", JsonRequest("POST", { ...commitment, amountCents: parseCentsInput(commitment.amount), fiscalYearId })); setCommitment({ description: "", payee: "", amount: "", dueDate: "", commitmentType: "commitment", checkLastFour: "" }); })}>Add obligation</button></div><div className="finance-ranked-list">{admin.commitments.map((item) => <div key={item.id}><span>{item.description}<small>{item.status} · {item.commitmentType.replace("_", " ")}</small></span><strong>{money(item.amountCents)}</strong></div>)}</div></section></div><div className="finance-two-column finance-align-start"><section className="card finance-panel"><h2>Category mapping</h2><div className="finance-form-stack"><select className="input" value={mapping.classification} onChange={(event) => setMapping({ ...mapping, classification: event.target.value, categoryId: bootstrap.categories.find((category) => category.classification === event.target.value)?.id || "" })}><option value="income">Income</option><option value="expense">Expense</option><option value="transfer">Transfer</option></select><input className="input" placeholder="Original source category (optional)" value={mapping.sourceCategory} onChange={(event) => setMapping({ ...mapping, sourceCategory: event.target.value })} /><input className="input" placeholder="Description contains (optional)" value={mapping.descriptionContains} onChange={(event) => setMapping({ ...mapping, descriptionContains: event.target.value })} /><select className="input" value={mapping.categoryId} onChange={(event) => setMapping({ ...mapping, categoryId: event.target.value })}>{bootstrap.categories.filter((category) => category.classification === mapping.classification).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><input className="input" type="number" placeholder="Priority" value={mapping.priority} onChange={(event) => setMapping({ ...mapping, priority: event.target.value })} /><button className="btn" disabled={busy || (!mapping.sourceCategory && !mapping.descriptionContains)} onClick={() => act(() => onMutate("admin/mapping", JsonRequest("POST", { ...mapping, priority: Number(mapping.priority) })))}>Add mapping</button></div></section><section className="card finance-panel"><h2>Forecast</h2><div className="finance-form-stack"><input className="input" type="month" value={forecast.statementMonth} onChange={(event) => setForecast({ ...forecast, statementMonth: event.target.value })} /><select className="input" value={forecast.classification} onChange={(event) => setForecast({ ...forecast, classification: event.target.value, categoryId: "" })}><option value="income">Income</option><option value="expense">Expense</option></select><select className="input" value={forecast.categoryId} onChange={(event) => setForecast({ ...forecast, categoryId: event.target.value })}><option value="">No category</option>{bootstrap.categories.filter((category) => category.classification === forecast.classification).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><input className="input" inputMode="decimal" placeholder="Amount" value={forecast.amount} onChange={(event) => setForecast({ ...forecast, amount: event.target.value })} /><input className="input" placeholder="Forecast notes" value={forecast.notes} onChange={(event) => setForecast({ ...forecast, notes: event.target.value })} /><button className="btn" disabled={busy} onClick={() => act(() => onMutate("admin/forecast", JsonRequest("POST", { ...forecast, amountCents: parseCentsInput(forecast.amount), fiscalYearId })))}>Add forecast</button></div></section></div><section className="card finance-panel"><h2>Protected supporting documents</h2><div className="finance-inline-form"><input className="input" type="month" value={documentMonth} onChange={(event) => setDocumentMonth(event.target.value)} /><input className="input finance-file-input" type="file" accept=".pdf,.csv,.xlsx" onChange={(event) => setDocumentFile(event.target.files?.[0] || null)} /><button className="btn" disabled={busy || !documentFile} onClick={() => act(uploadDocument)}>Upload to protected R2</button></div><div className="finance-ranked-list">{admin.documents.map((doc) => <div key={doc.id}><span><a href={`/api/board/finance/documents/${doc.id}`} target="_blank" rel="noreferrer">{doc.filename}</a><small>{doc.statementMonth ? monthLabel(doc.statementMonth) : "General"} · {Math.ceil(doc.sizeBytes / 1024)} KB</small></span><strong>{doc.uploadedBy}</strong></div>)}</div></section>{message ? <div className="finance-alert is-info">{message}</div> : null}</div>;
 }
 
+function BoardMemberAdmin({ members, onMutate, busy }) {
+  const [name, setName] = useState("");
+  const [pin, setPin] = useState("");
+  const [replacementPins, setReplacementPins] = useState({});
+  const [message, setMessage] = useState("");
+  const activeCount = members.filter((member) => member.isActive).length;
+  const cleanPin = (value) => value.replace(/\D/g, "").slice(0, 6);
+
+  async function addMember(event) {
+    event.preventDefault();
+    setMessage("");
+    try {
+      await onMutate("admin/board-members", JsonRequest("POST", { name, pin }));
+      setName("");
+      setPin("");
+      setMessage("Board-member login added.");
+    } catch (error) { setMessage(error.message); }
+  }
+
+  async function savePin(member) {
+    const nextPin = replacementPins[member.id] || "";
+    setMessage("");
+    try {
+      await onMutate(`admin/board-members/${member.id}`, JsonRequest("PUT", { pin: nextPin, isActive: true }));
+      setReplacementPins((current) => ({ ...current, [member.id]: "" }));
+      setMessage(member.isActive ? `${member.name}'s PIN was reset and existing sessions were signed out.` : `${member.name}'s login was restored.`);
+    } catch (error) { setMessage(error.message); }
+  }
+
+  async function removeMember(member) {
+    if (!window.confirm(`Remove ${member.name}'s finance access? Any active session will be signed out.`)) return;
+    setMessage("");
+    try {
+      await onMutate(`admin/board-members/${member.id}`, { method: "DELETE" });
+      setMessage(`${member.name}'s finance access was removed.`);
+    } catch (error) { setMessage(error.message); }
+  }
+
+  return (
+    <section className="card finance-panel">
+      <div className="finance-section-heading"><div><div className="finance-eyebrow">Editor only</div><h2>Board-member logins</h2><p>{activeCount} active login{activeCount === 1 ? "" : "s"}. Add one login for each Board member.</p></div></div>
+      <div className="finance-alert is-info">PINs cannot be viewed after saving because only salted hashes are stored. Enter a new six-digit PIN to reset one.</div>
+      <form className="finance-member-add" onSubmit={addMember}>
+        <label><span>Board member name</span><input className="input" maxLength="80" placeholder="Full name" value={name} onChange={(event) => setName(event.target.value)} /></label>
+        <label><span>Six-digit PIN</span><input className="input" type="password" inputMode="numeric" maxLength="6" autoComplete="new-password" placeholder="••••••" value={pin} onChange={(event) => setPin(cleanPin(event.target.value))} /></label>
+        <button className="btn" disabled={busy || name.trim().length < 2 || pin.length !== 6}>Add Board member</button>
+      </form>
+      <div className="finance-member-list">
+        {members.length ? members.map((member) => {
+          const nextPin = replacementPins[member.id] || "";
+          return <article className={`finance-member-row ${member.isActive ? "" : "is-inactive"}`} key={member.id}><div><strong>{member.name}</strong><small>{member.isActive ? "Active" : "Removed"} · PIN configured{member.lastLoginAt ? ` · Last signed in ${new Date(member.lastLoginAt).toLocaleString()}` : " · Never signed in"}</small></div><input className="input" aria-label={`New PIN for ${member.name}`} type="password" inputMode="numeric" maxLength="6" autoComplete="new-password" placeholder="New 6-digit PIN" value={nextPin} onChange={(event) => setReplacementPins((current) => ({ ...current, [member.id]: cleanPin(event.target.value) }))} /><button className="btn-secondary btn-sm" disabled={busy || nextPin.length !== 6} onClick={() => savePin(member)}>{member.isActive ? "Reset PIN" : "Restore with PIN"}</button>{member.isActive ? <button className="btn-danger btn-sm" disabled={busy} onClick={() => removeMember(member)}>Remove</button> : null}</article>;
+        }) : <EmptyState>No Board-member logins yet. Add all nine members above.</EmptyState>}
+      </div>
+      {message ? <div className="finance-alert is-info">{message}</div> : null}
+    </section>
+  );
+}
+
 function FinanceAdmin({ bootstrap, fiscalYearId, admin, onRefresh, busy, setBusy }) {
   const [subtab, setSubtab] = useState("imports");
   async function mutate(path, options) { setBusy(true); try { await api(path, options); await onRefresh(); } finally { setBusy(false); } }
   async function rollback(batchId) { if (!window.confirm("Roll back this batch? Imported rows will be soft-deleted and the month unpublished.")) return; await mutate(`imports/${batchId}/rollback`, JsonRequest("POST", {})); }
-  return <div className="finance-section-stack"><div className="finance-subtabs"><button className={subtab === "imports" ? "is-active" : ""} onClick={() => setSubtab("imports")}>Imports</button><button className={subtab === "settings" ? "is-active" : ""} onClick={() => setSubtab("settings")}>Funds, obligations & forecast</button><button className={subtab === "audit" ? "is-active" : ""} onClick={() => setSubtab("audit")}>Audit history</button></div>{subtab === "imports" ? <><ImportWorkflow bootstrap={bootstrap} imports={admin.imports} onComplete={onRefresh} busy={busy} setBusy={setBusy} /><section className="card finance-panel"><h2>Import batches</h2>{admin.imports.length ? <div className="finance-ranked-list">{admin.imports.map((batch) => <div key={batch.id}><span>{batch.sourceFilename}<small>{monthLabel(batch.statementMonth)} · {batch.accountName} · {batch.status} · {batch.importedCount}/{batch.rowCount} rows · {batch.duplicateCount} duplicate warnings</small></span>{batch.status === "imported" ? <button className="btn-danger btn-sm" disabled={busy} onClick={() => rollback(batch.id)}>Roll back</button> : <strong>{batch.status}</strong>}</div>)}</div> : <EmptyState>No import batches yet.</EmptyState>}</section></> : null}{subtab === "settings" ? <SimpleAdminForms bootstrap={bootstrap} fiscalYearId={fiscalYearId} admin={admin} onMutate={mutate} busy={busy} /> : null}{subtab === "audit" ? <section className="card finance-panel"><h2>Import and edit audit history</h2>{admin.audit.length ? <div className="finance-audit-list">{admin.audit.map((event) => <article key={event.id}><strong>{event.action.replaceAll("_", " ")}</strong><span>{event.actor} · {new Date(event.createdAt).toLocaleString()}</span><small>{event.entityType}: {event.entityId}</small></article>)}</div> : <EmptyState>No audit events yet.</EmptyState>}</section> : null}</div>;
+  return <div className="finance-section-stack"><div className="finance-subtabs"><button className={subtab === "imports" ? "is-active" : ""} onClick={() => setSubtab("imports")}>Imports</button><button className={subtab === "members" ? "is-active" : ""} onClick={() => setSubtab("members")}>Board members</button><button className={subtab === "settings" ? "is-active" : ""} onClick={() => setSubtab("settings")}>Funds, obligations & forecast</button><button className={subtab === "audit" ? "is-active" : ""} onClick={() => setSubtab("audit")}>Audit history</button></div>{subtab === "imports" ? <><ImportWorkflow bootstrap={bootstrap} imports={admin.imports} onComplete={onRefresh} busy={busy} setBusy={setBusy} /><section className="card finance-panel"><h2>Import batches</h2>{admin.imports.length ? <div className="finance-ranked-list">{admin.imports.map((batch) => <div key={batch.id}><span>{batch.sourceFilename}<small>{monthLabel(batch.statementMonth)} · {batch.accountName} · {batch.status} · {batch.importedCount}/{batch.rowCount} rows · {batch.duplicateCount} duplicate warnings</small></span>{batch.status === "imported" ? <button className="btn-danger btn-sm" disabled={busy} onClick={() => rollback(batch.id)}>Roll back</button> : <strong>{batch.status}</strong>}</div>)}</div> : <EmptyState>No import batches yet.</EmptyState>}</section></> : null}{subtab === "members" ? <BoardMemberAdmin members={admin.boardMembers || []} onMutate={mutate} busy={busy} /> : null}{subtab === "settings" ? <SimpleAdminForms bootstrap={bootstrap} fiscalYearId={fiscalYearId} admin={admin} onMutate={mutate} busy={busy} /> : null}{subtab === "audit" ? <section className="card finance-panel"><h2>Import and edit audit history</h2>{admin.audit.length ? <div className="finance-audit-list">{admin.audit.map((event) => <article key={event.id}><strong>{event.action.replaceAll("_", " ")}</strong><span>{event.actor} · {new Date(event.createdAt).toLocaleString()}</span><small>{event.entityType}: {event.entityId}</small></article>)}</div> : <EmptyState>No audit events yet.</EmptyState>}</section> : null}</div>;
 }
 
 export default function BoardFinance() {
@@ -727,9 +786,10 @@ export default function BoardFinance() {
     }
   }
 
-  async function loadFinance() {
+  async function loadFinance({ background = false } = {}) {
     if (!fiscalYearId || !bootstrap) return;
-    setLoading(true); setError("");
+    if (!background) setLoading(true);
+    setError("");
     try {
       const requests = [api(`dashboard?fiscalYear=${encodeURIComponent(fiscalYearId)}`)];
       if (isEditor) requests.push(api(`admin?fiscalYear=${encodeURIComponent(fiscalYearId)}`));
@@ -739,7 +799,7 @@ export default function BoardFinance() {
     } catch (nextError) {
       if (nextError.status === 401) setAuthState("login");
       else setError(nextError.message);
-    } finally { setLoading(false); }
+    } finally { if (!background) setLoading(false); }
   }
 
   async function loadTransactions() {
@@ -774,5 +834,5 @@ export default function BoardFinance() {
   if (authState === "error") return <div className="page"><div className="finance-alert is-danger">{error}</div></div>;
   if (!bootstrap || !fiscalYearId) return <LoadingCard />;
 
-  return <div className="finance-page"><header className="finance-page-header"><div><div className="finance-eyebrow">Board Member Area</div><h1>Financial dashboard</h1><p>Reconciled cash, reporting-period performance, transaction detail, and plain-language financial insights.</p></div><div className="finance-header-actions"><label><span>Reporting period</span><select className="input" value={fiscalYearId} onChange={(event) => setFiscalYearId(event.target.value)}>{bootstrap.fiscalYears.map((year) => <option key={year.id} value={year.id}>{year.label}</option>)}</select></label><span className={`finance-role-badge is-${bootstrap.session.role}`}>{isEditor ? "Finance editor" : "Board viewer"}</span><button className="btn-secondary" onClick={logout}>Sign out</button></div></header><nav className="finance-tabs" aria-label="Finance dashboard sections">{tabList.map(([id, label]) => <button key={id} className={activeTab === id ? "is-active" : ""} onClick={() => setActiveTab(id)}>{label}</button>)}</nav>{error ? <div className="finance-alert is-danger" role="alert"><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div> : null}{loading || !dashboard ? <LoadingCard /> : <main className="finance-content">{activeTab === "overview" ? <Overview dashboard={dashboard} /> : null}{activeTab === "cash-flow" ? <CashFlow dashboard={dashboard} /> : null}{activeTab === "spending" ? <Spending dashboard={dashboard} onTransactions={() => setActiveTab("transactions")} /> : null}{activeTab === "income" ? <Income dashboard={dashboard} /> : null}{activeTab === "comparison" ? <Comparison dashboard={dashboard} /> : null}{activeTab === "ai" ? <AiInsights key={`${dashboard.fiscalYear.id}-${dashboard.ai?.availableMonths?.at(-1) || "empty"}`} dashboard={dashboard} fiscalYearId={fiscalYearId} /> : null}{activeTab === "reconciliation" ? <Reconciliation dashboard={dashboard} isEditor={isEditor} documents={admin.documents} onSave={saveReconciliation} onPublish={publish} busy={busy} /> : null}{activeTab === "transactions" ? <Transactions rows={transactions} filters={filters} setFilters={setFilters} bootstrap={bootstrap} isEditor={isEditor} onEdit={setEditingTransaction} onExport={exportCsv} loading={transactionsLoading} /> : null}{activeTab === "admin" && isEditor ? <FinanceAdmin bootstrap={bootstrap} fiscalYearId={fiscalYearId} admin={admin} onRefresh={loadFinance} busy={busy} setBusy={setBusy} /> : null}</main>}{editingTransaction ? <TransactionEditor transaction={editingTransaction} categories={bootstrap.categories} onSave={saveTransaction} onClose={() => setEditingTransaction(null)} busy={busy} /> : null}</div>;
+  return <div className="finance-page"><header className="finance-page-header"><div><div className="finance-eyebrow">Board Member Area</div><h1>Financial dashboard</h1><p>Reconciled cash, reporting-period performance, transaction detail, and plain-language financial insights.</p></div><div className="finance-header-actions"><label><span>Reporting period</span><select className="input" value={fiscalYearId} onChange={(event) => setFiscalYearId(event.target.value)}>{bootstrap.fiscalYears.map((year) => <option key={year.id} value={year.id}>{year.label}</option>)}</select></label><span className={`finance-role-badge is-${bootstrap.session.role}`}>Signed in: {bootstrap.session.actor}{isEditor ? " · Editor" : ""}</span><button className="btn-secondary" onClick={logout}>Sign out</button></div></header><nav className="finance-tabs" aria-label="Finance dashboard sections">{tabList.map(([id, label]) => <button key={id} className={activeTab === id ? "is-active" : ""} onClick={() => setActiveTab(id)}>{label}</button>)}</nav>{error ? <div className="finance-alert is-danger" role="alert"><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div> : null}{loading || !dashboard ? <LoadingCard /> : <main className="finance-content">{activeTab === "overview" ? <Overview dashboard={dashboard} /> : null}{activeTab === "cash-flow" ? <CashFlow dashboard={dashboard} /> : null}{activeTab === "spending" ? <Spending dashboard={dashboard} onTransactions={() => setActiveTab("transactions")} /> : null}{activeTab === "income" ? <Income dashboard={dashboard} /> : null}{activeTab === "comparison" ? <Comparison dashboard={dashboard} /> : null}{activeTab === "ai" ? <AiInsights key={`${dashboard.fiscalYear.id}-${dashboard.ai?.availableMonths?.at(-1) || "empty"}`} dashboard={dashboard} fiscalYearId={fiscalYearId} /> : null}{activeTab === "reconciliation" ? <Reconciliation dashboard={dashboard} isEditor={isEditor} documents={admin.documents} onSave={saveReconciliation} onPublish={publish} busy={busy} /> : null}{activeTab === "transactions" ? <Transactions rows={transactions} filters={filters} setFilters={setFilters} bootstrap={bootstrap} isEditor={isEditor} onEdit={setEditingTransaction} onExport={exportCsv} loading={transactionsLoading} /> : null}{activeTab === "admin" && isEditor ? <FinanceAdmin bootstrap={bootstrap} fiscalYearId={fiscalYearId} admin={admin} onRefresh={() => loadFinance({ background: true })} busy={busy} setBusy={setBusy} /> : null}</main>}{editingTransaction ? <TransactionEditor transaction={editingTransaction} categories={bootstrap.categories} onSave={saveTransaction} onClose={() => setEditingTransaction(null)} busy={busy} /> : null}</div>;
 }

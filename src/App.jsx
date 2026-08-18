@@ -21,7 +21,6 @@ function TopNav() {
   const isCoach = pathname === "/coach" || pathname === "/archive";
   const isAdmin = pathname === "/admin";
   const isScheduling = pathname === "/scheduling";
-  const isBoardFinance = pathname.startsWith("/board/finance");
 
   // ✅ If parent already selected team + key, go straight to /parent.
   // Otherwise, go to /parent-login (matches what you’re seeing in prod).
@@ -90,12 +89,6 @@ function TopNav() {
             Field Scheduling
           </NavLink>
 
-          <NavLink
-            to="/board/finance"
-            className={() => `bgsl-link ${isBoardFinance ? "active" : ""}`}
-          >
-            Board Finance
-          </NavLink>
         </nav>
       </div>
     </header>
@@ -122,7 +115,7 @@ export default function App() {
           <Route path="/archive" element={<Archive />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/scheduling" element={<Scheduling />} />
-          <Route path="/board/finance" element={<BoardFinance />} />
+          <Route path="/finance" element={<BoardFinance />} />
 
           <Route path="*" element={<Navigate to="/parent-login" replace />} />
         </Routes>

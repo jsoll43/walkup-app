@@ -1,8 +1,10 @@
-import { getSchedulingSettings, verifySchedulingPassword } from "./scheduling.js";
+import { verifySchedulingPassword } from "./scheduling.js";
 import { sha256Hex } from "../../shared/financeCore.js";
 
 const COOKIE_NAME = "bgsl_finance_session";
 const SESSION_TTL_SECONDS = 8 * 60 * 60;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const MAX_FAILED_LOGINS = 5;
 
 function json(value, status = 200, headers = {}) {
   return new Response(JSON.stringify(value), {
@@ -60,6 +62,54 @@ function isLocalBypass(request, env) {
   return host === "localhost" || host === "127.0.0.1";
 }
 
+async function loginAttemptKey(request) {
+  const address = String(request.headers.get("CF-Connecting-IP") || "unknown").trim();
+  return sha256Hex(`finance-login:${address}`);
+}
+
+async function getLoginBlock(request, env) {
+  const key = await loginAttemptKey(request);
+  const now = new Date();
+  const row = await env.DB.prepare(
+    `SELECT failed_count, window_started_at, blocked_until FROM finance_auth_attempts WHERE attempt_key = ?`,
+  ).bind(key).first();
+  if (!row?.blocked_until || new Date(row.blocked_until) <= now) return { key, blocked: false };
+  return { key, blocked: true, retryAfter: Math.max(1, Math.ceil((new Date(row.blocked_until).getTime() - now.getTime()) / 1000)) };
+}
+
+async function recordFailedLogin(env, key) {
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const row = await env.DB.prepare(
+    `SELECT failed_count, window_started_at FROM finance_auth_attempts WHERE attempt_key = ?`,
+  ).bind(key).first();
+  const inWindow = row?.window_started_at && now.getTime() - new Date(row.window_started_at).getTime() < LOGIN_WINDOW_MS;
+  const failedCount = inWindow ? Number(row.failed_count || 0) + 1 : 1;
+  const windowStartedAt = inWindow ? row.window_started_at : nowIso;
+  const blockedUntil = failedCount >= MAX_FAILED_LOGINS ? new Date(now.getTime() + LOGIN_WINDOW_MS).toISOString() : null;
+  await env.DB.prepare(
+    `INSERT INTO finance_auth_attempts (attempt_key, failed_count, window_started_at, blocked_until, updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(attempt_key) DO UPDATE SET failed_count = excluded.failed_count, window_started_at = excluded.window_started_at,
+       blocked_until = excluded.blocked_until, updated_at = excluded.updated_at`,
+  ).bind(key, failedCount, windowStartedAt, blockedUntil, nowIso).run();
+}
+
+async function clearFailedLogins(env, key) {
+  await env.DB.prepare(`DELETE FROM finance_auth_attempts WHERE attempt_key = ?`).bind(key).run();
+}
+
+async function findBoardMemberByPin(env, pin) {
+  if (!/^\d{6}$/.test(String(pin || ""))) return null;
+  const result = await env.DB.prepare(
+    `SELECT id, name, pin_hash FROM finance_board_members WHERE is_active = 1 ORDER BY name`,
+  ).all();
+  for (const member of result?.results || []) {
+    if (await verifySchedulingPassword(pin, member.pin_hash)) return member;
+  }
+  return null;
+}
+
 export function assertSameOrigin(request) {
   const origin = request.headers.get("origin");
   if (!origin) return;
@@ -70,33 +120,54 @@ export function assertSameOrigin(request) {
   }
 }
 
-export async function createFinanceSession(request, env, { role, password }) {
+export async function createFinanceSession(request, env, { role, password, pin }) {
   if (!env?.DB) return json({ ok: false, error: "D1 binding DB is missing." }, 500);
   const requestedRole = String(role || "viewer").trim().toLowerCase();
   if (requestedRole !== "viewer" && requestedRole !== "editor") {
     return json({ ok: false, error: "Choose Board viewer or Finance editor." }, 400);
   }
 
+  const loginBlock = await getLoginBlock(request, env);
+  if (loginBlock.blocked) {
+    return json({ ok: false, error: "Too many unsuccessful sign-in attempts. Try again in 15 minutes." }, 429, { "retry-after": String(loginBlock.retryAfter) });
+  }
+
   let valid = false;
+  let actor = "";
+  let boardMemberId = null;
   if (requestedRole === "viewer") {
-    const settings = await getSchedulingSettings(env);
-    valid = Boolean(settings.boardPasswordHash) && await verifySchedulingPassword(String(password || ""), settings.boardPasswordHash);
+    const member = await findBoardMemberByPin(env, String(pin || password || ""));
+    valid = Boolean(member);
+    actor = member?.name || "";
+    boardMemberId = member?.id || null;
   } else {
     valid = await safeSecretEqual(String(password || ""), String(env.FINANCE_EDITOR_KEY || ""));
     if (!valid) valid = await safeSecretEqual(String(password || ""), String(env.ADMIN_KEY || ""));
+    actor = accessEmail(request) || "Finance editor";
   }
-  if (!valid) return json({ ok: false, error: "Unauthorized" }, 401);
+  if (!valid) {
+    await recordFailedLogin(env, loginBlock.key);
+    return json({ ok: false, error: "Unauthorized" }, 401);
+  }
+  await clearFailedLogins(env, loginBlock.key);
 
   const token = randomToken();
   const tokenHash = await sha256Hex(token);
   const now = new Date();
   const createdAt = now.toISOString();
   const expiresAt = new Date(now.getTime() + SESSION_TTL_SECONDS * 1000).toISOString();
-  const actor = accessEmail(request) || (requestedRole === "editor" ? "Finance editor" : "Board member");
   await env.DB.prepare(
-    `INSERT INTO finance_sessions (token_hash, role, actor, created_at, expires_at, last_seen_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).bind(tokenHash, requestedRole, actor, createdAt, expiresAt, createdAt).run();
+    `INSERT INTO finance_sessions (token_hash, role, actor, board_member_id, created_at, expires_at, last_seen_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(tokenHash, requestedRole, actor, boardMemberId, createdAt, expiresAt, createdAt).run();
+  if (boardMemberId) {
+    await env.DB.prepare(`UPDATE finance_board_members SET last_login_at = ?, updated_at = ? WHERE id = ?`).bind(createdAt, createdAt, boardMemberId).run();
+  }
+  const auditId = `finance_audit_${crypto.randomUUID()}`;
+  await env.DB.prepare(
+    `INSERT INTO finance_audit_events (id, actor, actor_role, action, entity_type, entity_id, details_json, created_at)
+     VALUES (?, ?, ?, 'session_created', 'finance_session', ?, ?, ?)`,
+  ).bind(auditId, actor, requestedRole, boardMemberId || "finance_editor", JSON.stringify({ boardMemberId }), createdAt).run();
   await env.DB.prepare(`DELETE FROM finance_sessions WHERE expires_at <= ?`).bind(createdAt).run();
 
   return json(
@@ -116,11 +187,15 @@ export async function getFinanceSession(request, env) {
   const tokenHash = await sha256Hex(token);
   const now = new Date().toISOString();
   const row = await env.DB.prepare(
-    `SELECT role, actor, expires_at FROM finance_sessions WHERE token_hash = ? AND expires_at > ?`,
+    `SELECT s.role, s.actor, s.board_member_id, s.expires_at
+     FROM finance_sessions s
+     LEFT JOIN finance_board_members m ON m.id = s.board_member_id
+     WHERE s.token_hash = ? AND s.expires_at > ?
+       AND (s.role = 'editor' OR (s.role = 'viewer' AND m.is_active = 1))`,
   ).bind(tokenHash, now).first();
   if (!row) return { ok: false, status: 401, error: "Finance session expired." };
   await env.DB.prepare(`UPDATE finance_sessions SET last_seen_at = ? WHERE token_hash = ?`).bind(now, tokenHash).run();
-  return { ok: true, role: row.role, actor: row.actor, expiresAt: row.expires_at };
+  return { ok: true, role: row.role, actor: row.actor, boardMemberId: row.board_member_id || "", expiresAt: row.expires_at };
 }
 
 export async function requireFinanceAuth(request, env, { editor = false } = {}) {

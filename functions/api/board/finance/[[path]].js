@@ -8,18 +8,21 @@ import {
 } from "../../../lib/financeAuth.js";
 import {
   confirmFinanceImport,
+  createFinanceBoardMember,
   getFinanceAdmin,
   getFinanceBootstrap,
   getFinanceDashboard,
   getFinanceDocument,
   getFinanceTransactions,
   previewFinanceImport,
+  removeFinanceBoardMember,
   rollbackFinanceImport,
   saveFinanceDocument,
   saveFinanceReconciliation,
   setFinancePeriodPublication,
   transactionsToCsv,
   updateFinanceReserve,
+  updateFinanceBoardMember,
   updateFinanceTransaction,
   upsertFinanceAdminEntity,
 } from "../../../lib/financeData.js";
@@ -135,6 +138,15 @@ async function handle(request, env, params) {
   if (parts[0] === "admin" && parts[1] === "reserve" && method === "PUT") {
     const body = await bodyJson(request);
     return financeAuthJson({ ok: true, reserve: await updateFinanceReserve(env, session, String(body.fiscalYearId || ""), Number(body.reserveCents)) });
+  }
+  if (parts[0] === "admin" && parts[1] === "board-members" && parts.length === 2 && method === "POST") {
+    return financeAuthJson({ ok: true, boardMember: await createFinanceBoardMember(env, session, await bodyJson(request)) }, 201);
+  }
+  if (parts[0] === "admin" && parts[1] === "board-members" && parts[2] && method === "PUT") {
+    return financeAuthJson({ ok: true, boardMember: await updateFinanceBoardMember(env, session, parts[2], await bodyJson(request)) });
+  }
+  if (parts[0] === "admin" && parts[1] === "board-members" && parts[2] && method === "DELETE") {
+    return financeAuthJson({ ok: true, boardMember: await removeFinanceBoardMember(env, session, parts[2]) });
   }
   if (parts[0] === "admin" && ["fund", "commitment", "mapping", "forecast"].includes(parts[1]) && (method === "POST" || method === "PUT")) {
     const record = await upsertFinanceAdminEntity(env, session, parts[1], method === "PUT" ? parts[2] : "", await bodyJson(request));

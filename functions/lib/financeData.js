@@ -14,6 +14,7 @@ import {
   summarizeTransactions,
   transactionFingerprint,
 } from "../../shared/financeCore.js";
+import { hashSchedulingPassword, verifySchedulingPassword } from "./scheduling.js";
 
 const HISTORICAL_IMPORT_ACCOUNT_ID = "finance_account_historical";
 
@@ -928,7 +929,7 @@ export async function updateFinanceTransaction(env, session, transactionId, body
 }
 
 export async function getFinanceAdmin(env, fiscalYearId) {
-  const [imports, funds, commitments, mappings, audit, documents, forecasts] = await Promise.all([
+  const [imports, funds, commitments, mappings, audit, documents, forecasts, boardMembers] = await Promise.all([
     all(env, `SELECT b.*, a.name AS account_name FROM finance_import_batches b JOIN finance_accounts a ON a.id = b.account_id ORDER BY b.created_at DESC LIMIT 500`),
     all(env, `SELECT * FROM finance_restricted_funds WHERE fiscal_year_id = ? OR fiscal_year_id IS NULL ORDER BY is_active DESC, name`, [fiscalYearId]),
     all(env, `SELECT * FROM finance_commitments WHERE fiscal_year_id = ? OR fiscal_year_id IS NULL ORDER BY status, due_date, created_at DESC`, [fiscalYearId]),
@@ -936,6 +937,7 @@ export async function getFinanceAdmin(env, fiscalYearId) {
     all(env, `SELECT * FROM finance_audit_events ORDER BY created_at DESC LIMIT 200`),
     all(env, `SELECT id, fiscal_year_id, statement_month, account_id, filename, content_type, size_bytes, sha256, uploaded_by, uploaded_at FROM finance_documents WHERE deleted_at IS NULL AND (fiscal_year_id = ? OR fiscal_year_id IS NULL) ORDER BY uploaded_at DESC`, [fiscalYearId]),
     all(env, `SELECT * FROM finance_forecasts WHERE fiscal_year_id = ? ORDER BY statement_month, classification`, [fiscalYearId]),
+    all(env, `SELECT id, name, is_active, last_login_at, created_at, updated_at FROM finance_board_members ORDER BY is_active DESC, name`),
   ]);
   return {
     imports: imports.map((row) => ({ id: row.id, fiscalYearId: row.fiscal_year_id, statementMonth: row.statement_month, accountId: row.account_id, accountName: row.account_name, sourceFilename: row.source_filename, status: row.status, rowCount: Number(row.row_count), duplicateCount: Number(row.duplicate_count), importedCount: Number(row.imported_count), skippedCount: Number(row.skipped_count), createdBy: row.created_by, createdAt: row.created_at })),
@@ -945,7 +947,71 @@ export async function getFinanceAdmin(env, fiscalYearId) {
     audit: audit.map((row) => ({ id: row.id, actor: row.actor, actorRole: row.actor_role, action: row.action, entityType: row.entity_type, entityId: row.entity_id, details: JSON.parse(row.details_json || "{}"), createdAt: row.created_at })),
     documents: documents.map((row) => ({ id: row.id, fiscalYearId: row.fiscal_year_id || "", statementMonth: row.statement_month || "", accountId: row.account_id || "", filename: row.filename, contentType: row.content_type, sizeBytes: Number(row.size_bytes), sha256: row.sha256, uploadedBy: row.uploaded_by, uploadedAt: row.uploaded_at })),
     forecasts: forecasts.map((row) => ({ id: row.id, fiscalYearId: row.fiscal_year_id, statementMonth: row.statement_month, classification: row.classification, categoryId: row.category_id || "", amountCents: Number(row.amount_cents), notes: row.notes })),
+    boardMembers: boardMembers.map((row) => ({ id: row.id, name: row.name, isActive: bool(row.is_active), pinConfigured: true, lastLoginAt: row.last_login_at || "", createdAt: row.created_at, updatedAt: row.updated_at })),
   };
+}
+
+function validateBoardMemberName(value) {
+  const name = String(value || "").trim().replace(/\s+/g, " ");
+  if (name.length < 2 || name.length > 80) throw Object.assign(new Error("Board-member name must be between 2 and 80 characters."), { status: 400 });
+  return name;
+}
+
+function validateBoardMemberPin(value) {
+  const pin = String(value || "").trim();
+  if (!/^\d{6}$/.test(pin)) throw Object.assign(new Error("Choose a six-digit numeric PIN."), { status: 400 });
+  return pin;
+}
+
+async function assertUniqueBoardMemberPin(env, pin, excludedMemberId = "") {
+  const rows = await all(env, `SELECT id, pin_hash FROM finance_board_members WHERE id != ?`, [excludedMemberId]);
+  for (const row of rows) {
+    if (await verifySchedulingPassword(pin, row.pin_hash)) {
+      throw Object.assign(new Error("That PIN is already assigned to another Board member."), { status: 409 });
+    }
+  }
+}
+
+export async function createFinanceBoardMember(env, session, body) {
+  const name = validateBoardMemberName(body.name);
+  const pin = validateBoardMemberPin(body.pin);
+  const existing = await first(env, `SELECT id FROM finance_board_members WHERE lower(name) = lower(?)`, [name]);
+  if (existing) throw Object.assign(new Error("A Board member with that name already exists."), { status: 409 });
+  await assertUniqueBoardMemberPin(env, pin);
+  const memberId = id("finance_member");
+  const timestamp = nowIso();
+  const pinHash = await hashSchedulingPassword(pin);
+  await run(
+    env,
+    `INSERT INTO finance_board_members (id, name, pin_hash, is_active, created_by, created_at, updated_by, updated_at)
+     VALUES (?, ?, ?, 1, ?, ?, ?, ?)`,
+    [memberId, name, pinHash, session.actor, timestamp, session.actor, timestamp],
+  );
+  await auditFinance(env, session, "board_member_created", "finance_board_member", memberId, { name });
+  return { id: memberId, name, isActive: true, pinConfigured: true, lastLoginAt: "", createdAt: timestamp, updatedAt: timestamp };
+}
+
+export async function updateFinanceBoardMember(env, session, memberId, body) {
+  const member = await first(env, `SELECT id, name FROM finance_board_members WHERE id = ?`, [memberId]);
+  if (!member) throw Object.assign(new Error("Board member not found."), { status: 404 });
+  const pin = validateBoardMemberPin(body.pin);
+  await assertUniqueBoardMemberPin(env, pin, memberId);
+  const pinHash = await hashSchedulingPassword(pin);
+  const timestamp = nowIso();
+  await run(env, `UPDATE finance_board_members SET pin_hash = ?, is_active = 1, updated_by = ?, updated_at = ? WHERE id = ?`, [pinHash, session.actor, timestamp, memberId]);
+  await run(env, `DELETE FROM finance_sessions WHERE board_member_id = ?`, [memberId]);
+  await auditFinance(env, session, "board_member_pin_reset", "finance_board_member", memberId, { name: member.name, reactivated: body.isActive === true });
+  return { id: memberId, name: member.name, isActive: true, pinConfigured: true, updatedAt: timestamp };
+}
+
+export async function removeFinanceBoardMember(env, session, memberId) {
+  const member = await first(env, `SELECT id, name FROM finance_board_members WHERE id = ? AND is_active = 1`, [memberId]);
+  if (!member) throw Object.assign(new Error("Active Board member not found."), { status: 404 });
+  const timestamp = nowIso();
+  await run(env, `UPDATE finance_board_members SET is_active = 0, updated_by = ?, updated_at = ? WHERE id = ?`, [session.actor, timestamp, memberId]);
+  await run(env, `DELETE FROM finance_sessions WHERE board_member_id = ?`, [memberId]);
+  await auditFinance(env, session, "board_member_removed", "finance_board_member", memberId, { name: member.name });
+  return { id: memberId, name: member.name, isActive: false, updatedAt: timestamp };
 }
 
 const ADMIN_TABLES = {

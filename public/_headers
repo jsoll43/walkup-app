@@ -4,7 +4,7 @@
 /index.html
   Cache-Control: no-cache, no-store, must-revalidate
 
-/board/finance*
+/finance*
   Cache-Control: private, no-store, max-age=0
   Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
   Referrer-Policy: no-referrer
