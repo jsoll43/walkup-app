@@ -416,28 +416,17 @@ function Overview({ dashboard }) {
     ? { label: "No reconciled balance", tone: "is-warning" }
     : overview.balanceIsPreliminary
       ? { label: "Preliminary reconciled balance", tone: "is-warning" }
-      : { label: "Reconciled balances", tone: "is-good" };
+      : { label: "Reconciled balance", tone: "is-good" };
   return (
     <div className="finance-section-stack">
-      {overview.hasUnreconciled || overview.balanceIsPreliminary ? <div className="finance-alert is-warning"><strong>Preliminary figures.</strong> <span>{overview.hasUnreconciled ? "At least one expected month is missing or unreconciled. " : ""}Only reconciled balances are used for cash metrics.{overview.balanceIsPreliminary ? " The latest reconciled balance is shown even though its reporting period is not yet published." : ""}</span></div> : null}
+      {overview.hasUnreconciled || overview.balanceIsPreliminary ? <div className="finance-alert is-warning"><strong>Preliminary figures.</strong> <span>{overview.hasUnreconciled ? "At least one expected month is missing or unreconciled. " : ""}The bank balance uses the latest reconciled statements only.{overview.balanceIsPreliminary ? " The latest reconciled balance is shown even though its reporting period is not yet published." : ""}</span></div> : null}
       <section>
-        <div className="finance-section-heading"><div><div className="finance-eyebrow">Liquidity</div><h2>Cash position</h2></div><span className={`finance-status-pill ${balanceStatus.tone}`}>{balanceStatus.label}</span></div>
-        <div className="finance-metric-grid">
-          <MoneyMetric label="Bank balances" cents={overview.bankBalancesCents} note={overview.balanceIsPreliminary ? "Latest reconciled balance; reporting period not yet published" : "Latest reconciled balance per bank account"} />
-          <MoneyMetric label="Cash on hand" cents={overview.reconciledCashOnHandCents} note="Reconciled cash only" />
-          <MoneyMetric label="Restricted funds" cents={overview.restrictedFundsCents} tone="muted" />
-          <MoneyMetric label="Outstanding obligations" cents={overview.outstandingObligationsCents} tone="muted" />
-          <MoneyMetric label="Board-selected reserve" cents={overview.reserveCents} tone="muted" />
-          <MoneyMetric label="Available cash" cents={overview.availableCashCents} tone={overview.availableCashCents < 0 ? "danger" : "gold"} note="Balance + cash − restrictions − obligations − reserve" />
-        </div>
-      </section>
-      <section>
-        <div className="finance-section-heading"><div><div className="finance-eyebrow">Year-to-date performance</div><h2>{dashboard.fiscalYear.label}</h2></div></div>
+        <div className="finance-section-heading"><div><div className="finance-eyebrow">Financial summary</div><h2>{dashboard.fiscalYear.label}</h2></div><span className={`finance-status-pill ${balanceStatus.tone}`}>{balanceStatus.label}</span></div>
         <div className="finance-metric-grid is-four">
+          <MoneyMetric label="Reconciled bank balance" cents={overview.bankBalancesCents} note={overview.balanceIsPreliminary ? "Latest reconciled balance; reporting period not yet published" : "Latest reconciled statement balance"} />
           <MoneyMetric label="External income" cents={overview.ytdIncomeCents} />
           <MoneyMetric label="Expenses" cents={overview.ytdExpensesCents} />
           <MoneyMetric label="Surplus / deficit" cents={overview.ytdSurplusCents} tone={overview.ytdSurplusCents < 0 ? "danger" : "positive"} />
-          <MoneyMetric label={overview.projectedEndingBalance.isProjected ? "Projected year end" : "Current reconciled balance"} cents={overview.projectedEndingBalance.valueCents} note={overview.projectedEndingBalance.isProjected ? "Includes disclosed forecasts" : overview.balanceIsPreliminary ? "Latest reconciled balance; reporting period not yet published" : "No future forecast loaded"} />
         </div>
       </section>
       <div className="finance-two-column">
