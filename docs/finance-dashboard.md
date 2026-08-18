@@ -159,14 +159,14 @@ Cloudflare's current dashboard binding steps are in [Pages Functions bindings](h
 
 ## Workers AI financial-report guardrails
 
-- The browser can request only `explain_month`, `year_over_year`, `expense_increases`, or `treasurer_report`; there is no user-authored prompt.
+- The browser offers four prepared reports plus a Board-member question limited to 240 characters. The question can guide the wording but cannot provide or alter financial facts.
 - The user selects an inclusive start and end date within the reporting period, including partial-month ranges. The Pages Function recalculates the authorized viewer's aggregates for those exact dates server-side and constructs the model input itself. The browser cannot supply financial facts to the model.
 - Year-over-year reports use the same inclusive dates shifted back one year; if those dates have no prior activity, the generated wording identifies the comparison as unavailable.
 - The model is `@cf/meta/llama-3.2-3b-instruct`, with a 256-token output ceiling. It is instructed to explain exact supplied figures without arithmetic, balance calculation, reconciliation, legitimacy decisions, or speculation.
-- Identical report type and calculated facts reuse the D1 cache and make no Workers AI call. Changed source totals produce a new cache key automatically.
+- Identical report type, question, and calculated facts reuse the D1 cache and make no Workers AI call. A changed question or changed source totals produces a new cache key automatically.
 - `finance_ai_daily_usage` stores input/output token counts and thousandths of a neuron. Before inference, the app atomically reserves a conservative maximum based on the bounded prompt and 256-token output limit; afterward it replaces that reservation with token-based usage reported by Workers AI. Cached reports consume no new neurons.
 - The site meter and hard cutoff cover this finance dashboard only. Other Workers AI applications and direct Cloudflare dashboard/API use share the same account-wide allocation and are visible only in Cloudflare's Workers AI dashboard.
-- Generated wording is displayed as plain text, never executable HTML, and is labeled as AI-generated. Dashboard calculations remain authoritative.
+- Generated wording is normalized into concise plain-text bullets, never executable HTML, and is labeled as AI-generated. Dashboard calculations remain authoritative.
 
 ## Cloudflare Access: required production defense in depth
 

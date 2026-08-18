@@ -160,12 +160,28 @@ function ChartNavigation({ ariaLabel, windowStart, maxStart, startMonth, endMont
   );
 }
 
+function ChartTooltip({ tooltip, width, height }) {
+  if (!tooltip) return null;
+  const tooltipWidth = Math.min(230, Math.max(120, tooltip.label.length * 6.4 + 18));
+  const tooltipHeight = 27;
+  const x = Math.min(width - tooltipWidth - 6, Math.max(6, tooltip.x - tooltipWidth / 2));
+  const above = tooltip.y - tooltipHeight - 9;
+  const y = above >= 6 ? above : Math.min(height - tooltipHeight - 6, tooltip.y + 11);
+  return (
+    <g className="finance-chart-tooltip" aria-hidden="true">
+      <rect x={x} y={y} width={tooltipWidth} height={tooltipHeight} rx="6" />
+      <text x={x + tooltipWidth / 2} y={y + 18} textAnchor="middle">{tooltip.label}</text>
+    </g>
+  );
+}
+
 function MonthlyChart({ rows }) {
   const windowSize = 6;
   const maxStart = Math.max(0, rows.length - windowSize);
   const latestActualIndex = rows.reduce((latest, row, index) => row.hasActual ? index : latest, -1);
   const initialStart = Math.min(maxStart, Math.max(0, latestActualIndex - windowSize + 1));
   const [requestedStart, setRequestedStart] = useState(initialStart);
+  const [tooltip, setTooltip] = useState(null);
   const windowStart = Math.min(requestedStart, maxStart);
   if (!rows.length || !rows.some((row) => row.incomeCents || row.expensesCents)) return <EmptyState>No recorded income or expenses are available for this reporting period.</EmptyState>;
 
@@ -192,14 +208,17 @@ function MonthlyChart({ rows }) {
             const x = left + index * groupWidth + Math.max(4, (groupWidth - 42) / 2);
             const incomeHeight = baseline - y(row.incomeCents);
             const expenseHeight = baseline - y(row.expensesCents);
+            const incomeLabel = `${monthLabel(row.month)} income: ${money(row.incomeCents)}`;
+            const expenseLabel = `${monthLabel(row.month)} expenses: ${money(row.expensesCents)}`;
             return (
               <g key={row.month}>
-                <rect x={x} y={baseline - incomeHeight} width="19" height={incomeHeight} rx="4" className="finance-chart-income"><title>{`${monthLabel(row.month)} income ${money(row.incomeCents)}`}</title></rect>
-                <rect x={x + 23} y={baseline - expenseHeight} width="19" height={expenseHeight} rx="4" className="finance-chart-expense"><title>{`${monthLabel(row.month)} expenses ${money(row.expensesCents)}`}</title></rect>
+                <rect x={x} y={baseline - incomeHeight} width="19" height={incomeHeight} rx="4" className="finance-chart-income" tabIndex={0} aria-label={incomeLabel} onMouseEnter={() => setTooltip({ x: x + 9.5, y: baseline - incomeHeight, label: incomeLabel })} onMouseLeave={() => setTooltip(null)} onFocus={() => setTooltip({ x: x + 9.5, y: baseline - incomeHeight, label: incomeLabel })} onBlur={() => setTooltip(null)}><title>{incomeLabel}</title></rect>
+                <rect x={x + 23} y={baseline - expenseHeight} width="19" height={expenseHeight} rx="4" className="finance-chart-expense" tabIndex={0} aria-label={expenseLabel} onMouseEnter={() => setTooltip({ x: x + 32.5, y: baseline - expenseHeight, label: expenseLabel })} onMouseLeave={() => setTooltip(null)} onFocus={() => setTooltip({ x: x + 32.5, y: baseline - expenseHeight, label: expenseLabel })} onBlur={() => setTooltip(null)}><title>{expenseLabel}</title></rect>
                 <text x={x + 21} y={height - 16} textAnchor="middle">{monthLabel(row.month).split(" ")[0]}</text>
               </g>
             );
           })}
+          <ChartTooltip tooltip={tooltip} width={width} height={height} />
         </svg>
         <div className="finance-chart-legend"><span className="is-income" /> Income <span className="is-expense" /> Expenses</div>
       </div>
@@ -212,6 +231,7 @@ function HistoricalBalanceChart({ rows = [] }) {
   const windowSize = 6;
   const maxStart = Math.max(0, rows.length - windowSize);
   const [requestedStart, setRequestedStart] = useState(maxStart);
+  const [tooltip, setTooltip] = useState(null);
   const windowStart = Math.min(requestedStart, maxStart);
   if (!rows.length) return <EmptyState>No official historical balances are available.</EmptyState>;
 
@@ -257,14 +277,21 @@ function HistoricalBalanceChart({ rows = [] }) {
           {visibleRows.map((row, index) => (
             <g key={row.statementMonth}>
               {Number.isSafeInteger(row.balanceCents)
-                ? <circle cx={x(index)} cy={y(row.balanceCents)} r="6" fill={row.status === "calculated" ? "#fff" : row.status === "control" || row.status === "unreconciled" ? "#d97706" : "#d9a514"} stroke={row.status === "calculated" ? "#64748b" : "#fff"} className={`finance-balance-chart-point is-${row.status}`}><title>{`${monthLabel(row.statementMonth)}: ${money(row.balanceCents)} · ${statusLabel(row)}${rollforwardNote(row)}`}</title></circle>
-                : <circle cx={x(index)} cy={top + plotHeight} r="4" fill="#cbd5e1" className="finance-balance-chart-missing"><title>{`${monthLabel(row.statementMonth)}: recorded activity is missing, so the balance cannot be calculated`}</title></circle>}
+                ? <circle cx={x(index)} cy={y(row.balanceCents)} r="6" fill={row.status === "calculated" ? "#fff" : row.status === "control" || row.status === "unreconciled" ? "#d97706" : "#d9a514"} stroke={row.status === "calculated" ? "#64748b" : "#fff"} className={`finance-balance-chart-point is-${row.status}`} tabIndex={0} aria-label={`${monthLabel(row.statementMonth)} balance: ${money(row.balanceCents)}`} onMouseEnter={() => setTooltip({ x: x(index), y: y(row.balanceCents), label: `${monthLabel(row.statementMonth)} balance: ${money(row.balanceCents)}` })} onMouseLeave={() => setTooltip(null)} onFocus={() => setTooltip({ x: x(index), y: y(row.balanceCents), label: `${monthLabel(row.statementMonth)} balance: ${money(row.balanceCents)}` })} onBlur={() => setTooltip(null)}><title>{`${monthLabel(row.statementMonth)}: ${money(row.balanceCents)} · ${statusLabel(row)}${rollforwardNote(row)}`}</title></circle>
+                : <circle cx={x(index)} cy={top + plotHeight} r="4" fill="#cbd5e1" className="finance-balance-chart-missing" tabIndex={0} aria-label={`${monthLabel(row.statementMonth)} balance unavailable`} onMouseEnter={() => setTooltip({ x: x(index), y: top + plotHeight, label: `${monthLabel(row.statementMonth)}: balance unavailable` })} onMouseLeave={() => setTooltip(null)} onFocus={() => setTooltip({ x: x(index), y: top + plotHeight, label: `${monthLabel(row.statementMonth)}: balance unavailable` })} onBlur={() => setTooltip(null)}><title>{`${monthLabel(row.statementMonth)}: recorded activity is missing, so the balance cannot be calculated`}</title></circle>}
               <text x={x(index)} y={height - 19} textAnchor="middle">{monthLabel(row.statementMonth).split(" ")[0]}</text>
             </g>
           ))}
           {!knownRows.length ? <text x={left + plotWidth / 2} y={top + plotHeight / 2} textAnchor="middle" className="finance-balance-chart-empty">No balance can be calculated in this window</text> : null}
+          <ChartTooltip tooltip={tooltip} width={width} height={height} />
         </svg>
-        <div className="finance-chart-legend"><span className="is-balance-known" /> Reconciled <span className="is-balance-review" /> Control or unreconciled <span className="is-balance-calculated" /> Calculated, not validated <span className="is-balance-missing" /> Missing activity</div>
+        <div className="finance-balance-legend" aria-label="Historical balance point key">
+          <strong>Point key</strong>
+          <span><i className="is-balance-known" /><span><b>Reconciled</b> Official statement balance</span></span>
+          <span><i className="is-balance-review" /><span><b>Under review</b> Official control or unreconciled balance</span></span>
+          <span><i className="is-balance-calculated" /><span><b>Calculated</b> Based on activity; not yet validated</span></span>
+          <span><i className="is-balance-missing" /><span><b>Unavailable</b> Not enough recorded activity</span></span>
+        </div>
       </div>
       <ChartNavigation ariaLabel="Historical balance date range" windowStart={windowStart} maxStart={maxStart} startMonth={visibleRows[0].statementMonth} endMonth={visibleRows.at(-1).statementMonth} onChange={setRequestedStart} />
     </div>
@@ -293,6 +320,7 @@ function AiInsights({ dashboard, fiscalYearId }) {
   const [usageLoading, setUsageLoading] = useState(true);
   const [allowanceBlocked, setAllowanceBlocked] = useState(false);
   const [error, setError] = useState("");
+  const [question, setQuestion] = useState("");
   const rangeValid = /^\d{4}-\d{2}-\d{2}$/.test(startDate)
     && /^\d{4}-\d{2}-\d{2}$/.test(endDate)
     && startDate >= minimumDate
@@ -313,20 +341,27 @@ function AiInsights({ dashboard, fiscalYearId }) {
     return () => { current = false; };
   }, []);
 
-  async function generate(reportType) {
+  async function generate(reportType, requestedQuestion = "") {
     if (!rangeValid) {
       setError("Choose a valid date range within this reporting period.");
       return;
     }
-    setLoadingReport(reportType);
+    const cleanQuestion = requestedQuestion.trim();
+    if (requestedQuestion && !cleanQuestion) {
+      setError("Type a question first.");
+      return;
+    }
+    const requestKey = cleanQuestion ? "question" : reportType;
+    setLoadingReport(requestKey);
     setError("");
     try {
       const data = await api(`ai-insights?fiscalYear=${encodeURIComponent(fiscalYearId)}`, JsonRequest("POST", {
         reportType,
         startDate,
         endDate,
+        question: cleanQuestion,
       }));
-      setResult({ ...data.insight, reportType });
+      setResult({ ...data.insight, reportType: requestKey });
       setUsage(data.insight.usage);
       setAllowanceBlocked(false);
     } catch (nextError) {
@@ -341,7 +376,7 @@ function AiInsights({ dashboard, fiscalYearId }) {
   return (
     <section className="card finance-panel finance-ai-panel">
       <div className="finance-section-heading">
-        <div><div className="finance-eyebrow">Workers AI</div><h2>Explain the calculated totals</h2><p>Choose a prepared report. There is no free-form prompt and the model receives aggregate totals only.</p></div>
+        <div><div className="finance-eyebrow">Workers AI</div><h2>Ask about the calculated totals</h2><p>Ask a basic financial question or choose a prepared report. The model receives aggregate totals only.</p></div>
         <span className="finance-status-pill">AI wording only</span>
       </div>
       <div className="finance-ai-toolbar">
@@ -349,6 +384,11 @@ function AiInsights({ dashboard, fiscalYearId }) {
         <label><span>End date</span><input className="input" type="date" min={minimumDate} max={maximumDate} value={endDate} disabled={Boolean(loadingReport)} onChange={(event) => { setEndDate(event.target.value); setResult(null); setError(""); }} /></label>
       </div>
       <p className="finance-ai-note">Dates are inclusive, so the range does not need to align with whole months.</p>
+      <form className="finance-ai-question" onSubmit={(event) => { event.preventDefault(); generate("explain_month", question); }}>
+        <label htmlFor="finance-ai-question"><span>Your question</span><textarea id="finance-ai-question" className="input" rows="2" maxLength="240" placeholder="For example: What should the Board pay attention to in this period?" value={question} disabled={Boolean(loadingReport)} onChange={(event) => { setQuestion(event.target.value); setResult(null); setError(""); }} /></label>
+        <button className="btn" disabled={!rangeValid || !question.trim() || Boolean(loadingReport) || allowanceReached}>{loadingReport === "question" ? "Answering…" : "Ask about these dates"}</button>
+      </form>
+      <p className="finance-ai-note">Try: “Where did we spend the most?”, “How did income compare with last year?”, or “What should the Board watch?”</p>
       <div className="finance-ai-usage">
         <div><strong>Daily AI usage</strong><span>{usageLoading ? "Loading usage…" : usageUnavailable ? "Usage unavailable" : `${neurons(usage.neuronsUsedMilli)} of ${neurons(usage.neuronLimitMilli)} neurons`}</span></div>
         <div className="finance-ai-usage-track" role="progressbar" aria-label="Daily finance AI neuron usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(usagePercent)}><span style={{ width: `${usagePercent}%` }} /></div>

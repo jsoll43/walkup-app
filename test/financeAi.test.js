@@ -5,10 +5,12 @@ import { DatabaseSync } from "node:sqlite";
 
 import {
   buildFinanceAiFacts,
+  buildFinanceAiQuestionFacts,
   calculateFinanceAiNeuronsMilli,
   createFinanceAiInsight,
   FINANCE_AI_DAILY_NEURON_LIMIT_MILLI,
   getFinanceAiUsage,
+  normalizeFinanceAiContent,
 } from "../functions/lib/financeAi.js";
 
 function d1(database) {
@@ -115,6 +117,19 @@ test("AI facts contain calculated aggregates but exclude balances, accounts, and
   assert.deepEqual(range.selectedDateRange, { startDate: "2026-05-15", endDate: "2026-06-30" });
   assert.equal(range.selectedPeriodTotals.net, "-$5,356.06");
   assert.equal(range.appCalculatedChanges.expenses, "$1,548.76");
+
+  const questionFacts = JSON.stringify(buildFinanceAiQuestionFacts(dashboard()));
+  assert.match(questionFacts, /Registration/);
+  assert.match(questionFacts, /largestAppCalculatedExpenseChanges/);
+  assert.doesNotMatch(questionFacts, /PROMPT_SECRET|bankBalances|availableCash|accountNumber/i);
+});
+
+test("AI responses are normalized into concise bullet lines", () => {
+  assert.equal(
+    normalizeFinanceAiContent("Here are the changes: * Equipment: $4,300.16 * Insurance: $259.00"),
+    "• Here are the changes:\n• Equipment: $4,300.16\n• Insurance: $259.00",
+  );
+  assert.equal(normalizeFinanceAiContent("Income exceeded expenses."), "• Income exceeded expenses.");
 });
 
 test("identical AI reports are cached and do not consume a second inference", async () => {
@@ -147,6 +162,34 @@ test("identical AI reports are cached and do not consume a second inference", as
   assert.equal(first.usage.neuronsUsedMilli, 1766);
   assert.equal(second.usage.neuronsUsedMilli, 1766);
   assert.equal(database.prepare("SELECT COUNT(*) AS count FROM finance_ai_insights").get().count, 1);
+  database.close();
+});
+
+test("a Board member question is included without exposing transaction-level data", async () => {
+  const database = await aiDatabase();
+  let prompt = "";
+  const env = {
+    DB: d1(database),
+    AI: {
+      async run(model, input) {
+        assert.equal(model, "@cf/meta/llama-3.2-3b-instruct");
+        prompt = input.messages.map((message) => message.content).join("\n");
+        return { response: "* Field maintenance was the largest expense. * Expenses increased.", usage: { prompt_tokens: 250, completion_tokens: 20 } };
+      },
+    },
+  };
+
+  const insight = await createFinanceAiInsight(env, {
+    dashboard: dashboard(),
+    fiscalYearId: "fy_2025_2026",
+    reportType: "explain_month",
+    question: "Where did we spend the most?",
+  });
+
+  assert.match(prompt, /Where did we spend the most\?/);
+  assert.match(prompt, /Field maintenance/);
+  assert.doesNotMatch(prompt, /PROMPT_SECRET|bankBalances|availableCash|accountNumber/i);
+  assert.equal(insight.content, "• Field maintenance was the largest expense.\n• Expenses increased.");
   database.close();
 });
 
