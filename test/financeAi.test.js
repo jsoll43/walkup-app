@@ -39,7 +39,7 @@ function d1(database) {
 
 function dashboard(overrides = {}) {
   return {
-    fiscalYear: { id: "fy_2025_2026", label: "October 2025 – September 2026" },
+    fiscalYear: { id: "fy_2025_2026", label: "October 2025 – September 2026", startsOn: "2025-10-01", endsOn: "2026-09-30" },
     overview: {
       ytdIncomeCents: 3257319,
       ytdExpensesCents: 2598245,
@@ -65,7 +65,28 @@ function dashboard(overrides = {}) {
       surplusChangeCents: -240926,
       categoryChanges: [{ name: "Field maintenance", currentCents: 1600000, priorCents: 1200000, changeCents: 400000 }],
     },
-    ai: { availableMonths: ["2026-05", "2026-06"], comparedMonths: ["10", "11", "12", "01", "02", "03", "04", "05", "06"] },
+    ai: {
+      availableMonths: ["2026-05", "2026-06"],
+      availableStartDate: "2025-10-01",
+      availableEndDate: "2026-06-30",
+      selectedRange: {
+        startDate: "2026-05-15",
+        endDate: "2026-06-30",
+        priorStartDate: "2025-05-15",
+        priorEndDate: "2025-06-30",
+        current: { transactionCount: 8, externalIncomeCents: 219270, expensesCents: 754876, surplusCents: -535606 },
+        prior: { transactionCount: 7, externalIncomeCents: 200000, expensesCents: 600000, surplusCents: -400000 },
+        comparisonAvailable: true,
+        incomeChangeCents: 19270,
+        expenseChangeCents: 154876,
+        surplusChangeCents: -135606,
+        categoryChanges: [{ name: "Field maintenance", currentCents: 500000, priorCents: 400000, changeCents: 100000 }],
+        topExpenseCategories: [{ name: "Field maintenance", amountCents: 500000 }],
+        topIncomeCategories: [{ name: "Registration", amountCents: 219270 }],
+        routineExpensesCents: 554876,
+        oneTimeExpensesCents: 200000,
+      },
+    },
     reconciliations: [{ accountNumber: "PROMPT_SECRET_ACCOUNT" }],
     dataIssues: [{ description: "PROMPT_SECRET_TRANSACTION_DESCRIPTION" }],
     ...overrides,
@@ -85,15 +106,15 @@ test("AI facts contain calculated aggregates but exclude balances, accounts, and
   const facts = buildFinanceAiFacts(dashboard(), "treasurer_report");
   const serialized = JSON.stringify(facts);
 
-  assert.match(serialized, /\$32,573\.19/);
+  assert.match(serialized, /\$2,192\.70/);
   assert.match(serialized, /Field maintenance/);
   assert.doesNotMatch(serialized, /PROMPT_SECRET/);
   assert.doesNotMatch(serialized, /bankBalances|availableCash|reconciliation|accountNumber/i);
 
-  const month = buildFinanceAiFacts(dashboard(), "explain_month", "2026-06");
-  assert.equal(month.selectedMonth, "2026-06");
-  assert.equal(month.selectedMonthTotals.net, "-$1,873.42");
-  assert.equal(month.previousActualMonthComparison.appCalculatedChanges.expenses, "-$1,685.04");
+  const range = buildFinanceAiFacts(dashboard(), "explain_month");
+  assert.deepEqual(range.selectedDateRange, { startDate: "2026-05-15", endDate: "2026-06-30" });
+  assert.equal(range.selectedPeriodTotals.net, "-$5,356.06");
+  assert.equal(range.appCalculatedChanges.expenses, "$1,548.76");
 });
 
 test("identical AI reports are cached and do not consume a second inference", async () => {
@@ -147,7 +168,7 @@ test("reports daily neuron usage and blocks requests that could exceed the free 
   assert.equal(usage.remainingNeuronsMilli, 1);
 
   await assert.rejects(
-    createFinanceAiInsight(env, { dashboard: dashboard(), fiscalYearId: "fy_2025_2026", reportType: "explain_month", statementMonth: "2026-06" }),
+    createFinanceAiInsight(env, { dashboard: dashboard(), fiscalYearId: "fy_2025_2026", reportType: "explain_month" }),
     (error) => error.status === 429 && /daily allowance/i.test(error.message),
   );
   assert.equal(calls, 0);

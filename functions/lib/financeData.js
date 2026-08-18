@@ -324,6 +324,48 @@ function categoryChanges(current, prior) {
     .sort((left, right) => Math.abs(right.changeCents) - Math.abs(left.changeCents));
 }
 
+function shiftDateByYears(date, years) {
+  const [year, month, day] = date.split("-").map(Number);
+  const targetYear = year + years;
+  const lastDay = new Date(Date.UTC(targetYear, month, 0)).getUTCDate();
+  return `${targetYear}-${String(month).padStart(2, "0")}-${String(Math.min(day, lastDay)).padStart(2, "0")}`;
+}
+
+function aiRangeFacts(transactions, priorTransactions, fiscalYear, range) {
+  if (!range) return null;
+  const startDate = normalizeDate(range.startDate);
+  const endDate = normalizeDate(range.endDate);
+  if (!startDate || !endDate) throw Object.assign(new Error("Choose a valid start and end date."), { status: 400 });
+  if (startDate > endDate) throw Object.assign(new Error("The start date must be on or before the end date."), { status: 400 });
+  if (startDate < fiscalYear.starts_on || endDate > fiscalYear.ends_on) {
+    throw Object.assign(new Error("The selected dates must be within the reporting period."), { status: 400 });
+  }
+
+  const priorStartDate = shiftDateByYears(startDate, -1);
+  const priorEndDate = shiftDateByYears(endDate, -1);
+  const currentRows = transactions.filter((transaction) => transaction.transactionDate >= startDate && transaction.transactionDate <= endDate);
+  const priorRows = priorTransactions.filter((transaction) => transaction.transactionDate >= priorStartDate && transaction.transactionDate <= priorEndDate);
+  const current = summarizeTransactions(currentRows);
+  const prior = summarizeTransactions(priorRows);
+  return {
+    startDate,
+    endDate,
+    priorStartDate,
+    priorEndDate,
+    current,
+    prior,
+    comparisonAvailable: priorRows.length > 0,
+    incomeChangeCents: current.externalIncomeCents - prior.externalIncomeCents,
+    expenseChangeCents: current.expensesCents - prior.expensesCents,
+    surplusChangeCents: current.surplusCents - prior.surplusCents,
+    categoryChanges: categoryChanges(currentRows, priorRows),
+    topExpenseCategories: categoryTotals(currentRows, "expense").slice(0, 5),
+    topIncomeCategories: categoryTotals(currentRows, "income").slice(0, 5),
+    routineExpensesCents: current.normalizedExpensesCents,
+    oneTimeExpensesCents: current.oneTimeExpensesCents,
+  };
+}
+
 function controlsActuals(controls, transactions, reconciliations) {
   const result = {};
   controls.forEach((control) => {
@@ -364,7 +406,7 @@ function discrepancyRows(control, transactions) {
   }));
 }
 
-export async function getFinanceDashboard(env, session, fiscalYearId) {
+export async function getFinanceDashboard(env, session, fiscalYearId, options = {}) {
   const fiscalYear = await first(env, `SELECT * FROM finance_fiscal_years WHERE id = ?`, [fiscalYearId]);
   if (!fiscalYear) throw Object.assign(new Error("Fiscal year not found."), { status: 404 });
   const priorStartYear = Number(fiscalYear.starts_on.slice(0, 4)) - 1;
@@ -395,6 +437,11 @@ export async function getFinanceDashboard(env, session, fiscalYearId) {
   const reserveCents = Number(settings?.reserve_cents || 0);
   const latestReconciledMonth = reconciliations.filter((item) => item.status === "reconciled" && item.balancesKnown).map((item) => item.statementMonth).sort().at(-1) || "";
   const actualMonths = [...new Set(transactions.map((transaction) => transaction.statementMonth))].sort();
+  const transactionDates = transactions.map((transaction) => transaction.transactionDate).filter(Boolean).sort();
+  const today = new Date().toISOString().slice(0, 10);
+  const availableStartDate = transactionDates[0] || fiscalYear.starts_on;
+  const availableEndDate = transactionDates.at(-1) || [today, fiscalYear.ends_on].sort()[0];
+  const selectedRange = aiRangeFacts(transactions, priorTransactions, fiscalYear, options.aiDateRange);
   const forecastMonthly = months.map((month) => ({
     statementMonth: month,
     netCents: forecasts.filter((forecast) => forecast.statement_month === month).reduce((sum, forecast) => sum + (forecast.classification === "income" ? Number(forecast.amount_cents) : -Math.abs(Number(forecast.amount_cents))), 0),
@@ -454,7 +501,7 @@ export async function getFinanceDashboard(env, session, fiscalYearId) {
     },
     income: { byCategory: categoryTotals(transactions, "income") },
     yearOverYear: { ...comparison, categoryChanges: changes },
-    ai: { availableMonths: actualMonths, comparedMonths: completedMonthNumbers },
+    ai: { availableMonths: actualMonths, comparedMonths: completedMonthNumbers, availableStartDate, availableEndDate, selectedRange },
     reconciliations,
     insights: deterministicInsights({ comparison, categoryChanges: changes.filter((change) => change.changeCents !== 0), oneTimeExpenses: transactions.filter((transaction) => transaction.isOneTime || transaction.isCapital).sort((left, right) => Math.abs(right.amountCents) - Math.abs(left.amountCents)), reconciliations, missingMonths, duplicateCount, projection, dataIssues: mappedIssues }),
     discrepancies,

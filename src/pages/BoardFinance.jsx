@@ -283,17 +283,21 @@ function CategoryBars({ rows, emptyText }) {
 }
 
 function AiInsights({ dashboard, fiscalYearId }) {
-  const availableMonths = dashboard.ai?.availableMonths || [];
-  const latestMonth = availableMonths.at(-1) || "";
-  const [requestedMonth, setRequestedMonth] = useState(latestMonth);
+  const minimumDate = dashboard.fiscalYear.startsOn;
+  const maximumDate = dashboard.fiscalYear.endsOn;
+  const [startDate, setStartDate] = useState(dashboard.ai?.availableStartDate || minimumDate);
+  const [endDate, setEndDate] = useState(dashboard.ai?.availableEndDate || maximumDate);
   const [loadingReport, setLoadingReport] = useState("");
   const [result, setResult] = useState(null);
   const [usage, setUsage] = useState(null);
   const [usageLoading, setUsageLoading] = useState(true);
   const [allowanceBlocked, setAllowanceBlocked] = useState(false);
   const [error, setError] = useState("");
-  const selectedMonth = availableMonths.includes(requestedMonth) ? requestedMonth : latestMonth;
-  const comparisonAvailable = Number(dashboard.yearOverYear?.prior?.transactionCount || 0) > 0;
+  const rangeValid = /^\d{4}-\d{2}-\d{2}$/.test(startDate)
+    && /^\d{4}-\d{2}-\d{2}$/.test(endDate)
+    && startDate >= minimumDate
+    && endDate <= maximumDate
+    && startDate <= endDate;
   const usagePercent = usage ? Math.min(100, (usage.neuronsUsedMilli / Math.max(1, usage.neuronLimitMilli)) * 100) : 0;
   const usageUnavailable = !usageLoading && !usage;
   const allowanceReached = allowanceBlocked || Boolean(usage && usage.remainingNeuronsMilli <= 0);
@@ -310,12 +314,17 @@ function AiInsights({ dashboard, fiscalYearId }) {
   }, []);
 
   async function generate(reportType) {
+    if (!rangeValid) {
+      setError("Choose a valid date range within this reporting period.");
+      return;
+    }
     setLoadingReport(reportType);
     setError("");
     try {
       const data = await api(`ai-insights?fiscalYear=${encodeURIComponent(fiscalYearId)}`, JsonRequest("POST", {
         reportType,
-        statementMonth: reportType === "explain_month" ? selectedMonth : "",
+        startDate,
+        endDate,
       }));
       setResult({ ...data.insight, reportType });
       setUsage(data.insight.usage);
@@ -336,20 +345,22 @@ function AiInsights({ dashboard, fiscalYearId }) {
         <span className="finance-status-pill">AI wording only</span>
       </div>
       <div className="finance-ai-toolbar">
-        <label><span>Month to explain</span><select className="input" value={selectedMonth} disabled={!availableMonths.length || Boolean(loadingReport)} onChange={(event) => setRequestedMonth(event.target.value)}>{availableMonths.map((month) => <option key={month} value={month}>{monthLabel(month)}</option>)}</select></label>
+        <label><span>Start date</span><input className="input" type="date" min={minimumDate} max={maximumDate} value={startDate} disabled={Boolean(loadingReport)} onChange={(event) => { setStartDate(event.target.value); setResult(null); setError(""); }} /></label>
+        <label><span>End date</span><input className="input" type="date" min={minimumDate} max={maximumDate} value={endDate} disabled={Boolean(loadingReport)} onChange={(event) => { setEndDate(event.target.value); setResult(null); setError(""); }} /></label>
       </div>
+      <p className="finance-ai-note">Dates are inclusive, so the range does not need to align with whole months.</p>
       <div className="finance-ai-usage">
         <div><strong>Daily AI usage</strong><span>{usageLoading ? "Loading usage…" : usageUnavailable ? "Usage unavailable" : `${neurons(usage.neuronsUsedMilli)} of ${neurons(usage.neuronLimitMilli)} neurons`}</span></div>
         <div className="finance-ai-usage-track" role="progressbar" aria-label="Daily finance AI neuron usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(usagePercent)}><span style={{ width: `${usagePercent}%` }} /></div>
         <small>{usage ? `Resets ${new Date(usage.resetAt).toLocaleString([], { timeZoneName: "short" })}. ` : ""}The server will not start an uncached report that could exceed 10,000 neurons. This meter covers this finance dashboard; other Workers AI use on the Cloudflare account is separate.</small>
       </div>
       <div className="finance-ai-actions">
-        <button className="btn" disabled={!selectedMonth || Boolean(loadingReport) || allowanceReached} onClick={() => generate("explain_month")}>{loadingReport === "explain_month" ? "Writing…" : "Explain this month"}</button>
-        <button className="btn-secondary" disabled={!comparisonAvailable || Boolean(loadingReport) || allowanceReached} onClick={() => generate("year_over_year")}>{loadingReport === "year_over_year" ? "Writing…" : "Summarize the biggest year-over-year changes"}</button>
-        <button className="btn-secondary" disabled={!comparisonAvailable || Boolean(loadingReport) || allowanceReached} onClick={() => generate("expense_increases")}>{loadingReport === "expense_increases" ? "Writing…" : "What expenses increased the most?"}</button>
-        <button className="btn-secondary" disabled={Boolean(loadingReport) || allowanceReached} onClick={() => generate("treasurer_report")}>{loadingReport === "treasurer_report" ? "Writing…" : "Create a short treasurer's report for the board meeting"}</button>
+        <button className="btn" disabled={!rangeValid || Boolean(loadingReport) || allowanceReached} onClick={() => generate("explain_month")}>{loadingReport === "explain_month" ? "Writing…" : "Explain selected dates"}</button>
+        <button className="btn-secondary" disabled={!rangeValid || Boolean(loadingReport) || allowanceReached} onClick={() => generate("year_over_year")}>{loadingReport === "year_over_year" ? "Writing…" : "Summarize the biggest year-over-year changes"}</button>
+        <button className="btn-secondary" disabled={!rangeValid || Boolean(loadingReport) || allowanceReached} onClick={() => generate("expense_increases")}>{loadingReport === "expense_increases" ? "Writing…" : "What expenses increased the most?"}</button>
+        <button className="btn-secondary" disabled={!rangeValid || Boolean(loadingReport) || allowanceReached} onClick={() => generate("treasurer_report")}>{loadingReport === "treasurer_report" ? "Writing…" : "Create a short treasurer's report for the board meeting"}</button>
       </div>
-      {!comparisonAvailable ? <p className="finance-ai-note">Year-over-year reports become available when the same published months exist in the prior reporting period.</p> : null}
+      <p className="finance-ai-note">Year-over-year reports compare the selected dates with the same dates one year earlier. If no prior transactions exist for those dates, the report says that comparison data is unavailable.</p>
       <div className="finance-ai-guardrail"><strong>What AI cannot do:</strong> It receives no account balances, reconciliation data, transaction descriptions, payees, or documents. It cannot change any financial record.</div>
       {error ? <div className="finance-alert is-warning" role="alert">{error}</div> : null}
       {result ? <div className="finance-ai-result" aria-live="polite"><div className="finance-ai-result-meta"><strong>AI-generated wording</strong><span>{result.cached ? "Reused cached report · no new AI usage" : "New report · daily neuron meter updated"}</span></div><div className="finance-ai-result-copy">{result.content}</div><small>Verify the wording against the calculated dashboard totals above; those totals remain the source of truth.</small></div> : null}

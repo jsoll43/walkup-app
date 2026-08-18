@@ -160,7 +160,8 @@ Cloudflare's current dashboard binding steps are in [Pages Functions bindings](h
 ## Workers AI financial-report guardrails
 
 - The browser can request only `explain_month`, `year_over_year`, `expense_increases`, or `treasurer_report`; there is no user-authored prompt.
-- The Pages Function recalculates the authorized viewer's aggregates server-side and constructs the model input itself. The browser cannot supply financial facts to the model.
+- The user selects an inclusive start and end date within the reporting period, including partial-month ranges. The Pages Function recalculates the authorized viewer's aggregates for those exact dates server-side and constructs the model input itself. The browser cannot supply financial facts to the model.
+- Year-over-year reports use the same inclusive dates shifted back one year; if those dates have no prior activity, the generated wording identifies the comparison as unavailable.
 - The model is `@cf/meta/llama-3.2-3b-instruct`, with a 256-token output ceiling. It is instructed to explain exact supplied figures without arithmetic, balance calculation, reconciliation, legitimacy decisions, or speculation.
 - Identical report type and calculated facts reuse the D1 cache and make no Workers AI call. Changed source totals produce a new cache key automatically.
 - `finance_ai_daily_usage` stores input/output token counts and thousandths of a neuron. Before inference, the app atomically reserves a conservative maximum based on the bounded prompt and 256-token output limit; afterward it replaces that reservation with token-based usage reported by Workers AI. Cached reports consume no new neurons.

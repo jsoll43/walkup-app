@@ -4,7 +4,7 @@ import { getFinanceDashboard } from "./financeData.js";
 export const FINANCE_AI_MODEL = "@cf/meta/llama-3.2-3b-instruct";
 export const FINANCE_AI_DAILY_NEURON_LIMIT_MILLI = 10_000_000;
 
-const PROMPT_VERSION = "finance-board-summary-v1";
+const PROMPT_VERSION = "finance-board-summary-v2";
 const MAX_FACTS_CHARACTERS = 8_000;
 const MAX_OUTPUT_TOKENS = 256;
 const PROMPT_TOKEN_RESERVATION_OVERHEAD = 512;
@@ -12,7 +12,7 @@ const INPUT_NEURONS_PER_MILLION_TOKENS = 4_625;
 const OUTPUT_NEURONS_PER_MILLION_TOKENS = 30_475;
 
 export const FINANCE_AI_REPORTS = Object.freeze({
-  explain_month: "Explain this month",
+  explain_month: "Explain selected dates",
   year_over_year: "Summarize the biggest year-over-year changes",
   expense_increases: "What expenses increased the most?",
   treasurer_report: "Create a short treasurer's report for the board meeting",
@@ -63,103 +63,73 @@ function categoryChangeRows(rows, { increasesOnly = false, limit = 8 } = {}) {
     }));
 }
 
-function monthlyFacts(dashboard, requestedMonth) {
-  const actualRows = (dashboard.monthly || []).filter((row) => row.hasActual);
-  const selected = requestedMonth ? actualRows.find((row) => row.month === requestedMonth) : actualRows.at(-1);
-  if (requestedMonth && !selected) throw httpError("That month has no available actuals in this reporting period.", 400);
-  if (!selected) throw httpError("No monthly actuals are available for an AI explanation.", 409);
-  const previous = actualRows.filter((row) => row.month < selected.month).at(-1);
-  const throughMonth = actualRows.filter((row) => row.month <= selected.month);
-  const throughIncomeCents = throughMonth.reduce((sum, row) => sum + row.incomeCents, 0);
-  const throughExpensesCents = throughMonth.reduce((sum, row) => sum + row.expensesCents, 0);
-  const throughNetCents = throughIncomeCents - throughExpensesCents;
-  return {
-    selectedMonth: selected.month,
-    selectedMonthTotals: {
-      income: dollars(selected.incomeCents),
-      expenses: dollars(selected.expensesCents),
-      net: dollars(selected.netCents),
-    },
-    fiscalPeriodTotalsThroughSelectedMonth: {
-      income: dollars(throughIncomeCents),
-      expenses: dollars(throughExpensesCents),
-      net: dollars(throughNetCents),
-    },
-    previousActualMonthComparison: previous ? {
-      previousMonth: previous.month,
-      previousMonthTotals: {
-        income: dollars(previous.incomeCents),
-        expenses: dollars(previous.expensesCents),
-        net: dollars(previous.netCents),
-      },
-      appCalculatedChanges: {
-        income: dollars(selected.incomeCents - previous.incomeCents),
-        expenses: dollars(selected.expensesCents - previous.expensesCents),
-        net: dollars(selected.netCents - previous.netCents),
-      },
-    } : null,
-  };
-}
-
-export function buildFinanceAiFacts(dashboard, reportType, requestedMonth = "") {
+export function buildFinanceAiFacts(dashboard, reportType) {
   if (!Object.hasOwn(FINANCE_AI_REPORTS, reportType)) throw httpError("Choose one of the available AI reports.", 400);
-  const comparison = dashboard.yearOverYear || {};
-  const comparisonAvailable = Number(comparison.prior?.transactionCount || 0) > 0;
+  const range = dashboard.ai?.selectedRange;
+  if (!range) throw httpError("Choose a start and end date for the AI report.", 400);
+  const comparisonAvailable = Boolean(range.comparisonAvailable);
   const base = {
     reportType,
     reportingPeriod: dashboard.fiscalYear?.label || "Not available",
+    selectedDateRange: { startDate: range.startDate, endDate: range.endDate },
+    priorYearEquivalentDateRange: { startDate: range.priorStartDate, endDate: range.priorEndDate },
     accountingRulesAlreadyAppliedByApp: [
       "Internal transfers are excluded from income and expense totals.",
       "All changes and net amounts shown here were calculated by the application.",
     ],
   };
 
-  if (reportType === "explain_month") return { ...base, ...monthlyFacts(dashboard, requestedMonth) };
+  if (reportType === "explain_month") return {
+    ...base,
+    selectedPeriodTotals: moneyTotals(range.current),
+    priorYearEquivalentTotals: comparisonAvailable ? moneyTotals(range.prior) : { comparisonAvailable: false },
+    appCalculatedChanges: comparisonAvailable ? {
+      income: dollars(range.incomeChangeCents),
+      expenses: dollars(range.expenseChangeCents),
+      net: dollars(range.surplusChangeCents),
+    } : { comparisonAvailable: false },
+  };
   if (reportType === "year_over_year") return {
     ...base,
     comparisonAvailable,
-    comparedFiscalMonths: dashboard.ai?.comparedMonths || [],
-    currentPeriodTotals: moneyTotals(comparison.current),
-    priorSamePeriodTotals: moneyTotals(comparison.prior),
+    currentPeriodTotals: moneyTotals(range.current),
+    priorSameDatesTotals: moneyTotals(range.prior),
     appCalculatedChanges: {
-      income: dollars(comparison.incomeChangeCents),
-      expenses: dollars(comparison.expenseChangeCents),
-      net: dollars(comparison.surplusChangeCents),
+      income: dollars(range.incomeChangeCents),
+      expenses: dollars(range.expenseChangeCents),
+      net: dollars(range.surplusChangeCents),
     },
-    largestAppCalculatedCategoryChanges: categoryChangeRows(comparison.categoryChanges),
+    largestAppCalculatedCategoryChanges: categoryChangeRows(range.categoryChanges),
   };
   if (reportType === "expense_increases") return {
     ...base,
     comparisonAvailable,
-    comparedFiscalMonths: dashboard.ai?.comparedMonths || [],
-    appCalculatedExpenseIncrease: dollars(comparison.expenseChangeCents),
-    expenseCategoriesWithLargestAppCalculatedIncreases: categoryChangeRows(comparison.categoryChanges, { increasesOnly: true }),
+    appCalculatedExpenseIncrease: dollars(range.expenseChangeCents),
+    expenseCategoriesWithLargestAppCalculatedIncreases: categoryChangeRows(range.categoryChanges, { increasesOnly: true }),
   };
   return {
     ...base,
-    yearToDatePerformance: {
-      income: dollars(dashboard.overview?.ytdIncomeCents),
-      expenses: dollars(dashboard.overview?.ytdExpensesCents),
-      net: dollars(dashboard.overview?.ytdSurplusCents),
-      routineExpenses: dollars(dashboard.spending?.routineCents),
-      oneTimeOrCapitalExpenses: dollars(dashboard.spending?.oneTimeCents),
+    selectedPeriodPerformance: {
+      ...moneyTotals(range.current),
+      routineExpenses: dollars(range.routineExpensesCents),
+      oneTimeOrCapitalExpenses: dollars(range.oneTimeExpensesCents),
     },
-    topExpenseCategories: categoryRows(dashboard.spending?.byCategory, 5),
-    topIncomeCategories: categoryRows(dashboard.income?.byCategory, 5),
+    topExpenseCategories: categoryRows(range.topExpenseCategories, 5),
+    topIncomeCategories: categoryRows(range.topIncomeCategories, 5),
     yearOverYearComparison: comparisonAvailable ? {
-      currentPeriodTotals: moneyTotals(comparison.current),
-      priorSamePeriodTotals: moneyTotals(comparison.prior),
+      currentPeriodTotals: moneyTotals(range.current),
+      priorSameDatesTotals: moneyTotals(range.prior),
       appCalculatedChanges: {
-        income: dollars(comparison.incomeChangeCents),
-        expenses: dollars(comparison.expenseChangeCents),
-        net: dollars(comparison.surplusChangeCents),
+        income: dollars(range.incomeChangeCents),
+        expenses: dollars(range.expenseChangeCents),
+        net: dollars(range.surplusChangeCents),
       },
     } : { comparisonAvailable: false },
   };
 }
 
 function instructionFor(reportType) {
-  if (reportType === "explain_month") return "Explain the selected month's income, expenses, and net result, then briefly relate it to the preceding actual month and fiscal-period totals when supplied.";
+  if (reportType === "explain_month") return "Explain the selected date range's income, expenses, and net result, then briefly relate it to the same dates one year earlier when comparison totals are supplied.";
   if (reportType === "year_over_year") return "Summarize the most important year-over-year changes, emphasizing the application-calculated changes and clearly noting if comparison data is unavailable.";
   if (reportType === "expense_increases") return "Identify the expense categories with the largest application-calculated increases. Do not speculate about causes.";
   return "Write a short treasurer's report suitable for reading at a board meeting. Keep it factual, plain-language, and under 180 words.";
@@ -245,9 +215,8 @@ export async function getFinanceAiUsage(env) {
   }
 }
 
-export async function createFinanceAiInsight(env, { dashboard, fiscalYearId, reportType, statementMonth = "" }) {
-  const facts = buildFinanceAiFacts(dashboard, reportType, statementMonth);
-  const selectedMonth = facts.selectedMonth || statementMonth;
+export async function createFinanceAiInsight(env, { dashboard, fiscalYearId, reportType }) {
+  const facts = buildFinanceAiFacts(dashboard, reportType);
   const factsJson = JSON.stringify(facts);
   if (factsJson.length > MAX_FACTS_CHARACTERS) throw httpError("The calculated AI summary is unexpectedly large.", 500);
   const factsHash = await sha256Hex(`${PROMPT_VERSION}\n${FINANCE_AI_MODEL}\n${factsJson}`);
@@ -301,7 +270,7 @@ export async function createFinanceAiInsight(env, { dashboard, fiscalYearId, rep
            (cache_key, fiscal_year_id, report_type, statement_month, facts_hash, content, model, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(cache_key) DO UPDATE SET content = excluded.content, created_at = excluded.created_at`,
-      ).bind(factsHash, fiscalYearId, reportType, selectedMonth || null, factsHash, content, FINANCE_AI_MODEL, createdAt),
+      ).bind(factsHash, fiscalYearId, reportType, null, factsHash, content, FINANCE_AI_MODEL, createdAt),
       env.DB.prepare(
         `UPDATE finance_ai_daily_usage
          SET input_tokens = input_tokens + ?, output_tokens = output_tokens + ?,
@@ -325,9 +294,12 @@ export async function getFinanceAiInsight(env, session, fiscalYearId, body) {
   if (!env?.AI || typeof env.AI.run !== "function") throw httpError("The Workers AI binding named AI is not configured.", 503);
   if (!fiscalYearId) throw httpError("fiscalYear is required.", 400);
   const reportType = String(body?.reportType || "");
-  const statementMonth = String(body?.statementMonth || "");
+  const startDate = String(body?.startDate || "");
+  const endDate = String(body?.endDate || "");
   if (!Object.hasOwn(FINANCE_AI_REPORTS, reportType)) throw httpError("Choose one of the available AI reports.", 400);
-  if (statementMonth && !/^\d{4}-\d{2}$/.test(statementMonth)) throw httpError("statementMonth must use YYYY-MM format.", 400);
-  const dashboard = await getFinanceDashboard(env, session, fiscalYearId);
-  return createFinanceAiInsight(env, { dashboard, fiscalYearId, reportType, statementMonth });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    throw httpError("Choose a valid start and end date.", 400);
+  }
+  const dashboard = await getFinanceDashboard(env, session, fiscalYearId, { aiDateRange: { startDate, endDate } });
+  return createFinanceAiInsight(env, { dashboard, fiscalYearId, reportType });
 }

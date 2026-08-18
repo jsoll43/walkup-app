@@ -94,6 +94,23 @@ test("historical import needs neither account selection nor statement balances",
   assert.equal(october.isPreliminary, true);
   assert.deepEqual(await getFinanceTransactions(env, viewer, "fy_2025_2026", {}), []);
 
+  const partialRange = await getFinanceDashboard(env, viewer, "fy_2025_2026", {
+    aiDateRange: { startDate: "2025-10-02", endDate: "2025-10-03" },
+  });
+  assert.deepEqual(
+    { startDate: partialRange.ai.selectedRange.startDate, endDate: partialRange.ai.selectedRange.endDate },
+    { startDate: "2025-10-02", endDate: "2025-10-03" },
+  );
+  assert.equal(partialRange.ai.selectedRange.current.externalIncomeCents, 12500);
+  const emptyPartialRange = await getFinanceDashboard(env, viewer, "fy_2025_2026", {
+    aiDateRange: { startDate: "2025-10-04", endDate: "2025-10-15" },
+  });
+  assert.equal(emptyPartialRange.ai.selectedRange.current.externalIncomeCents, 0);
+  await assert.rejects(
+    getFinanceDashboard(env, viewer, "fy_2025_2026", { aiDateRange: { startDate: "2025-09-30", endDate: "2025-10-03" } }),
+    /within the reporting period/i,
+  );
+
   await assert.rejects(
     setFinancePeriodPublication(env, session, "2025-10", true),
     /must be reconciled/i,
