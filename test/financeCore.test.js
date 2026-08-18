@@ -32,6 +32,7 @@ function transaction(overrides = {}) {
 
 test("assigns October through September fiscal years", () => {
   assert.equal(fiscalYearForDate("2024-10-01").id, "fy_2024_2025");
+  assert.equal(fiscalYearForDate("2024-10-01").label, "October 2024 – September 2025");
   assert.equal(fiscalYearForDate("2025-09-30").id, "fy_2024_2025");
   assert.equal(fiscalYearForDate("2025-10-01").id, "fy_2025_2026");
   assert.equal(fiscalYearForDate("2026-09-30").id, "fy_2025_2026");

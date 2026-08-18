@@ -737,6 +737,12 @@ button:disabled {
   stroke-width: 1;
 }
 
+.finance-chart-grid {
+  stroke: #e2e8f0;
+  stroke-width: 1;
+  stroke-dasharray: 4 5;
+}
+
 .finance-chart-income { fill: var(--bgsl-gold); }
 .finance-chart-expense { fill: var(--bgsl-navy); }
 
@@ -758,6 +764,67 @@ button:disabled {
 
 .finance-chart-legend .is-income { background: var(--bgsl-gold); }
 .finance-chart-legend .is-expense { background: var(--bgsl-navy); }
+
+.finance-chart-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 4px 0 10px;
+  color: #334155;
+  font-size: 12px;
+  text-align: center;
+}
+
+.finance-chart-nav button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.finance-balance-chart-line {
+  fill: none;
+  stroke: #9a6f00;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.finance-balance-chart-point {
+  fill: var(--bgsl-gold);
+  stroke: #fff;
+  stroke-width: 3;
+}
+
+.finance-balance-chart-point.is-control,
+.finance-balance-chart-point.is-unreconciled {
+  fill: #d97706;
+}
+
+.finance-balance-chart-missing {
+  fill: #cbd5e1;
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.finance-balance-chart-empty {
+  fill: #64748b;
+  font-size: 13px;
+}
+
+.finance-chart-legend .is-balance-known {
+  background: var(--bgsl-gold);
+  border-radius: 50%;
+}
+
+.finance-chart-legend .is-balance-review {
+  background: #d97706;
+  border-radius: 50%;
+}
+
+.finance-chart-legend .is-balance-missing {
+  background: #cbd5e1;
+  border-radius: 50%;
+}
 
 .finance-month-cards {
   display: grid;
@@ -1310,6 +1377,16 @@ button:disabled {
 
   .finance-chart svg {
     min-height: 170px;
+  }
+
+  .finance-chart-nav {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+
+  .finance-chart-nav strong {
+    font-size: 11px;
   }
 
   .finance-inline-form,

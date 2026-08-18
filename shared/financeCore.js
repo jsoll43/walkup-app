@@ -1,5 +1,10 @@
 export const FINANCE_CLASSIFICATIONS = Object.freeze(["income", "expense", "transfer"]);
 
+const FULL_MONTH_NAMES = Object.freeze([
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+]);
+
 export function assertIntegerCents(value, field = "amountCents") {
   if (!Number.isSafeInteger(value)) {
     throw new TypeError(`${field} must be a safe integer number of cents.`);
@@ -39,12 +44,22 @@ export function fiscalYearForDate(value) {
   const year = Number(date.slice(0, 4));
   const month = Number(date.slice(5, 7));
   const startYear = month >= 10 ? year : year - 1;
+  const startsOn = `${startYear}-10-01`;
+  const endsOn = `${startYear + 1}-09-30`;
   return {
     id: `fy_${startYear}_${startYear + 1}`,
-    label: `FY ${startYear}–${String(startYear + 1).slice(-2)}`,
-    startsOn: `${startYear}-10-01`,
-    endsOn: `${startYear + 1}-09-30`,
+    label: fiscalYearRangeLabel(startsOn, endsOn),
+    startsOn,
+    endsOn,
   };
+}
+
+export function fiscalYearRangeLabel(startsOn, endsOn) {
+  const start = normalizeDate(startsOn);
+  const end = normalizeDate(endsOn);
+  if (!start || !end) return "Reporting period unavailable";
+  const monthYear = (date) => `${FULL_MONTH_NAMES[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}`;
+  return `${monthYear(start)} – ${monthYear(end)}`;
 }
 
 export function fiscalMonths(startYear) {

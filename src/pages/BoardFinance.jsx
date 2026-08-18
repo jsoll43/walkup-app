@@ -26,6 +26,10 @@ function monthLabel(value) {
   return new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
 
+function compactMoney(cents) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 }).format(Number(cents) / 100);
+}
+
 function centsInput(value) {
   return Number.isSafeInteger(Number(value)) ? (Number(value) / 100).toFixed(2) : "";
 }
@@ -147,6 +151,70 @@ function MonthlyChart({ rows }) {
   );
 }
 
+function HistoricalBalanceChart({ rows = [] }) {
+  const windowSize = 6;
+  const maxStart = Math.max(0, rows.length - windowSize);
+  const [requestedStart, setRequestedStart] = useState(maxStart);
+  const windowStart = Math.min(requestedStart, maxStart);
+  if (!rows.length) return <EmptyState>No official historical balances are available.</EmptyState>;
+
+  const visibleRows = rows.slice(windowStart, windowStart + windowSize);
+  const knownRows = visibleRows.filter((row) => Number.isSafeInteger(row.balanceCents));
+  const values = knownRows.map((row) => row.balanceCents);
+  const rawMinimum = values.length ? Math.min(...values) : 0;
+  const rawMaximum = values.length ? Math.max(...values) : 1;
+  const padding = Math.max(100, Math.round(Math.max(1, rawMaximum - rawMinimum) * 0.12));
+  const minimum = Math.max(0, rawMinimum - padding);
+  const maximum = rawMaximum + padding;
+  const width = 560;
+  const height = 245;
+  const left = 58;
+  const right = 18;
+  const top = 18;
+  const bottom = 48;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const x = (index) => left + (visibleRows.length === 1 ? plotWidth / 2 : (index * plotWidth) / (visibleRows.length - 1));
+  const y = (value) => top + ((maximum - value) / Math.max(1, maximum - minimum)) * plotHeight;
+  const segments = [];
+  let segment = [];
+  visibleRows.forEach((row, index) => {
+    if (Number.isSafeInteger(row.balanceCents)) segment.push(`${x(index)},${y(row.balanceCents)}`);
+    else if (segment.length) { segments.push(segment); segment = []; }
+  });
+  if (segment.length) segments.push(segment);
+  const statusLabel = (status) => status === "reconciled" ? "Reconciled" : status === "unreconciled" ? "Unreconciled statement balance" : "Statement control";
+  const visibleRange = `${monthLabel(visibleRows[0].statementMonth)} – ${monthLabel(visibleRows.at(-1).statementMonth)}`;
+
+  return (
+    <div>
+      <div className="finance-chart-nav" aria-label="Historical balance date range">
+        <button className="btn-secondary btn-sm" disabled={windowStart === 0} onClick={() => setRequestedStart(Math.max(0, windowStart - 1))}>← Earlier</button>
+        <strong>{visibleRange}</strong>
+        <button className="btn-secondary btn-sm" disabled={windowStart >= maxStart} onClick={() => setRequestedStart(Math.min(maxStart, windowStart + 1))}>Later →</button>
+      </div>
+      <div className="finance-chart is-balance" role="img" aria-label={`Historical statement balances from ${visibleRange}`}>
+        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
+          <line x1={left} y1={top} x2={width - right} y2={top} className="finance-chart-grid" />
+          <line x1={left} y1={top + plotHeight} x2={width - right} y2={top + plotHeight} className="finance-chart-axis" />
+          {knownRows.length ? <><text x={left - 8} y={top + 4} textAnchor="end">{compactMoney(maximum)}</text><text x={left - 8} y={top + plotHeight + 4} textAnchor="end">{compactMoney(minimum)}</text></> : null}
+          {segments.map((points, index) => <polyline key={index} points={points.join(" ")} className="finance-balance-chart-line" />)}
+          {visibleRows.map((row, index) => (
+            <g key={row.statementMonth}>
+              {Number.isSafeInteger(row.balanceCents)
+                ? <circle cx={x(index)} cy={y(row.balanceCents)} r="6" className={`finance-balance-chart-point is-${row.status}`}><title>{`${monthLabel(row.statementMonth)}: ${money(row.balanceCents)} · ${statusLabel(row.status)}`}</title></circle>
+                : <circle cx={x(index)} cy={top + plotHeight} r="4" className="finance-balance-chart-missing"><title>{`${monthLabel(row.statementMonth)}: official balance unavailable`}</title></circle>}
+              <text x={x(index)} y={height - 19} textAnchor="middle">{monthLabel(row.statementMonth).split(" ")[0]}</text>
+            </g>
+          ))}
+          {!knownRows.length ? <text x={left + plotWidth / 2} y={top + plotHeight / 2} textAnchor="middle" className="finance-balance-chart-empty">No official balances in this window</text> : null}
+        </svg>
+        <div className="finance-chart-legend"><span className="is-balance-known" /> Reconciled <span className="is-balance-review" /> Control or unreconciled <span className="is-balance-missing" /> Missing</div>
+      </div>
+    </div>
+  );
+}
+
 function CategoryBars({ rows, emptyText }) {
   const max = Math.max(1, ...rows.map((row) => row.amountCents));
   if (!rows.length) return <EmptyState>{emptyText}</EmptyState>;
@@ -175,7 +243,7 @@ function Overview({ dashboard }) {
         </div>
       </section>
       <section>
-        <div className="finance-section-heading"><div><div className="finance-eyebrow">Fiscal year performance</div><h2>{dashboard.fiscalYear.label} year to date</h2></div></div>
+        <div className="finance-section-heading"><div><div className="finance-eyebrow">Year-to-date performance</div><h2>{dashboard.fiscalYear.label}</h2></div></div>
         <div className="finance-metric-grid is-four">
           <MoneyMetric label="External income" cents={overview.ytdIncomeCents} />
           <MoneyMetric label="Expenses" cents={overview.ytdExpensesCents} />
@@ -196,7 +264,7 @@ function Overview({ dashboard }) {
 }
 
 function CashFlow({ dashboard }) {
-  return <div className="finance-section-stack"><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Actuals</div><h2>Monthly cash flow</h2></div></div><MonthlyChart rows={dashboard.monthly} /></section><div className="finance-month-cards">{dashboard.monthly.map((row) => <div className="card finance-month-card" key={row.month}><h3>{monthLabel(row.month)}</h3><dl><div><dt>Income</dt><dd>{money(row.incomeCents)}</dd></div><div><dt>Expenses</dt><dd>{money(row.expensesCents)}</dd></div><div><dt>Net</dt><dd className={row.netCents < 0 ? "is-negative" : "is-positive"}>{money(row.netCents)}</dd></div><div><dt>Running net</dt><dd>{money(row.runningNetCents)}</dd></div>{row.hasForecast ? <div><dt>Forecast net</dt><dd>{money(row.forecastNetCents)} <small>Projected</small></dd></div> : null}</dl></div>)}</div></div>;
+  return <div className="finance-section-stack"><div className="finance-two-column finance-align-start"><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Actuals</div><h2>Monthly cash flow</h2></div></div><MonthlyChart rows={dashboard.monthly} /></section><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Balance history</div><h2>Historical balance</h2><p>Official balance points only; missing months are not estimated.</p></div></div><HistoricalBalanceChart key={dashboard.historicalBalances.at(-1)?.statementMonth || "empty"} rows={dashboard.historicalBalances} /></section></div><div className="finance-month-cards">{dashboard.monthly.map((row) => <div className="card finance-month-card" key={row.month}><h3>{monthLabel(row.month)}</h3><dl><div><dt>Income</dt><dd>{money(row.incomeCents)}</dd></div><div><dt>Expenses</dt><dd>{money(row.expensesCents)}</dd></div><div><dt>Net</dt><dd className={row.netCents < 0 ? "is-negative" : "is-positive"}>{money(row.netCents)}</dd></div><div><dt>Running net</dt><dd>{money(row.runningNetCents)}</dd></div>{row.hasForecast ? <div><dt>Forecast net</dt><dd>{money(row.forecastNetCents)} <small>Projected</small></dd></div> : null}</dl></div>)}</div></div>;
 }
 
 function Spending({ dashboard, onTransactions }) {
@@ -209,7 +277,7 @@ function Income({ dashboard }) {
 
 function Comparison({ dashboard }) {
   const comparison = dashboard.yearOverYear;
-  return <div className="finance-section-stack"><div className={`finance-alert ${comparison.prior.transactionCount ? "is-info" : "is-warning"}`}>{comparison.prior.transactionCount ? "Current YTD is compared with the same completed fiscal months in the prior year. Projected values are not mixed into actual results." : "Prior-year same-period transactions are not available. Changes remain withheld until both periods are loaded and published."}</div><div className="finance-metric-grid is-three"><MoneyMetric label="Current-period income" cents={comparison.current.externalIncomeCents} /><MoneyMetric label="Prior same-period income" cents={comparison.prior.externalIncomeCents} /><MoneyMetric label="Income change" cents={comparison.incomeChangeCents} tone={comparison.incomeChangeCents < 0 ? "danger" : "positive"} /><MoneyMetric label="Current-period expenses" cents={comparison.current.expensesCents} /><MoneyMetric label="Prior same-period expenses" cents={comparison.prior.expensesCents} /><MoneyMetric label="Expense change" cents={comparison.expenseChangeCents} tone={comparison.expenseChangeCents > 0 ? "danger" : "positive"} /></div><section className="card finance-panel"><h2>Largest category changes</h2>{comparison.prior.transactionCount && comparison.categoryChanges.length ? <div className="finance-ranked-list">{comparison.categoryChanges.slice(0, 10).map((row) => <div key={row.name}><span>{row.name}<small>{money(row.priorCents)} → {money(row.currentCents)}</small></span><strong className={row.changeCents > 0 ? "is-negative" : "is-positive"}>{row.changeCents > 0 ? "+" : ""}{money(row.changeCents)}</strong></div>)}</div> : <EmptyState>Two published fiscal years are needed for comparison.</EmptyState>}</section></div>;
+  return <div className="finance-section-stack"><div className={`finance-alert ${comparison.prior.transactionCount ? "is-info" : "is-warning"}`}>{comparison.prior.transactionCount ? "Current results are compared with the same completed months in the prior reporting period. Projected values are not mixed into actual results." : "Prior-period transactions are not available. Changes remain withheld until both periods are loaded and published."}</div><div className="finance-metric-grid is-three"><MoneyMetric label="Current-period income" cents={comparison.current.externalIncomeCents} /><MoneyMetric label="Prior same-period income" cents={comparison.prior.externalIncomeCents} /><MoneyMetric label="Income change" cents={comparison.incomeChangeCents} tone={comparison.incomeChangeCents < 0 ? "danger" : "positive"} /><MoneyMetric label="Current-period expenses" cents={comparison.current.expensesCents} /><MoneyMetric label="Prior same-period expenses" cents={comparison.prior.expensesCents} /><MoneyMetric label="Expense change" cents={comparison.expenseChangeCents} tone={comparison.expenseChangeCents > 0 ? "danger" : "positive"} /></div><section className="card finance-panel"><h2>Largest category changes</h2>{comparison.prior.transactionCount && comparison.categoryChanges.length ? <div className="finance-ranked-list">{comparison.categoryChanges.slice(0, 10).map((row) => <div key={row.name}><span>{row.name}<small>{money(row.priorCents)} → {money(row.currentCents)}</small></span><strong className={row.changeCents > 0 ? "is-negative" : "is-positive"}>{row.changeCents > 0 ? "+" : ""}{money(row.changeCents)}</strong></div>)}</div> : <EmptyState>Two published reporting periods are needed for comparison.</EmptyState>}</section></div>;
 }
 
 function ReconciliationEditor({ item, documents, onSave, busy }) {
@@ -226,7 +294,7 @@ function ReconciliationEditor({ item, documents, onSave, busy }) {
 }
 
 function Reconciliation({ dashboard, isEditor, documents, onSave, onPublish, busy }) {
-  if (!dashboard.reconciliations.length) return <EmptyState>No statement reconciliations have been imported for this fiscal year.</EmptyState>;
+  if (!dashboard.reconciliations.length) return <EmptyState>No statement reconciliations have been imported for this reporting period.</EmptyState>;
   const byMonth = [...new Set(dashboard.reconciliations.map((item) => item.statementMonth))];
   return <div className="finance-section-stack">{byMonth.map((month) => { const items = dashboard.reconciliations.filter((item) => item.statementMonth === month); const hasPendingBalances = items.some((item) => !item.balancesKnown); const canPublish = items.every((item) => item.balancesKnown && item.status === "reconciled" && item.differenceCents === 0); const isPublished = items.every((item) => item.periodStatus === "published"); return <section className="card finance-panel" key={month}><div className="finance-section-heading"><div><div className="finance-eyebrow">{items[0].periodStatus}</div><h2>{monthLabel(month)}</h2></div><div className="finance-button-row"><span className={`finance-status-pill ${canPublish ? "is-good" : "is-warning"}`}>{canPublish ? "Reconciled" : hasPendingBalances ? "Balances pending" : "Unreconciled"}</span>{isEditor ? <button className="btn-secondary btn-sm" disabled={busy || (!isPublished && !canPublish)} onClick={() => onPublish(month, !isPublished)}>{isPublished ? "Unpublish" : "Publish"}</button> : null}</div></div><div className="finance-recon-grid">{items.map((item) => <article className="finance-recon-card" key={item.id}><h3>{item.accountName}</h3><dl><div><dt>Opening</dt><dd>{item.balancesKnown ? money(item.openingBalanceCents) : "Pending"}</dd></div><div><dt>Deposits</dt><dd>{money(item.depositsCents)}</dd></div><div><dt>Withdrawals</dt><dd>{money(item.withdrawalsCents)}</dd></div><div><dt>Transfers</dt><dd>{money(item.transfersCents)}</dd></div><div><dt>Outstanding</dt><dd>{money(item.outstandingItemsCents)}</dd></div><div><dt>Expected ending</dt><dd>{item.balancesKnown ? money(item.expectedEndingBalanceCents) : "Pending"}</dd></div><div><dt>Statement ending</dt><dd>{item.balancesKnown ? money(item.statementEndingBalanceCents) : "Pending"}</dd></div><div className="is-total"><dt>Difference</dt><dd className={item.balancesKnown ? (item.differenceCents === 0 ? "is-positive" : "is-negative") : ""}>{item.balancesKnown ? money(item.differenceCents) : "Pending"}</dd></div></dl>{!item.balancesKnown ? <div className="finance-alert is-warning">Statement balances pending — these transactions are imported but cannot be reconciled or published.</div> : item.status !== "reconciled" ? <div className="finance-alert is-warning">Preliminary — this account is not reconciled.</div> : null}{item.documentId ? <a className="btn-secondary btn-sm" href={`/api/board/finance/documents/${item.documentId}`} target="_blank" rel="noreferrer">View support</a> : null}{isEditor ? <ReconciliationEditor item={item} documents={documents} onSave={onSave} busy={busy} /> : null}</article>)}</div></section>; })}</div>;
 }
@@ -239,7 +307,7 @@ function TransactionEditor({ transaction, categories, onSave, onClose, busy }) {
 }
 
 function Transactions({ rows, filters, setFilters, bootstrap, isEditor, onEdit, onExport, loading }) {
-  return <div className="finance-section-stack"><section className="card finance-panel"><div className="finance-section-heading"><div><h2>Transactions</h2><p>Internal transfers remain visible but are excluded from income and expense totals.</p></div><button className="btn-secondary" onClick={onExport}>Export filtered CSV</button></div><div className="finance-filter-grid"><input className="input" type="search" placeholder="Search description or notes" value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} /><input className="input" type="month" value={filters.month} onChange={(event) => setFilters((current) => ({ ...current, month: event.target.value }))} /><select className="input" value={filters.account} onChange={(event) => setFilters((current) => ({ ...current, account: event.target.value }))}><option value="">All accounts</option>{bootstrap.accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select><select className="input" value={filters.category} onChange={(event) => setFilters((current) => ({ ...current, category: event.target.value }))}><option value="">All categories</option>{bootstrap.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><select className="input" value={filters.classification} onChange={(event) => setFilters((current) => ({ ...current, classification: event.target.value }))}><option value="">All types</option><option value="income">Income</option><option value="expense">Expense</option><option value="transfer">Transfer</option></select><select className="input" value={filters.oneTime} onChange={(event) => setFilters((current) => ({ ...current, oneTime: event.target.value }))}><option value="">Routine and one-time</option><option value="true">One-time only</option><option value="false">Routine only</option></select></div></section>{loading ? <LoadingCard text="Loading transactions…" /> : rows.length ? <div className="finance-transaction-list">{rows.map((transaction) => <article className="card finance-transaction-card" key={transaction.id}><div className="finance-transaction-top"><div><div className="finance-transaction-date">{transaction.transactionDate}</div><h3>{transaction.description}</h3></div><strong className={transaction.amountCents < 0 ? "is-negative" : "is-positive"}>{money(transaction.amountCents)}</strong></div><div className="finance-chip-row"><span>{transaction.classification}</span><span>{transaction.categoryName}</span><span>{transaction.accountName}</span>{transaction.isInternalTransfer ? <span>Internal transfer</span> : null}{transaction.isOneTime || transaction.isCapital ? <span>One-time / capital</span> : null}<span>{transaction.reconciliationStatus}</span></div><div className="finance-transaction-meta">Source: {transaction.sourceFilename || "Manual"}{transaction.sourceRow ? `, row ${transaction.sourceRow}` : ""} · {transaction.statementMonth} · {transaction.periodStatus}</div>{isEditor ? <button className="btn-secondary btn-sm" onClick={() => onEdit(transaction)}>Edit</button> : null}</article>)}</div> : <EmptyState>No transactions match these filters.</EmptyState>}</div>;
+  return <div className="finance-section-stack"><section className="card finance-panel"><div className="finance-section-heading"><div><h2>Transactions</h2><p>Internal transfers remain visible but are excluded from income and expense totals.</p></div><button className="btn-secondary" onClick={onExport}>Export filtered CSV</button></div><div className="finance-filter-grid"><input className="input" type="search" placeholder="Search description or notes" value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} /><input className="input" type="month" value={filters.month} onChange={(event) => setFilters((current) => ({ ...current, month: event.target.value }))} /><select className="input" value={filters.category} onChange={(event) => setFilters((current) => ({ ...current, category: event.target.value }))}><option value="">All categories</option>{bootstrap.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><select className="input" value={filters.classification} onChange={(event) => setFilters((current) => ({ ...current, classification: event.target.value }))}><option value="">All types</option><option value="income">Income</option><option value="expense">Expense</option><option value="transfer">Transfer</option></select><select className="input" value={filters.oneTime} onChange={(event) => setFilters((current) => ({ ...current, oneTime: event.target.value }))}><option value="">Routine and one-time</option><option value="true">One-time only</option><option value="false">Routine only</option></select></div></section>{loading ? <LoadingCard text="Loading transactions…" /> : rows.length ? <div className="finance-transaction-list">{rows.map((transaction) => <article className="card finance-transaction-card" key={transaction.id}><div className="finance-transaction-top"><div><div className="finance-transaction-date">{transaction.transactionDate}</div><h3>{transaction.description}</h3></div><strong className={transaction.amountCents < 0 ? "is-negative" : "is-positive"}>{money(transaction.amountCents)}</strong></div><div className="finance-chip-row"><span>{transaction.classification}</span><span>{transaction.categoryName}</span>{transaction.accountName && transaction.accountName !== "Consolidated historical source" ? <span>{transaction.accountName}</span> : null}{transaction.isInternalTransfer ? <span>Internal transfer</span> : null}{transaction.isOneTime || transaction.isCapital ? <span>One-time / capital</span> : null}<span>{transaction.reconciliationStatus}</span></div><div className="finance-transaction-meta">Source: {transaction.sourceFilename || "Manual"}{transaction.sourceRow ? `, row ${transaction.sourceRow}` : ""} · {transaction.statementMonth} · {transaction.periodStatus}</div>{isEditor ? <button className="btn-secondary btn-sm" onClick={() => onEdit(transaction)}>Edit</button> : null}</article>)}</div> : <EmptyState>No transactions match these filters.</EmptyState>}</div>;
 }
 
 function ImportWorkflow({ bootstrap, imports, onComplete, busy, setBusy }) {
@@ -256,7 +324,7 @@ function ImportWorkflow({ bootstrap, imports, onComplete, busy, setBusy }) {
       const statementMonth = inferImportMonth(file.name);
       const detectedFiscalYearId = fiscalYearForDate(`${statementMonth}-01`).id;
       if (!bootstrap.fiscalYears.some((year) => year.id === detectedFiscalYearId)) {
-        throw new Error(`${file.name}: ${statementMonth} is outside the configured fiscal years.`);
+        throw new Error(`${file.name}: ${statementMonth} is outside the configured reporting periods.`);
       }
       return { file, statementMonth, fiscalYearId: detectedFiscalYearId };
     }).sort((left, right) => left.statementMonth.localeCompare(right.statementMonth) || left.file.name.localeCompare(right.file.name));
@@ -320,9 +388,9 @@ function ImportWorkflow({ bootstrap, imports, onComplete, busy, setBusy }) {
   return (
     <section className="card finance-panel">
       <div className="finance-section-heading"><div><div className="finance-eyebrow">Editor only</div><h2>Import monthly transactions</h2></div></div>
-      <div className="finance-alert is-info">Select all monthly files at once. Month and fiscal year are detected from each filename, and transactions are assigned to the system-managed consolidated historical source. No account or statement balances are required during import.</div>
+      <div className="finance-alert is-info">Select all monthly files at once. Month and reporting period are detected from each filename, and transactions are assigned to the system-managed consolidated historical source. No account or statement balances are required during import.</div>
       <div className="finance-import-checklist">
-        <div className="finance-section-heading"><div><h3>Import checklist</h3><p>Confirmed monthly imports across all configured fiscal years</p></div></div>
+        <div className="finance-section-heading"><div><h3>Import checklist</h3><p>Confirmed monthly imports across all configured reporting periods</p></div></div>
         {importChecklists.map(({ fiscalYear, items, completed }) => <section className="finance-import-checklist-year" key={fiscalYear.id}>
           <div className="finance-import-checklist-year-heading"><strong>{fiscalYear.label}</strong><span>{completed} of {items.length} imported</span></div>
           <div className="finance-import-checklist-grid">{items.map((item) => <div className={`finance-import-checklist-item ${item.imported ? "is-imported" : ""}`} key={item.statementMonth}>
@@ -334,7 +402,7 @@ function ImportWorkflow({ bootstrap, imports, onComplete, busy, setBusy }) {
       </div>
       <div className="finance-form-grid">
         <label className="is-wide"><span>Monthly CSV/XLSX files</span><input className="input finance-file-input" type="file" multiple accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => { try { selectFiles(event.target.files || []); event.target.value = ""; } catch (error) { setQueue([]); setPreview(null); setMessage(error.message); } }} /></label>
-        {current ? <><label><span>Detected month</span><input className="input" value={monthLabel(current.statementMonth)} disabled /></label><label><span>Detected fiscal year</span><input className="input" value={fiscalYearLabel} disabled /></label></> : null}
+        {current ? <><label><span>Detected month</span><input className="input" value={monthLabel(current.statementMonth)} disabled /></label><label><span>Detected reporting period</span><input className="input" value={fiscalYearLabel} disabled /></label></> : null}
       </div>
       {current ? <div className="finance-queue-status"><strong>File {queueIndex + 1} of {queue.length}</strong><span>{current.file.name}</span></div> : null}
       <button className="btn" disabled={busy || !current || Boolean(preview)} onClick={() => previewFile().catch((error) => setMessage(error.message))}>{busy ? "Parsing…" : "Parse and preview current file"}</button>
@@ -396,7 +464,7 @@ export default function BoardFinance() {
   const [dashboard, setDashboard] = useState(null);
   const [admin, setAdmin] = useState(EMPTY_ADMIN);
   const [transactions, setTransactions] = useState([]);
-  const [filters, setFilters] = useState({ search: "", month: "", account: "", category: "", classification: "", oneTime: "" });
+  const [filters, setFilters] = useState({ search: "", month: "", category: "", classification: "", oneTime: "" });
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(false);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
@@ -464,5 +532,5 @@ export default function BoardFinance() {
   if (authState === "error") return <div className="page"><div className="finance-alert is-danger">{error}</div></div>;
   if (!bootstrap || !fiscalYearId) return <LoadingCard />;
 
-  return <div className="finance-page"><header className="finance-page-header"><div><div className="finance-eyebrow">Board Member Area</div><h1>Financial dashboard</h1><p>Reconciled cash, fiscal-year performance, transaction detail, and deterministic financial insights.</p></div><div className="finance-header-actions"><label><span>Fiscal year</span><select className="input" value={fiscalYearId} onChange={(event) => setFiscalYearId(event.target.value)}>{bootstrap.fiscalYears.map((year) => <option key={year.id} value={year.id}>{year.label}</option>)}</select></label><span className={`finance-role-badge is-${bootstrap.session.role}`}>{isEditor ? "Finance editor" : "Board viewer"}</span><button className="btn-secondary" onClick={logout}>Sign out</button></div></header><nav className="finance-tabs" aria-label="Finance dashboard sections">{tabList.map(([id, label]) => <button key={id} className={activeTab === id ? "is-active" : ""} onClick={() => setActiveTab(id)}>{label}</button>)}</nav>{error ? <div className="finance-alert is-danger" role="alert"><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div> : null}{loading || !dashboard ? <LoadingCard /> : <main className="finance-content">{activeTab === "overview" ? <Overview dashboard={dashboard} /> : null}{activeTab === "cash-flow" ? <CashFlow dashboard={dashboard} /> : null}{activeTab === "spending" ? <Spending dashboard={dashboard} onTransactions={() => setActiveTab("transactions")} /> : null}{activeTab === "income" ? <Income dashboard={dashboard} /> : null}{activeTab === "comparison" ? <Comparison dashboard={dashboard} /> : null}{activeTab === "reconciliation" ? <Reconciliation dashboard={dashboard} isEditor={isEditor} documents={admin.documents} onSave={saveReconciliation} onPublish={publish} busy={busy} /> : null}{activeTab === "transactions" ? <Transactions rows={transactions} filters={filters} setFilters={setFilters} bootstrap={bootstrap} isEditor={isEditor} onEdit={setEditingTransaction} onExport={exportCsv} loading={transactionsLoading} /> : null}{activeTab === "admin" && isEditor ? <FinanceAdmin bootstrap={bootstrap} fiscalYearId={fiscalYearId} admin={admin} onRefresh={loadFinance} busy={busy} setBusy={setBusy} /> : null}</main>}{editingTransaction ? <TransactionEditor transaction={editingTransaction} categories={bootstrap.categories} onSave={saveTransaction} onClose={() => setEditingTransaction(null)} busy={busy} /> : null}</div>;
+  return <div className="finance-page"><header className="finance-page-header"><div><div className="finance-eyebrow">Board Member Area</div><h1>Financial dashboard</h1><p>Reconciled cash, reporting-period performance, transaction detail, and plain-language financial insights.</p></div><div className="finance-header-actions"><label><span>Reporting period</span><select className="input" value={fiscalYearId} onChange={(event) => setFiscalYearId(event.target.value)}>{bootstrap.fiscalYears.map((year) => <option key={year.id} value={year.id}>{year.label}</option>)}</select></label><span className={`finance-role-badge is-${bootstrap.session.role}`}>{isEditor ? "Finance editor" : "Board viewer"}</span><button className="btn-secondary" onClick={logout}>Sign out</button></div></header><nav className="finance-tabs" aria-label="Finance dashboard sections">{tabList.map(([id, label]) => <button key={id} className={activeTab === id ? "is-active" : ""} onClick={() => setActiveTab(id)}>{label}</button>)}</nav>{error ? <div className="finance-alert is-danger" role="alert"><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div> : null}{loading || !dashboard ? <LoadingCard /> : <main className="finance-content">{activeTab === "overview" ? <Overview dashboard={dashboard} /> : null}{activeTab === "cash-flow" ? <CashFlow dashboard={dashboard} /> : null}{activeTab === "spending" ? <Spending dashboard={dashboard} onTransactions={() => setActiveTab("transactions")} /> : null}{activeTab === "income" ? <Income dashboard={dashboard} /> : null}{activeTab === "comparison" ? <Comparison dashboard={dashboard} /> : null}{activeTab === "reconciliation" ? <Reconciliation dashboard={dashboard} isEditor={isEditor} documents={admin.documents} onSave={saveReconciliation} onPublish={publish} busy={busy} /> : null}{activeTab === "transactions" ? <Transactions rows={transactions} filters={filters} setFilters={setFilters} bootstrap={bootstrap} isEditor={isEditor} onEdit={setEditingTransaction} onExport={exportCsv} loading={transactionsLoading} /> : null}{activeTab === "admin" && isEditor ? <FinanceAdmin bootstrap={bootstrap} fiscalYearId={fiscalYearId} admin={admin} onRefresh={loadFinance} busy={busy} setBusy={setBusy} /> : null}</main>}{editingTransaction ? <TransactionEditor transaction={editingTransaction} categories={bootstrap.categories} onSave={saveTransaction} onClose={() => setEditingTransaction(null)} busy={busy} /> : null}</div>;
 }

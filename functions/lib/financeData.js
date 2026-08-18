@@ -5,6 +5,7 @@ import {
   deterministicInsights,
   fiscalMonths,
   fiscalYearForDate,
+  fiscalYearRangeLabel,
   normalizeDate,
   normalizeDescription,
   projectFiscalYear,
@@ -122,7 +123,7 @@ export async function getFinanceBootstrap(env, session) {
   ]);
   return {
     session: { role: session.role, actor: session.actor, expiresAt: session.expiresAt || "" },
-    fiscalYears: fiscalYears.map((row) => ({ id: row.id, label: row.label, startsOn: row.starts_on, endsOn: row.ends_on, status: row.status })),
+    fiscalYears: fiscalYears.map((row) => ({ id: row.id, label: fiscalYearRangeLabel(row.starts_on, row.ends_on), startsOn: row.starts_on, endsOn: row.ends_on, status: row.status })),
     accounts: accounts.map((row) => ({ id: row.id, name: row.name, accountType: row.account_type, lastFour: row.last_four || "", isActive: bool(row.is_active) })),
     categories: categories.map((row) => ({ id: row.id, name: row.name, classification: row.classification, displayOrder: Number(row.display_order), isActive: bool(row.is_active) })),
   };
@@ -238,6 +239,57 @@ async function loadReconciliations(env, fiscalYearId) {
   return rows.map(mapReconciliation);
 }
 
+function monthRange(firstMonth, lastMonth) {
+  if (!/^\d{4}-\d{2}$/.test(firstMonth) || !/^\d{4}-\d{2}$/.test(lastMonth) || firstMonth > lastMonth) return [];
+  const months = [];
+  let [year, month] = firstMonth.split("-").map(Number);
+  while (`${year}-${String(month).padStart(2, "0")}` <= lastMonth) {
+    months.push(`${year}-${String(month).padStart(2, "0")}`);
+    month += 1;
+    if (month === 13) { year += 1; month = 1; }
+  }
+  return months;
+}
+
+async function loadHistoricalBalances(env) {
+  const [boundary, controls, reconciliations] = await Promise.all([
+    first(env, `SELECT MIN(substr(starts_on, 1, 7)) AS first_month FROM finance_fiscal_years`),
+    all(env, `SELECT statement_month, expected_cents
+              FROM finance_validation_controls
+              WHERE metric = 'ending_cash' AND statement_month IS NOT NULL
+              ORDER BY statement_month`),
+    all(env, `SELECT r.statement_month, SUM(r.statement_ending_balance_cents) AS balance_cents,
+                     CASE WHEN SUM(CASE WHEN r.status = 'reconciled' THEN 0 ELSE 1 END) = 0
+                          THEN 'reconciled' ELSE 'unreconciled' END AS status
+              FROM finance_reconciliations r
+              LEFT JOIN finance_pending_statement_balances pending
+                ON pending.statement_month = r.statement_month AND pending.account_id = r.account_id
+              WHERE pending.statement_month IS NULL
+              GROUP BY r.statement_month
+              ORDER BY r.statement_month`),
+  ]);
+  const knownByMonth = new Map(controls.map((row) => [row.statement_month, {
+    balanceCents: Number(row.expected_cents),
+    status: "control",
+    source: "statement_control",
+  }]));
+  reconciliations.forEach((row) => knownByMonth.set(row.statement_month, {
+    balanceCents: Number(row.balance_cents),
+    status: row.status,
+    source: "reconciliation",
+  }));
+  const knownMonths = [...knownByMonth.keys()].sort();
+  const lastMonth = knownMonths.at(-1);
+  if (!lastMonth) return [];
+  const firstMonth = boundary?.first_month && boundary.first_month <= lastMonth ? boundary.first_month : knownMonths[0];
+  return monthRange(firstMonth, lastMonth).map((statementMonth) => ({
+    statementMonth,
+    balanceCents: knownByMonth.get(statementMonth)?.balanceCents ?? null,
+    status: knownByMonth.get(statementMonth)?.status || "missing",
+    source: knownByMonth.get(statementMonth)?.source || "",
+  }));
+}
+
 function latestReconciledBalances(reconciliations) {
   const byAccount = new Map();
   reconciliations
@@ -302,7 +354,7 @@ export async function getFinanceDashboard(env, session, fiscalYearId) {
   if (!fiscalYear) throw Object.assign(new Error("Fiscal year not found."), { status: 404 });
   const priorStartYear = Number(fiscalYear.starts_on.slice(0, 4)) - 1;
   const priorFiscalYearId = `fy_${priorStartYear}_${priorStartYear + 1}`;
-  const [transactions, priorTransactions, reconciliations, restrictedFunds, commitments, settings, forecasts, issues, controls, imports] = await Promise.all([
+  const [transactions, priorTransactions, reconciliations, restrictedFunds, commitments, settings, forecasts, issues, controls, imports, historicalBalances] = await Promise.all([
     loadTransactions(env, { fiscalYearId, session }),
     loadTransactions(env, { fiscalYearId: priorFiscalYearId, session }),
     loadReconciliations(env, fiscalYearId),
@@ -313,6 +365,7 @@ export async function getFinanceDashboard(env, session, fiscalYearId) {
     all(env, `SELECT * FROM finance_data_issues WHERE status = 'open' AND (fiscal_year_id = ? OR fiscal_year_id IS NULL) ORDER BY severity DESC, statement_month`, [fiscalYearId]),
     all(env, `SELECT * FROM finance_validation_controls WHERE fiscal_year_id = ? ORDER BY statement_month, id`, [fiscalYearId]),
     all(env, `SELECT duplicate_count, status FROM finance_import_batches WHERE fiscal_year_id = ? AND status != 'rolled_back'`, [fiscalYearId]),
+    loadHistoricalBalances(env),
   ]);
   const months = fiscalMonths(Number(fiscalYear.starts_on.slice(0, 4)));
   const summary = summarizeTransactions(transactions);
@@ -356,7 +409,7 @@ export async function getFinanceDashboard(env, session, fiscalYearId) {
     };
   });
   return {
-    fiscalYear: { id: fiscalYear.id, label: fiscalYear.label, startsOn: fiscalYear.starts_on, endsOn: fiscalYear.ends_on },
+    fiscalYear: { id: fiscalYear.id, label: fiscalYearRangeLabel(fiscalYear.starts_on, fiscalYear.ends_on), startsOn: fiscalYear.starts_on, endsOn: fiscalYear.ends_on },
     overview: {
       bankBalancesCents,
       reconciledCashOnHandCents,
@@ -372,6 +425,7 @@ export async function getFinanceDashboard(env, session, fiscalYearId) {
       hasUnreconciled: reconciliations.length === 0 || reconciliations.some((item) => item.status !== "reconciled" || !item.balancesKnown) || missingMonths.length > 0,
     },
     monthly: monthlyCashFlow(transactions, months, forecasts),
+    historicalBalances,
     spending: {
       byCategory: categoryTotals(transactions, "expense"),
       routineCents: summary.normalizedExpensesCents,
@@ -794,10 +848,10 @@ export function transactionsToCsv(transactions) {
     if (/^[=+\-@]/.test(text)) text = `'${text}`;
     return `"${text.replaceAll('"', '""')}"`;
   };
-  const rows = [["Transaction date", "Posted date", "Amount", "Classification", "Category", "Source category", "Description", "Account", "Fiscal year", "Statement month", "One-time", "Capital", "Internal transfer", "Restricted", "Reconciliation", "Notes"]];
+  const rows = [["Transaction date", "Posted date", "Amount", "Classification", "Category", "Source category", "Description", "Account", "Reporting period", "Statement month", "One-time", "Capital", "Internal transfer", "Restricted", "Reconciliation", "Notes"]];
   transactions.forEach((transaction) => rows.push([
     transaction.transactionDate, transaction.postedDate, (transaction.amountCents / 100).toFixed(2), transaction.classification,
-    transaction.categoryName, transaction.sourceCategory, transaction.description, transaction.accountName, transaction.fiscalYearId,
+    transaction.categoryName, transaction.sourceCategory, transaction.description, transaction.accountName, fiscalYearForDate(transaction.transactionDate).label,
     transaction.statementMonth, transaction.isOneTime ? "yes" : "no", transaction.isCapital ? "yes" : "no",
     transaction.isInternalTransfer ? "yes" : "no", transaction.isRestricted ? "yes" : "no", transaction.reconciliationStatus,
     transaction.notes,
