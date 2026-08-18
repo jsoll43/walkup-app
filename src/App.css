@@ -459,10 +459,6 @@ button:disabled {
   box-shadow: none;
 }
 
-.finance-comparison-tabs {
-  max-width: 760px;
-}
-
 .finance-comparison-year,
 .finance-comparison-change {
   display: grid;
@@ -1181,6 +1177,37 @@ button:disabled {
   font-weight: 900;
   letter-spacing: 0.4px;
   text-transform: uppercase;
+}
+
+.finance-month-card.is-not-ready {
+  min-height: 225px;
+  border: 1px dashed rgba(76, 96, 116, 0.38);
+  background: #e8eef4;
+  box-shadow: none;
+}
+
+.finance-month-card-heading span.is-not-ready {
+  background: #d7e0e9;
+  color: #40566d;
+}
+
+.finance-month-not-ready {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  min-height: 155px;
+  color: #526375;
+  text-align: center;
+}
+
+.finance-month-not-ready strong {
+  color: var(--bgsl-navy-dark);
+  font-size: 17px;
+}
+
+.finance-month-not-ready span {
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .finance-bars,

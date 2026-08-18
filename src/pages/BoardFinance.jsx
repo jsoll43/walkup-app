@@ -451,8 +451,10 @@ function Overview({ dashboard }) {
 
 function CashFlow({ dashboard }) {
   const hasPreliminaryActuals = dashboard.monthly.some((row) => row.hasActual && row.isPreliminary);
-  const chartRows = dashboard.cashFlowHistory || dashboard.monthly;
-  return <div className="finance-section-stack">{hasPreliminaryActuals ? <div className="finance-alert is-warning"><strong>Preliminary activity.</strong> Recorded transactions are shown before statement validation or reconciliation.</div> : null}<div className="finance-two-column finance-align-start"><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Actuals</div><h2>Monthly cash flow</h2><p>Use the controls below the graph to move through the reporting period.</p></div></div><MonthlyChart key={`${chartRows[0]?.month || dashboard.fiscalYear.id}-${chartRows.at(-1)?.month || "empty"}`} rows={chartRows} /></section><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Balance history</div><h2>Historical balance</h2><p>Official points anchor calculated balances. Hollow points are based on recorded activity and are not yet validated or reconciled.</p></div></div><HistoricalBalanceChart key={dashboard.historicalBalances.at(-1)?.statementMonth || "empty"} rows={dashboard.historicalBalances} /></section></div><div className="finance-month-cards">{dashboard.monthly.map((row) => <div className="card finance-month-card" key={row.month}><div className="finance-month-card-heading"><h3>{monthLabel(row.month)}</h3>{row.isPreliminary ? <span>Preliminary</span> : null}</div><dl><div><dt>Income</dt><dd>{money(row.incomeCents)}</dd></div><div><dt>Expenses</dt><dd>{money(row.expensesCents)}</dd></div><div><dt>Net</dt><dd className={row.netCents < 0 ? "is-negative" : "is-positive"}>{money(row.netCents)}</dd></div><div><dt>Running net</dt><dd>{money(row.runningNetCents)}</dd></div>{row.hasForecast ? <div><dt>Forecast net</dt><dd>{money(row.forecastNetCents)} <small>Projected</small></dd></div> : null}</dl></div>)}</div></div>;
+  const allChartRows = dashboard.cashFlowHistory || dashboard.monthly;
+  const latestReadyIndex = allChartRows.reduce((latest, row, index) => row.hasActual || row.hasForecast ? index : latest, -1);
+  const chartRows = latestReadyIndex >= 0 ? allChartRows.slice(0, latestReadyIndex + 1) : [];
+  return <div className="finance-section-stack">{hasPreliminaryActuals ? <div className="finance-alert is-warning"><strong>Preliminary activity.</strong> Recorded transactions are shown before statement validation or reconciliation.</div> : null}<div className="finance-two-column finance-align-start"><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Actuals</div><h2>Monthly cash flow</h2><p>Use the controls below the graph to move through the reporting period.</p></div></div><MonthlyChart key={`${chartRows[0]?.month || dashboard.fiscalYear.id}-${chartRows.at(-1)?.month || "empty"}`} rows={chartRows} /></section><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Balance history</div><h2>Historical balance</h2><p>Official points anchor calculated balances. Hollow points are based on recorded activity and are not yet validated or reconciled.</p></div></div><HistoricalBalanceChart key={dashboard.historicalBalances.at(-1)?.statementMonth || "empty"} rows={dashboard.historicalBalances} /></section></div><div className="finance-month-cards">{dashboard.monthly.map((row) => { const isLoaded = row.isLoaded ?? row.hasActual; return <div className={`card finance-month-card ${isLoaded ? "" : "is-not-ready"}`} key={row.month}><div className="finance-month-card-heading"><h3>{monthLabel(row.month)}</h3>{isLoaded ? (row.isPreliminary ? <span>Preliminary</span> : null) : <span className="is-not-ready">Not uploaded</span>}</div>{isLoaded ? <dl><div><dt>Income</dt><dd>{money(row.incomeCents)}</dd></div><div><dt>Expenses</dt><dd>{money(row.expensesCents)}</dd></div><div><dt>Net</dt><dd className={row.netCents < 0 ? "is-negative" : "is-positive"}>{money(row.netCents)}</dd></div><div><dt>Running net</dt><dd>{money(row.runningNetCents)}</dd></div>{row.hasForecast ? <div><dt>Forecast net</dt><dd>{money(row.forecastNetCents)} <small>Projected</small></dd></div> : null}</dl> : <div className="finance-month-not-ready"><strong>Numbers not ready</strong><span>No file has been uploaded for this month.</span></div>}</div>; })}</div></div>;
 }
 
 function Spending({ dashboard, onTransactions }) {
@@ -464,27 +466,15 @@ function Income({ dashboard }) {
 }
 
 function Comparison({ dashboard }) {
-  const [scope, setScope] = useState("ytd");
   const yearOverYear = dashboard.yearOverYear;
-  const comparison = scope === "full"
-    ? (yearOverYear.fullFiscalYear || yearOverYear)
-    : (yearOverYear.fiscalYearToDate || yearOverYear);
-  const yearToDate = yearOverYear.fiscalYearToDate || yearOverYear;
-  const yearToDateCoverage = monthRangeLabel(yearToDate.currentStartMonth, yearToDate.currentEndMonth);
-  const fullFiscalYearCoverage = monthRangeLabel(dashboard.fiscalYear.startsOn.slice(0, 7), dashboard.fiscalYear.endsOn.slice(0, 7));
+  const comparison = yearOverYear.fullFiscalYear || yearOverYear;
   const currentCoverage = monthRangeLabel(comparison.currentStartMonth, comparison.currentEndMonth);
   const priorCoverage = monthRangeLabel(comparison.priorStartMonth, comparison.priorEndMonth);
-  const comparisonNote = scope === "full"
-    ? comparison.currentIsComplete && comparison.priorIsComplete
-      ? "Both columns use all recorded activity for their full fiscal years."
-      : `This view uses all recorded activity: current through ${monthLabel(comparison.currentEndMonth)} and prior through ${monthLabel(comparison.priorEndMonth)}. Fiscal year to date remains the fair progress comparison.`
-    : `Both columns use the same fiscal-year months (${currentCoverage}) for a fair progress comparison.`;
+  const comparisonNote = comparison.currentIsComplete && comparison.priorIsComplete
+    ? "Both sections use all recorded activity for their full fiscal years."
+    : `This full-year view uses all recorded activity currently available: current through ${monthLabel(comparison.currentEndMonth)} and prior through ${monthLabel(comparison.priorEndMonth)}.`;
   return (
     <div className="finance-section-stack">
-      <div className="finance-subtabs finance-comparison-tabs" aria-label="Year-over-year comparison range">
-        <button type="button" className={scope === "ytd" ? "is-active" : ""} aria-pressed={scope === "ytd"} onClick={() => setScope("ytd")}>Year to date: {yearToDateCoverage}</button>
-        <button type="button" className={scope === "full" ? "is-active" : ""} aria-pressed={scope === "full"} onClick={() => setScope("full")}>Full fiscal year: {fullFiscalYearCoverage}</button>
-      </div>
       <div className={`finance-alert ${comparison.prior.transactionCount ? "is-info" : "is-warning"}`}>
         {comparison.prior.transactionCount ? comparisonNote : "Prior fiscal-year activity is not available, so changes cannot yet be compared."}
       </div>

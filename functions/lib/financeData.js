@@ -433,7 +433,7 @@ export async function getFinanceDashboard(env, session, fiscalYearId, options = 
     all(env, `SELECT * FROM finance_forecasts WHERE fiscal_year_id = ?`, [fiscalYearId]),
     all(env, `SELECT * FROM finance_data_issues WHERE status = 'open' AND (fiscal_year_id = ? OR fiscal_year_id IS NULL) ORDER BY severity DESC, statement_month`, [fiscalYearId]),
     all(env, `SELECT * FROM finance_validation_controls WHERE fiscal_year_id = ? ORDER BY statement_month, id`, [fiscalYearId]),
-    all(env, `SELECT duplicate_count, status FROM finance_import_batches WHERE fiscal_year_id = ? AND status != 'rolled_back'`, [fiscalYearId]),
+    all(env, `SELECT statement_month, duplicate_count, status FROM finance_import_batches WHERE fiscal_year_id = ? AND status != 'rolled_back'`, [fiscalYearId]),
     loadHistoricalBalances(env),
   ]);
   const months = fiscalMonths(Number(fiscalYear.starts_on.slice(0, 4)));
@@ -480,7 +480,14 @@ export async function getFinanceDashboard(env, session, fiscalYearId, options = 
   const priorEndMonth = shiftDateByYears(`${currentEndMonth}-01`, -1).slice(0, 7);
   const priorFiscalYearEndMonth = shiftDateByYears(fiscalYear.ends_on, -1).slice(0, 7);
   const priorFullEndMonth = priorActualMonths.at(-1) || priorStartMonth;
-  const monthly = monthlyCashFlow(transactions, months, forecasts);
+  const loadedMonths = new Set([
+    ...actualMonths,
+    ...imports.filter((batch) => batch.status === "imported").map((batch) => batch.statement_month),
+  ]);
+  const monthly = monthlyCashFlow(transactions, months, forecasts).map((row) => ({
+    ...row,
+    isLoaded: loadedMonths.has(row.month),
+  }));
   const cashFlowHistory = monthlyCashFlow(
     [...priorTransactions, ...transactions],
     [...fiscalMonths(priorStartYear), ...months],
