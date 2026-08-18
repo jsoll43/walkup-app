@@ -125,7 +125,16 @@ test("historical import needs neither account selection nor statement balances",
   assert.equal(saved.balancesKnown, true);
   assert.equal(saved.differenceCents, 0);
   assert.equal(database.prepare("SELECT COUNT(*) AS count FROM finance_pending_statement_balances").get().count, 0);
+  const reconciledDraftDashboard = await getFinanceDashboard(env, viewer, "fy_2025_2026");
+  assert.equal(reconciledDraftDashboard.overview.bankBalancesCents, 12500);
+  assert.equal(reconciledDraftDashboard.overview.availableCashCents, 12500);
+  assert.equal(reconciledDraftDashboard.overview.projectedEndingBalance.valueCents, 12500);
+  assert.equal(reconciledDraftDashboard.overview.hasReconciledBalances, true);
+  assert.equal(reconciledDraftDashboard.overview.balanceIsPreliminary, true);
   assert.equal((await setFinancePeriodPublication(env, session, "2025-10", true)).status, "published");
+  const publishedDashboard = await getFinanceDashboard(env, viewer, "fy_2025_2026");
+  assert.equal(publishedDashboard.overview.bankBalancesCents, 12500);
+  assert.equal(publishedDashboard.overview.balanceIsPreliminary, false);
   assert.equal((await getFinanceTransactions(env, viewer, "fy_2025_2026", {})).length, 1);
   database.close();
 });

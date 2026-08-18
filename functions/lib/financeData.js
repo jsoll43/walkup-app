@@ -426,10 +426,8 @@ export async function getFinanceDashboard(env, session, fiscalYearId, options = 
   ]);
   const months = fiscalMonths(Number(fiscalYear.starts_on.slice(0, 4)));
   const summary = summarizeTransactions(transactions);
-  const balanceReconciliations = session.role === "editor"
-    ? reconciliations
-    : reconciliations.filter((item) => item.periodStatus === "published");
-  const latestBalances = latestReconciledBalances(balanceReconciliations);
+  const latestBalances = latestReconciledBalances(reconciliations);
+  const balanceIsPreliminary = latestBalances.some((item) => item.periodStatus !== "published");
   const bankBalancesCents = latestBalances.filter((item) => item.accountType === "bank").reduce((sum, item) => sum + item.statementEndingBalanceCents, 0);
   const reconciledCashOnHandCents = latestBalances.filter((item) => item.accountType === "cash").reduce((sum, item) => sum + item.statementEndingBalanceCents, 0);
   const restrictedFundsCents = restrictedFunds.reduce((sum, item) => sum + Number(item.amount_cents), 0);
@@ -488,6 +486,8 @@ export async function getFinanceDashboard(env, session, fiscalYearId, options = 
       ytdSurplusCents: summary.surplusCents,
       projectedEndingBalance: projection,
       latestReconciledMonth,
+      hasReconciledBalances: latestBalances.length > 0,
+      balanceIsPreliminary,
       hasUnreconciled: reconciliations.length === 0 || reconciliations.some((item) => item.status !== "reconciled" || !item.balancesKnown) || missingMonths.length > 0,
     },
     monthly,
