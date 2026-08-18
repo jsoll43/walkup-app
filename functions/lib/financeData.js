@@ -319,8 +319,22 @@ function latestReconciledBalances(reconciliations) {
 function categoryChanges(current, prior) {
   const currentMap = new Map(categoryTotals(current, "expense").map((row) => [row.name, row.amountCents]));
   const priorMap = new Map(categoryTotals(prior, "expense").map((row) => [row.name, row.amountCents]));
+  const monthsByCategory = (transactions) => new Map(
+    [...groupBy(
+      transactions.filter((transaction) => transaction.classification === "expense" && !transaction.isInternalTransfer),
+      (transaction) => transaction.categoryName || "Uncategorized",
+    ).entries()].map(([name, rows]) => [name, [...new Set(rows.map((row) => row.statementMonth).filter(Boolean))]]),
+  );
+  const currentMonths = monthsByCategory(current);
+  const priorMonths = monthsByCategory(prior);
   return [...new Set([...currentMap.keys(), ...priorMap.keys()])]
-    .map((name) => ({ name, currentCents: currentMap.get(name) || 0, priorCents: priorMap.get(name) || 0, changeCents: (currentMap.get(name) || 0) - (priorMap.get(name) || 0) }))
+    .map((name) => ({
+      name,
+      currentCents: currentMap.get(name) || 0,
+      priorCents: priorMap.get(name) || 0,
+      changeCents: (currentMap.get(name) || 0) - (priorMap.get(name) || 0),
+      statementMonths: [...new Set([...(currentMonths.get(name) || []), ...(priorMonths.get(name) || [])])].sort(),
+    }))
     .sort((left, right) => Math.abs(right.changeCents) - Math.abs(left.changeCents));
 }
 
@@ -457,7 +471,7 @@ export async function getFinanceDashboard(env, session, fiscalYearId, options = 
   );
   const missingMonths = months.filter((month) => month <= (actualMonths.at(-1) || "") && !reconciliations.some((item) => item.statementMonth === month));
   const duplicateCount = imports.reduce((sum, batch) => sum + Number(batch.duplicate_count || 0), 0);
-  const mappedIssues = issues.map((issue) => ({ issueType: issue.issue_type, severity: issue.severity, description: issue.description, amountCents: issue.amount_cents == null ? null : Number(issue.amount_cents), status: issue.status }));
+  const mappedIssues = issues.map((issue) => ({ issueType: issue.issue_type, statementMonth: issue.statement_month || "", severity: issue.severity, description: issue.description, amountCents: issue.amount_cents == null ? null : Number(issue.amount_cents), status: issue.status }));
   const mappedControls = controls
     .filter((control) => !["one_time_expenses", "normalized_expenses"].includes(control.metric))
     .map((control) => ({ ...control, expectedCents: Number(control.expected_cents) }));

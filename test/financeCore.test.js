@@ -76,10 +76,13 @@ test("calls out a capital project as a year-over-year insight without splitting 
       incomeChangeCents: 0,
       expenseChangeCents: -1497500,
     },
-    notableCapitalExpenses: [{ comparisonPeriod: "prior", description: "Landscape project", amountCents: -1497500 }],
+    categoryChanges: [{ name: "Field improvements", currentCents: 0, priorCents: 1497500, changeCents: -1497500, statementMonths: ["2025-05"] }],
+    notableCapitalExpenses: [{ comparisonPeriod: "prior", statementMonth: "2025-05", description: "Landscape project", amountCents: -1497500 }],
   });
+  const categoryInsight = insights.find((insight) => insight.type === "category_change");
   const capitalInsight = insights.find((insight) => insight.type === "capital_expense_difference");
-  assert.match(capitalInsight.text, /last year's capital project: Landscape project/i);
+  assert.equal(categoryInsight.text, "Field improvements [May 2025] changed by a decrease.");
+  assert.match(capitalInsight.text, /last year's capital project \[May 2025\]: Landscape project/i);
   assert.equal(capitalInsight.amountCents, 1497500);
 });
 

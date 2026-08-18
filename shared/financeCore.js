@@ -339,6 +339,18 @@ function percentChange(current, previous) {
   return Math.round(((current - previous) * 1000) / previous) / 10;
 }
 
+function insightMonthContext(statementMonths, limit = 2) {
+  const months = [...new Set((statementMonths || []).filter((month) => /^\d{4}-\d{2}$/.test(month)))].sort();
+  if (!months.length || months.length > limit) return "";
+  const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return ` [${months.map((month) => `${names[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`).join(", ")}]`;
+}
+
+function datedInsightText(text, statementMonth) {
+  const context = insightMonthContext([statementMonth], 1);
+  return context ? `${String(text).replace(/[.\s]+$/, "")}${context}.` : text;
+}
+
 export function deterministicInsights({ comparison, categoryChanges = [], notableCapitalExpenses = [], reconciliations = [], missingMonths = [], duplicateCount = 0, projection = null, dataIssues = [] }) {
   const insights = [];
   if (comparison) {
@@ -368,13 +380,13 @@ export function deterministicInsights({ comparison, categoryChanges = [], notabl
   categoryChanges.slice(0, 3).forEach((change) => insights.push({
     type: "category_change",
     tone: change.changeCents > 0 ? "warning" : "neutral",
-    text: `${change.name} changed by ${change.changeCents >= 0 ? "an increase" : "a decrease"}.`,
+    text: `${change.name}${insightMonthContext(change.statementMonths)} changed by ${change.changeCents >= 0 ? "an increase" : "a decrease"}.`,
     amountCents: Math.abs(change.changeCents),
   }));
   notableCapitalExpenses.slice(0, 3).forEach((transaction) => insights.push({
     type: "capital_expense_difference",
     tone: "neutral",
-    text: `A major year-over-year difference is ${transaction.comparisonPeriod === "prior" ? "last year's" : "this year's"} capital project: ${transaction.description}.`,
+    text: `A major year-over-year difference is ${transaction.comparisonPeriod === "prior" ? "last year's" : "this year's"} capital project${insightMonthContext([transaction.statementMonth], 1)}: ${transaction.description}.`,
     amountCents: Math.abs(transaction.amountCents),
   }));
   const unreconciled = reconciliations.filter((item) => item.status !== "reconciled");
@@ -382,7 +394,7 @@ export function deterministicInsights({ comparison, categoryChanges = [], notabl
   if (missingMonths.length) insights.push({ type: "missing_months", tone: "warning", text: `Missing statements: ${missingMonths.join(", ")}.` });
   if (duplicateCount) insights.push({ type: "duplicates", tone: "warning", text: `${duplicateCount} possible duplicate transaction${duplicateCount === 1 ? " requires" : "s require"} review.` });
   if (projection) insights.push({ type: "projection", tone: "neutral", text: projection.isProjected ? "Projected fiscal-year ending balance." : "No future forecast is loaded; this is the current reconciled balance.", amountCents: projection.valueCents, isProjected: projection.isProjected });
-  dataIssues.filter((issue) => issue.status === "open").forEach((issue) => insights.push({ type: issue.issueType, tone: issue.severity === "error" ? "danger" : "warning", text: issue.description, amountCents: issue.amountCents }));
+  dataIssues.filter((issue) => issue.status === "open").forEach((issue) => insights.push({ type: issue.issueType, tone: issue.severity === "error" ? "danger" : "warning", text: datedInsightText(issue.description, issue.statementMonth), amountCents: issue.amountCents }));
   return insights;
 }
 
