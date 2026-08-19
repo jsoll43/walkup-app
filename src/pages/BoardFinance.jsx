@@ -117,17 +117,16 @@ function FinanceLogin({ onLogin }) {
       <form className="card finance-login-card" onSubmit={submit}>
         <div className="finance-eyebrow">Board Member Area</div>
         <h1>BGSL Finance</h1>
-        <p>Financial records are restricted to named Board members and authorized finance editors.</p>
+        <p>This area is for BGSL Board member access only.</p>
         <div className="finance-role-switch" aria-label="Finance role">
           <button type="button" className={role === "viewer" ? "is-active" : ""} onClick={() => { setRole("viewer"); setCredential(""); setError(""); }}>Board member</button>
-          <button type="button" className={role === "editor" ? "is-active" : ""} onClick={() => { setRole("editor"); setCredential(""); setError(""); }}>Finance editor</button>
+          <button type="button" className={role === "editor" ? "is-active" : ""} onClick={() => { setRole("editor"); setCredential(""); setError(""); }}>Admin login</button>
         </div>
-        <label className="label" htmlFor="finance-password">{role === "viewer" ? "Your six-digit Board PIN" : "Finance editor / admin key"}</label>
+        <label className="label" htmlFor="finance-password">{role === "viewer" ? "Your six-digit Board PIN" : "Admin key"}</label>
         <input id="finance-password" className="input" type={show ? "text" : "password"} inputMode={role === "viewer" ? "numeric" : undefined} maxLength={role === "viewer" ? 6 : undefined} autoComplete="current-password" value={credential} onChange={(event) => setCredential(role === "viewer" ? event.target.value.replace(/\D/g, "").slice(0, 6) : event.target.value)} />
         <label className="finance-check"><input type="checkbox" checked={show} onChange={() => setShow((value) => !value)} /> Show {role === "viewer" ? "PIN" : "key"}</label>
         {error ? <div className="finance-alert is-danger" role="alert">{error}</div> : null}
         <button className="btn" disabled={loading || (role === "viewer" ? credential.length !== 6 : !credential.trim())}>{loading ? "Signing in…" : "Sign in"}</button>
-        <p className="finance-security-note">Your credential is exchanged for a short-lived, HttpOnly session. Board PINs are stored only as salted one-way hashes.</p>
       </form>
     </div>
   );

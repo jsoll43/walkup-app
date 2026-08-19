@@ -334,11 +334,6 @@ button:disabled {
   margin-top: 3px;
 }
 
-.finance-security-note {
-  margin-bottom: 0;
-  font-size: 12px;
-}
-
 .finance-page-header {
   display: flex;
   align-items: flex-end;
