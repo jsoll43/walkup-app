@@ -140,6 +140,19 @@ function EmptyState({ children }) {
   return <div className="finance-empty">{children}</div>;
 }
 
+function auditActionLabel(event) {
+  const isBoardPinLogin = event.action === "board_member_pin_login"
+    || (event.action === "session_created" && event.actorRole === "viewer");
+  if (isBoardPinLogin) return "Board member signed in with PIN";
+  if (event.action === "session_created" && event.actorRole === "editor") return "Admin signed in";
+  return event.action.replaceAll("_", " ");
+}
+
+function auditEntityLabel(event) {
+  if (event.action === "board_member_pin_login" || event.action === "session_created") return "Finance login";
+  return `${event.entityType}: ${event.entityId}`;
+}
+
 function Metric({ label, value, note, tone = "" }) {
   return (
     <div className={`finance-metric ${tone ? `is-${tone}` : ""}`}>
@@ -754,7 +767,7 @@ function FinanceAdmin({ bootstrap, fiscalYearId, admin, onRefresh, busy, setBusy
   const [subtab, setSubtab] = useState("imports");
   async function mutate(path, options) { setBusy(true); try { await api(path, options); await onRefresh(); } finally { setBusy(false); } }
   async function rollback(batchId) { if (!window.confirm("Roll back this batch? Imported rows will be soft-deleted and the month unpublished.")) return; await mutate(`imports/${batchId}/rollback`, JsonRequest("POST", {})); }
-  return <div className="finance-section-stack"><div className="finance-subtabs"><button className={subtab === "imports" ? "is-active" : ""} onClick={() => setSubtab("imports")}>Imports</button><button className={subtab === "members" ? "is-active" : ""} onClick={() => setSubtab("members")}>Board members</button><button className={subtab === "settings" ? "is-active" : ""} onClick={() => setSubtab("settings")}>Funds, obligations & forecast</button><button className={subtab === "audit" ? "is-active" : ""} onClick={() => setSubtab("audit")}>Audit history</button></div>{subtab === "imports" ? <><ImportWorkflow bootstrap={bootstrap} imports={admin.imports} onComplete={onRefresh} busy={busy} setBusy={setBusy} /><section className="card finance-panel"><h2>Import batches</h2>{admin.imports.length ? <div className="finance-ranked-list">{admin.imports.map((batch) => <div key={batch.id}><span>{batch.sourceFilename}<small>{monthLabel(batch.statementMonth)} · {batch.accountName} · {batch.status} · {batch.importedCount}/{batch.rowCount} rows · {batch.duplicateCount} duplicate warnings</small></span>{batch.status === "imported" ? <button className="btn-danger btn-sm" disabled={busy} onClick={() => rollback(batch.id)}>Roll back</button> : <strong>{batch.status}</strong>}</div>)}</div> : <EmptyState>No import batches yet.</EmptyState>}</section></> : null}{subtab === "members" ? <BoardMemberAdmin members={admin.boardMembers || []} pinStorageReady={admin.pinStorageReady !== false} onMutate={mutate} busy={busy} /> : null}{subtab === "settings" ? <SimpleAdminForms bootstrap={bootstrap} fiscalYearId={fiscalYearId} admin={admin} onMutate={mutate} busy={busy} /> : null}{subtab === "audit" ? <section className="card finance-panel"><h2>Import and edit audit history</h2>{admin.audit.length ? <div className="finance-audit-list">{admin.audit.map((event) => <article key={event.id}><strong>{event.action.replaceAll("_", " ")}</strong><span>{event.actor} · {new Date(event.createdAt).toLocaleString()}</span><small>{event.entityType}: {event.entityId}</small></article>)}</div> : <EmptyState>No audit events yet.</EmptyState>}</section> : null}</div>;
+  return <div className="finance-section-stack"><div className="finance-subtabs"><button className={subtab === "imports" ? "is-active" : ""} onClick={() => setSubtab("imports")}>Imports</button><button className={subtab === "members" ? "is-active" : ""} onClick={() => setSubtab("members")}>Board members</button><button className={subtab === "settings" ? "is-active" : ""} onClick={() => setSubtab("settings")}>Funds, obligations & forecast</button><button className={subtab === "audit" ? "is-active" : ""} onClick={() => setSubtab("audit")}>Audit history</button></div>{subtab === "imports" ? <><ImportWorkflow bootstrap={bootstrap} imports={admin.imports} onComplete={onRefresh} busy={busy} setBusy={setBusy} /><section className="card finance-panel"><h2>Import batches</h2>{admin.imports.length ? <div className="finance-ranked-list">{admin.imports.map((batch) => <div key={batch.id}><span>{batch.sourceFilename}<small>{monthLabel(batch.statementMonth)} · {batch.accountName} · {batch.status} · {batch.importedCount}/{batch.rowCount} rows · {batch.duplicateCount} duplicate warnings</small></span>{batch.status === "imported" ? <button className="btn-danger btn-sm" disabled={busy} onClick={() => rollback(batch.id)}>Roll back</button> : <strong>{batch.status}</strong>}</div>)}</div> : <EmptyState>No import batches yet.</EmptyState>}</section></> : null}{subtab === "members" ? <BoardMemberAdmin members={admin.boardMembers || []} pinStorageReady={admin.pinStorageReady !== false} onMutate={mutate} busy={busy} /> : null}{subtab === "settings" ? <SimpleAdminForms bootstrap={bootstrap} fiscalYearId={fiscalYearId} admin={admin} onMutate={mutate} busy={busy} /> : null}{subtab === "audit" ? <section className="card finance-panel"><h2>Finance audit history</h2>{admin.audit.length ? <div className="finance-audit-list">{admin.audit.map((event) => <article key={event.id}><strong>{auditActionLabel(event)}</strong><span>{event.actor} · {new Date(event.createdAt).toLocaleString()}</span><small>{auditEntityLabel(event)}</small></article>)}</div> : <EmptyState>No audit events yet.</EmptyState>}</section> : null}</div>;
 }
 
 export default function BoardFinance() {

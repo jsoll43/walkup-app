@@ -164,10 +164,14 @@ export async function createFinanceSession(request, env, { role, password, pin }
     await env.DB.prepare(`UPDATE finance_board_members SET last_login_at = ?, updated_at = ? WHERE id = ?`).bind(createdAt, createdAt, boardMemberId).run();
   }
   const auditId = `finance_audit_${crypto.randomUUID()}`;
+  const auditAction = requestedRole === "viewer" ? "board_member_pin_login" : "session_created";
   await env.DB.prepare(
     `INSERT INTO finance_audit_events (id, actor, actor_role, action, entity_type, entity_id, details_json, created_at)
-     VALUES (?, ?, ?, 'session_created', 'finance_session', ?, ?, ?)`,
-  ).bind(auditId, actor, requestedRole, boardMemberId || "finance_editor", JSON.stringify({ boardMemberId }), createdAt).run();
+     VALUES (?, ?, ?, ?, 'finance_session', ?, ?, ?)`,
+  ).bind(auditId, actor, requestedRole, auditAction, boardMemberId || "finance_editor", JSON.stringify({
+    boardMemberId,
+    authenticationMethod: requestedRole === "viewer" ? "pin" : "admin_key",
+  }), createdAt).run();
   await env.DB.prepare(`DELETE FROM finance_sessions WHERE expires_at <= ?`).bind(createdAt).run();
 
   return json(

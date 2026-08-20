@@ -69,7 +69,12 @@ test("named Board PINs create attributable sessions and remain viewable only thr
 
   await removeFinanceBoardMember(env, editor, member.id);
   assert.equal((await getFinanceSession(new Request("https://bgslwalkup.com/api/board/finance/session", { headers: { cookie: cookieFrom(relogin) } }), env)).ok, false);
-  assert.equal(database.prepare("SELECT COUNT(*) AS count FROM finance_audit_events WHERE actor = 'Alex Board' AND action = 'session_created'").get().count, 2);
+  const pinLoginEvents = database.prepare(
+    "SELECT action, actor_role, details_json FROM finance_audit_events WHERE actor = 'Alex Board' ORDER BY created_at",
+  ).all();
+  assert.equal(pinLoginEvents.length, 2);
+  assert.ok(pinLoginEvents.every((event) => event.action === "board_member_pin_login" && event.actor_role === "viewer"));
+  assert.ok(pinLoginEvents.every((event) => JSON.parse(event.details_json).authenticationMethod === "pin"));
 
   const failedRequest = new Request("https://bgslwalkup.com/api/board/finance/session/login", {
     method: "POST",
