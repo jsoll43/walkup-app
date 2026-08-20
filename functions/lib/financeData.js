@@ -930,6 +930,8 @@ export async function updateFinanceTransaction(env, session, transactionId, body
 }
 
 export async function getFinanceAdmin(env, fiscalYearId) {
+  const boardMemberColumns = await all(env, `PRAGMA table_info(finance_board_members)`);
+  const pinStorageReady = boardMemberColumns.some((column) => column.name === "pin_ciphertext");
   const [imports, funds, commitments, mappings, audit, documents, forecasts, boardMembers] = await Promise.all([
     all(env, `SELECT b.*, a.name AS account_name FROM finance_import_batches b JOIN finance_accounts a ON a.id = b.account_id ORDER BY b.created_at DESC LIMIT 500`),
     all(env, `SELECT * FROM finance_restricted_funds WHERE fiscal_year_id = ? OR fiscal_year_id IS NULL ORDER BY is_active DESC, name`, [fiscalYearId]),
@@ -938,7 +940,7 @@ export async function getFinanceAdmin(env, fiscalYearId) {
     all(env, `SELECT * FROM finance_audit_events ORDER BY created_at DESC LIMIT 200`),
     all(env, `SELECT id, fiscal_year_id, statement_month, account_id, filename, content_type, size_bytes, sha256, uploaded_by, uploaded_at FROM finance_documents WHERE deleted_at IS NULL AND (fiscal_year_id = ? OR fiscal_year_id IS NULL) ORDER BY uploaded_at DESC`, [fiscalYearId]),
     all(env, `SELECT * FROM finance_forecasts WHERE fiscal_year_id = ? ORDER BY statement_month, classification`, [fiscalYearId]),
-    all(env, `SELECT id, name, pin_ciphertext, is_active, last_login_at, created_at, updated_at FROM finance_board_members ORDER BY is_active DESC, name`),
+    all(env, `SELECT id, name, ${pinStorageReady ? "pin_ciphertext" : "NULL AS pin_ciphertext"}, is_active, last_login_at, created_at, updated_at FROM finance_board_members ORDER BY is_active DESC, name`),
   ]);
   const visibleBoardMembers = await Promise.all(boardMembers.map(async (row) => ({
     id: row.id,
@@ -959,6 +961,7 @@ export async function getFinanceAdmin(env, fiscalYearId) {
     documents: documents.map((row) => ({ id: row.id, fiscalYearId: row.fiscal_year_id || "", statementMonth: row.statement_month || "", accountId: row.account_id || "", filename: row.filename, contentType: row.content_type, sizeBytes: Number(row.size_bytes), sha256: row.sha256, uploadedBy: row.uploaded_by, uploadedAt: row.uploaded_at })),
     forecasts: forecasts.map((row) => ({ id: row.id, fiscalYearId: row.fiscal_year_id, statementMonth: row.statement_month, classification: row.classification, categoryId: row.category_id || "", amountCents: Number(row.amount_cents), notes: row.notes })),
     boardMembers: visibleBoardMembers,
+    pinStorageReady,
   };
 }
 
@@ -983,11 +986,19 @@ async function assertUniqueBoardMemberPin(env, pin, excludedMemberId = "") {
   }
 }
 
+async function assertViewablePinStorage(env) {
+  const columns = await all(env, `PRAGMA table_info(finance_board_members)`);
+  if (!columns.some((column) => column.name === "pin_ciphertext")) {
+    throw Object.assign(new Error("Board PIN display setup is incomplete. Apply D1 migration 0012 before managing Board-member PINs."), { status: 503 });
+  }
+}
+
 export async function createFinanceBoardMember(env, session, body) {
   const name = validateBoardMemberName(body.name);
   const pin = validateBoardMemberPin(body.pin);
   const existing = await first(env, `SELECT id FROM finance_board_members WHERE lower(name) = lower(?)`, [name]);
   if (existing) throw Object.assign(new Error("A Board member with that name already exists."), { status: 409 });
+  await assertViewablePinStorage(env);
   await assertUniqueBoardMemberPin(env, pin);
   const memberId = id("finance_member");
   const timestamp = nowIso();
@@ -1006,6 +1017,7 @@ export async function updateFinanceBoardMember(env, session, memberId, body) {
   const member = await first(env, `SELECT id, name FROM finance_board_members WHERE id = ?`, [memberId]);
   if (!member) throw Object.assign(new Error("Board member not found."), { status: 404 });
   const pin = validateBoardMemberPin(body.pin);
+  await assertViewablePinStorage(env);
   await assertUniqueBoardMemberPin(env, pin, memberId);
   const [pinHash, pinCiphertext] = await Promise.all([hashSchedulingPassword(pin), encryptFinancePin(env, memberId, pin)]);
   const timestamp = nowIso();

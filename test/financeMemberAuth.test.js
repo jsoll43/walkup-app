@@ -81,3 +81,22 @@ test("named Board PINs create attributable sessions and remain viewable only thr
   assert.equal((await createFinanceSession(failedRequest, env, { role: "viewer", pin: "000000" })).status, 429);
   database.close();
 });
+
+test("admin data remains readable before the viewable-PIN migration is applied", async () => {
+  const [financeSql, boardMemberSql] = await Promise.all([
+    readFile(new URL("../migrations/0008_finance.sql", import.meta.url), "utf8"),
+    readFile(new URL("../migrations/0011_finance_board_members.sql", import.meta.url), "utf8"),
+  ]);
+  const database = new DatabaseSync(":memory:");
+  database.exec(financeSql);
+  database.exec(boardMemberSql);
+  const env = { DB: d1(database), FINANCE_PIN_ENCRYPTION_KEY: "test-only-pin-encryption-key" };
+  const admin = await getFinanceAdmin(env, "fy_2025_2026");
+  assert.equal(admin.pinStorageReady, false);
+  assert.deepEqual(admin.boardMembers, []);
+  await assert.rejects(
+    createFinanceBoardMember(env, { actor: "Test admin", role: "editor" }, { name: "Alex Board", pin: "274913" }),
+    (error) => error.status === 503 && /migration 0012/i.test(error.message),
+  );
+  database.close();
+});
