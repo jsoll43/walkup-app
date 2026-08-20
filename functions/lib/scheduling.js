@@ -169,13 +169,6 @@ function sortBubbleComments(comments) {
   return [...comments].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 }
 
-export const SCHEDULING_IMPORT_SAMPLE_CSV = [
-  "date,field,team,title,startTime",
-  "2026-06-01,major,10U Blue,10U Blue Practice,17:00",
-  "2026-06-01,minor,12U Gold,12U Gold Practice,17:00",
-  "2026-06-06,major,BGSL,Tournament Setup,08:00",
-].join("\n");
-
 function validateAndFormatDateParts(year, month, day) {
   const candidate = new Date(Date.UTC(year, month - 1, day));
 

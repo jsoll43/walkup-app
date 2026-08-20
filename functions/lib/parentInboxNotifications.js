@@ -67,15 +67,6 @@ export async function setParentInboxNotificationSettings(env, settings) {
   return { enabled, email, updatedAt };
 }
 
-export function getMailgunEnvStatus(env) {
-  return {
-    MAILGUN_API_KEY: !!env?.MAILGUN_API_KEY,
-    MAILGUN_DOMAIN: !!env?.MAILGUN_DOMAIN,
-    MAILGUN_FROM: !!env?.MAILGUN_FROM,
-    ADMIN_KEY: !!env?.ADMIN_KEY,
-  };
-}
-
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")

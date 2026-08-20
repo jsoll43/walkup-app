@@ -1,5 +1,3 @@
-export const FINANCE_CLASSIFICATIONS = Object.freeze(["income", "expense", "transfer"]);
-
 const FULL_MONTH_NAMES = Object.freeze([
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -318,22 +316,6 @@ export function projectFiscalYear({ currentBalanceCents, actualMonths, monthlyFo
   return labelProjection(currentBalanceCents + remainingNetCents, remainingNetCents !== 0);
 }
 
-export function buildValidationDiscrepancies(actualByControl, controls) {
-  return controls.map((control) => {
-    const actualCents = actualByControl[control.id];
-    return {
-      ...control,
-      actualCents: Number.isSafeInteger(actualCents) ? actualCents : null,
-      differenceCents: Number.isSafeInteger(actualCents) ? actualCents - control.expectedCents : null,
-      status: Number.isSafeInteger(actualCents)
-        ? actualCents === control.expectedCents
-          ? "matched"
-          : "mismatch"
-        : "missing",
-    };
-  });
-}
-
 function percentChange(current, previous) {
   if (previous === 0) return null;
   return Math.round(((current - previous) * 1000) / previous) / 10;
@@ -396,11 +378,4 @@ export function deterministicInsights({ comparison, categoryChanges = [], notabl
   if (projection) insights.push({ type: "projection", tone: "neutral", text: projection.isProjected ? "Projected fiscal-year ending balance." : "No future forecast is loaded; this is the current reconciled balance.", amountCents: projection.valueCents, isProjected: projection.isProjected });
   dataIssues.filter((issue) => issue.status === "open").forEach((issue) => insights.push({ type: issue.issueType, tone: issue.severity === "error" ? "danger" : "warning", text: datedInsightText(issue.description, issue.statementMonth), amountCents: issue.amountCents }));
   return insights;
-}
-
-// Interface boundary for an optional future summary provider. V1 remains deterministic.
-export class DeterministicFinanceInsightProvider {
-  summarize(input) {
-    return deterministicInsights(input);
-  }
 }

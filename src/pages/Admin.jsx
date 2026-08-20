@@ -371,56 +371,6 @@ export default function Admin() {
     }
   }
 
-  // Retained for the existing test-notification workflow, which is not currently surfaced in the UI.
-  // eslint-disable-next-line no-unused-vars
-  async function sendParentInboxTestEmail() {
-    if (!inboxNotificationEnabled || !inboxNotificationEmail || !isValidEmail(inboxNotificationEmail)) {
-      setInboxNotificationStatus("Enter a valid email and enable notifications first.");
-      return;
-    }
-
-    const latestInboxItem = inbox[0] || null;
-
-    setInboxNotificationStatus("Sending test email...");
-    try {
-      const res = await fetch("/api/admin/parent-inbox-notify", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...adminHeaders,
-        },
-        body: JSON.stringify({
-          email: inboxNotificationEmail,
-          newSubmissions: 1,
-          currentPending: inbox.length,
-          latestSubmission: latestInboxItem
-            ? {
-                playerName: latestInboxItem.player_name || latestInboxItem.playerName || "",
-                teamName: latestInboxItem.team_name || latestInboxItem.teamName || "",
-                songRequest: latestInboxItem.song_request || latestInboxItem.songRequest || "",
-                createdAt: latestInboxItem.created_at || latestInboxItem.createdAt || "",
-              }
-            : {
-                playerName: "Test Parent Submission",
-                teamName: "Admin Preview",
-                songRequest: "Test email preview",
-              },
-        }),
-      });
-
-      const data = await safeJsonOrText(res);
-      if (!res.ok || data?.ok === false) {
-        throw new Error(data?.error || data?.raw || `Test failed (HTTP ${res.status})`);
-      }
-
-      setInboxNotificationStatus(`Test email sent to ${inboxNotificationEmail}`);
-    } catch (e) {
-      const raw = e?.message || String(e);
-      const clean = raw && raw.includes("<html") ? "Bad gateway / host error from server (502). Check deployment logs." : raw;
-      setInboxNotificationStatus(`Test email failed: ${clean}`);
-    }
-  }
-
   async function fetchInbox(keyOverride) {
     const res = await fetch("/api/admin/parent-inbox", {
       headers: keyOverride ? adminHeadersFor(keyOverride) : adminHeaders,

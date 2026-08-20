@@ -5,15 +5,6 @@ export const FIELD_OPTIONS = [
 
 export const RESERVATION_DURATION_MINUTES = 90;
 
-export const RESERVATION_TYPE_OPTIONS = [
-  { value: "practice", label: "Practice" },
-  { value: "game", label: "Game" },
-  { value: "tournament", label: "Tournament" },
-  { value: "clinic", label: "Clinic" },
-  { value: "maintenance", label: "Maintenance / Field Closed" },
-  { value: "other", label: "Other" },
-];
-
 export const STATUS_META = {
   approved: { label: "Approved", tone: "approved" },
   pending: { label: "Pending Approval", tone: "pending" },
@@ -161,93 +152,6 @@ export function buildCalendarItems(reservations, requests) {
 
     return String(a.team || "").localeCompare(String(b.team || ""));
   });
-}
-
-export function buildHourMarks(startMinutes, endMinutes, interval = 60) {
-  const marks = [];
-  for (let minute = startMinutes; minute <= endMinutes; minute += interval) {
-    marks.push(minute);
-  }
-  return marks;
-}
-
-export function getVisibleRange(items) {
-  const fallbackStart = 8 * 60;
-  const fallbackEnd = 20 * 60;
-  if (!Array.isArray(items) || items.length === 0) {
-    return { start: fallbackStart, end: fallbackEnd };
-  }
-
-  const starts = items.map((item) => timeToMinutes(item.startTime)).filter(Number.isFinite);
-  const ends = items.map((item) => timeToMinutes(item.endTime)).filter(Number.isFinite);
-  const rawStart = Math.min(...starts, fallbackStart);
-  const rawEnd = Math.max(...ends, fallbackEnd);
-
-  const start = Math.max(6 * 60, Math.floor((rawStart - 30) / 60) * 60);
-  const end = Math.min(23 * 60, Math.ceil((rawEnd + 30) / 60) * 60);
-
-  if (end <= start) return { start: fallbackStart, end: fallbackEnd };
-  return { start, end };
-}
-
-export function layoutColumnItems(items) {
-  const prepared = (items || [])
-    .map((item) => ({
-      ...item,
-      startMinutes: timeToMinutes(item.startTime),
-      endMinutes: timeToMinutes(item.endTime),
-    }))
-    .filter((item) => Number.isFinite(item.startMinutes) && Number.isFinite(item.endMinutes))
-    .sort((a, b) => {
-      if (a.startMinutes !== b.startMinutes) return a.startMinutes - b.startMinutes;
-      if (a.endMinutes !== b.endMinutes) return a.endMinutes - b.endMinutes;
-      return String(a.uniqueKey || "").localeCompare(String(b.uniqueKey || ""));
-    });
-
-  const clusters = [];
-  let currentCluster = [];
-  let currentClusterEnd = -1;
-
-  for (const item of prepared) {
-    if (currentCluster.length === 0) {
-      currentCluster = [item];
-      currentClusterEnd = item.endMinutes;
-      continue;
-    }
-
-    if (item.startMinutes < currentClusterEnd) {
-      currentCluster.push(item);
-      currentClusterEnd = Math.max(currentClusterEnd, item.endMinutes);
-    } else {
-      clusters.push(currentCluster);
-      currentCluster = [item];
-      currentClusterEnd = item.endMinutes;
-    }
-  }
-
-  if (currentCluster.length > 0) clusters.push(currentCluster);
-
-  const laidOut = [];
-  for (const cluster of clusters) {
-    const laneEnds = [];
-    for (const item of cluster) {
-      let lane = laneEnds.findIndex((laneEnd) => laneEnd <= item.startMinutes);
-      if (lane === -1) lane = laneEnds.length;
-      laneEnds[lane] = item.endMinutes;
-      laidOut.push({
-        ...item,
-        lane,
-        laneCount: 0,
-      });
-    }
-
-    const laneCount = laneEnds.length || 1;
-    for (let i = laidOut.length - cluster.length; i < laidOut.length; i += 1) {
-      laidOut[i].laneCount = laneCount;
-    }
-  }
-
-  return laidOut;
 }
 
 export function getConflictsForDraft(draft, calendarItems) {

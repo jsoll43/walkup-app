@@ -621,10 +621,6 @@ button:disabled {
   gap: 10px;
 }
 
-.finance-metric-grid.is-two {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .finance-metric-grid.is-four {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -642,11 +638,6 @@ button:disabled {
   background: rgba(255, 255, 255, 0.97);
   color: var(--bgsl-ink);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.11);
-}
-
-.finance-metric.is-gold {
-  background: linear-gradient(135deg, #ffe9a2, #f5ca4c);
-  border-color: #e9b932;
 }
 
 .finance-metric.is-danger {
@@ -1844,7 +1835,6 @@ button:disabled {
   }
 
   .finance-metric-grid,
-  .finance-metric-grid.is-two,
   .finance-metric-grid.is-four,
   .finance-metric-grid.is-three,
   .finance-month-cards {
@@ -1975,20 +1965,6 @@ button:disabled {
   padding: 6px 10px;
   border-radius: 10px;
   font-size: 14px;
-}
-
-/* Coach-specific */
-.coach-archive-access {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(16, 46, 79, 0.14);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  font-size: 13px;
-  color: rgba(11, 31, 51, 0.68);
 }
 
 .coach-add-row {
