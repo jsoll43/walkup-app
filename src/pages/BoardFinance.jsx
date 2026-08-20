@@ -717,7 +717,7 @@ function BoardMemberAdmin({ members, onMutate, busy }) {
     try {
       await onMutate(`admin/board-members/${member.id}`, JsonRequest("PUT", { pin: nextPin, isActive: true }));
       setReplacementPins((current) => ({ ...current, [member.id]: "" }));
-      setMessage(member.isActive ? `${member.name}'s PIN was reset and existing sessions were signed out.` : `${member.name}'s login was restored.`);
+      setMessage(member.isActive ? `${member.name}'s PIN was updated and existing sessions were signed out.` : `${member.name}'s login was restored.`);
     } catch (error) { setMessage(error.message); }
   }
 
@@ -732,17 +732,17 @@ function BoardMemberAdmin({ members, onMutate, busy }) {
 
   return (
     <section className="card finance-panel">
-      <div className="finance-section-heading"><div><div className="finance-eyebrow">Editor only</div><h2>Board-member logins</h2><p>{activeCount} active login{activeCount === 1 ? "" : "s"}. Add one login for each Board member.</p></div></div>
-      <div className="finance-alert is-info">PINs cannot be viewed after saving because only salted hashes are stored. Enter a new six-digit PIN to reset one.</div>
+      <div className="finance-section-heading"><div><div className="finance-eyebrow">Admin only</div><h2>Board-member logins</h2><p>{activeCount} active login{activeCount === 1 ? "" : "s"}. Add one login for each Board member.</p></div></div>
+      <div className="finance-alert is-info">Current PINs are visible here so an admin can remind a Board member without resetting their login.</div>
       <form className="finance-member-add" onSubmit={addMember}>
         <label><span>Board member name</span><input className="input" maxLength="80" placeholder="Full name" value={name} onChange={(event) => setName(event.target.value)} /></label>
-        <label><span>Six-digit PIN</span><input className="input" type="password" inputMode="numeric" maxLength="6" autoComplete="new-password" placeholder="••••••" value={pin} onChange={(event) => setPin(cleanPin(event.target.value))} /></label>
+        <label><span>Six-digit PIN</span><input className="input" type="text" inputMode="numeric" maxLength="6" autoComplete="off" placeholder="6-digit PIN" value={pin} onChange={(event) => setPin(cleanPin(event.target.value))} /></label>
         <button className="btn" disabled={busy || name.trim().length < 2 || pin.length !== 6}>Add Board member</button>
       </form>
       <div className="finance-member-list">
         {members.length ? members.map((member) => {
           const nextPin = replacementPins[member.id] || "";
-          return <article className={`finance-member-row ${member.isActive ? "" : "is-inactive"}`} key={member.id}><div><strong>{member.name}</strong><small>{member.isActive ? "Active" : "Removed"} · PIN configured{member.lastLoginAt ? ` · Last signed in ${new Date(member.lastLoginAt).toLocaleString()}` : " · Never signed in"}</small></div><input className="input" aria-label={`New PIN for ${member.name}`} type="password" inputMode="numeric" maxLength="6" autoComplete="new-password" placeholder="New 6-digit PIN" value={nextPin} onChange={(event) => setReplacementPins((current) => ({ ...current, [member.id]: cleanPin(event.target.value) }))} /><button className="btn-secondary btn-sm" disabled={busy || nextPin.length !== 6} onClick={() => savePin(member)}>{member.isActive ? "Reset PIN" : "Restore with PIN"}</button>{member.isActive ? <button className="btn-danger btn-sm" disabled={busy} onClick={() => removeMember(member)}>Remove</button> : null}</article>;
+          return <article className={`finance-member-row ${member.isActive ? "" : "is-inactive"}`} key={member.id}><div><strong>{member.name}</strong><small>{member.isActive ? "Active" : "Removed"}{member.lastLoginAt ? ` · Last signed in ${new Date(member.lastLoginAt).toLocaleString()}` : " · Never signed in"}</small></div><div className="finance-member-pin"><small>Current PIN</small><strong>{member.pin || "Set once to make visible"}</strong></div><input className="input" aria-label={`New PIN for ${member.name}`} type="text" inputMode="numeric" maxLength="6" autoComplete="off" placeholder="New 6-digit PIN" value={nextPin} onChange={(event) => setReplacementPins((current) => ({ ...current, [member.id]: cleanPin(event.target.value) }))} /><button className="btn-secondary btn-sm" disabled={busy || nextPin.length !== 6} onClick={() => savePin(member)}>{member.isActive ? "Update PIN" : "Restore with PIN"}</button>{member.isActive ? <button className="btn-danger btn-sm" disabled={busy} onClick={() => removeMember(member)}>Remove</button> : null}</article>;
         }) : <EmptyState>No Board-member logins yet. Add all nine members above.</EmptyState>}
       </div>
       {message ? <div className="finance-alert is-info">{message}</div> : null}

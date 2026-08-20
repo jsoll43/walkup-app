@@ -15,6 +15,7 @@ import {
   transactionFingerprint,
 } from "../../shared/financeCore.js";
 import { hashSchedulingPassword, verifySchedulingPassword } from "./scheduling.js";
+import { decryptFinancePin, encryptFinancePin } from "./financePin.js";
 
 const HISTORICAL_IMPORT_ACCOUNT_ID = "finance_account_historical";
 
@@ -937,8 +938,18 @@ export async function getFinanceAdmin(env, fiscalYearId) {
     all(env, `SELECT * FROM finance_audit_events ORDER BY created_at DESC LIMIT 200`),
     all(env, `SELECT id, fiscal_year_id, statement_month, account_id, filename, content_type, size_bytes, sha256, uploaded_by, uploaded_at FROM finance_documents WHERE deleted_at IS NULL AND (fiscal_year_id = ? OR fiscal_year_id IS NULL) ORDER BY uploaded_at DESC`, [fiscalYearId]),
     all(env, `SELECT * FROM finance_forecasts WHERE fiscal_year_id = ? ORDER BY statement_month, classification`, [fiscalYearId]),
-    all(env, `SELECT id, name, is_active, last_login_at, created_at, updated_at FROM finance_board_members ORDER BY is_active DESC, name`),
+    all(env, `SELECT id, name, pin_ciphertext, is_active, last_login_at, created_at, updated_at FROM finance_board_members ORDER BY is_active DESC, name`),
   ]);
+  const visibleBoardMembers = await Promise.all(boardMembers.map(async (row) => ({
+    id: row.id,
+    name: row.name,
+    pin: await decryptFinancePin(env, row.id, row.pin_ciphertext),
+    isActive: bool(row.is_active),
+    pinConfigured: true,
+    lastLoginAt: row.last_login_at || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  })));
   return {
     imports: imports.map((row) => ({ id: row.id, fiscalYearId: row.fiscal_year_id, statementMonth: row.statement_month, accountId: row.account_id, accountName: row.account_name, sourceFilename: row.source_filename, status: row.status, rowCount: Number(row.row_count), duplicateCount: Number(row.duplicate_count), importedCount: Number(row.imported_count), skippedCount: Number(row.skipped_count), createdBy: row.created_by, createdAt: row.created_at })),
     funds: funds.map((row) => ({ id: row.id, name: row.name, amountCents: Number(row.amount_cents), fiscalYearId: row.fiscal_year_id || "", notes: row.notes, isActive: bool(row.is_active) })),
@@ -947,7 +958,7 @@ export async function getFinanceAdmin(env, fiscalYearId) {
     audit: audit.map((row) => ({ id: row.id, actor: row.actor, actorRole: row.actor_role, action: row.action, entityType: row.entity_type, entityId: row.entity_id, details: JSON.parse(row.details_json || "{}"), createdAt: row.created_at })),
     documents: documents.map((row) => ({ id: row.id, fiscalYearId: row.fiscal_year_id || "", statementMonth: row.statement_month || "", accountId: row.account_id || "", filename: row.filename, contentType: row.content_type, sizeBytes: Number(row.size_bytes), sha256: row.sha256, uploadedBy: row.uploaded_by, uploadedAt: row.uploaded_at })),
     forecasts: forecasts.map((row) => ({ id: row.id, fiscalYearId: row.fiscal_year_id, statementMonth: row.statement_month, classification: row.classification, categoryId: row.category_id || "", amountCents: Number(row.amount_cents), notes: row.notes })),
-    boardMembers: boardMembers.map((row) => ({ id: row.id, name: row.name, isActive: bool(row.is_active), pinConfigured: true, lastLoginAt: row.last_login_at || "", createdAt: row.created_at, updatedAt: row.updated_at })),
+    boardMembers: visibleBoardMembers,
   };
 }
 
@@ -980,12 +991,12 @@ export async function createFinanceBoardMember(env, session, body) {
   await assertUniqueBoardMemberPin(env, pin);
   const memberId = id("finance_member");
   const timestamp = nowIso();
-  const pinHash = await hashSchedulingPassword(pin);
+  const [pinHash, pinCiphertext] = await Promise.all([hashSchedulingPassword(pin), encryptFinancePin(env, memberId, pin)]);
   await run(
     env,
-    `INSERT INTO finance_board_members (id, name, pin_hash, is_active, created_by, created_at, updated_by, updated_at)
-     VALUES (?, ?, ?, 1, ?, ?, ?, ?)`,
-    [memberId, name, pinHash, session.actor, timestamp, session.actor, timestamp],
+    `INSERT INTO finance_board_members (id, name, pin_hash, pin_ciphertext, is_active, created_by, created_at, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+    [memberId, name, pinHash, pinCiphertext, session.actor, timestamp, session.actor, timestamp],
   );
   await auditFinance(env, session, "board_member_created", "finance_board_member", memberId, { name });
   return { id: memberId, name, isActive: true, pinConfigured: true, lastLoginAt: "", createdAt: timestamp, updatedAt: timestamp };
@@ -996,9 +1007,9 @@ export async function updateFinanceBoardMember(env, session, memberId, body) {
   if (!member) throw Object.assign(new Error("Board member not found."), { status: 404 });
   const pin = validateBoardMemberPin(body.pin);
   await assertUniqueBoardMemberPin(env, pin, memberId);
-  const pinHash = await hashSchedulingPassword(pin);
+  const [pinHash, pinCiphertext] = await Promise.all([hashSchedulingPassword(pin), encryptFinancePin(env, memberId, pin)]);
   const timestamp = nowIso();
-  await run(env, `UPDATE finance_board_members SET pin_hash = ?, is_active = 1, updated_by = ?, updated_at = ? WHERE id = ?`, [pinHash, session.actor, timestamp, memberId]);
+  await run(env, `UPDATE finance_board_members SET pin_hash = ?, pin_ciphertext = ?, is_active = 1, updated_by = ?, updated_at = ? WHERE id = ?`, [pinHash, pinCiphertext, session.actor, timestamp, memberId]);
   await run(env, `DELETE FROM finance_sessions WHERE board_member_id = ?`, [memberId]);
   await auditFinance(env, session, "board_member_pin_reset", "finance_board_member", memberId, { name: member.name, reactivated: body.isActive === true });
   return { id: memberId, name: member.name, isActive: true, pinConfigured: true, updatedAt: timestamp };

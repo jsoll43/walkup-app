@@ -1355,7 +1355,7 @@ button:disabled {
 .finance-member-row {
   display: grid;
   align-items: center;
-  grid-template-columns: minmax(190px, 1fr) minmax(150px, 210px) auto auto;
+  grid-template-columns: minmax(170px, 1fr) minmax(110px, 140px) minmax(150px, 190px) auto auto;
   gap: 10px;
   padding: 12px;
   border: 1px solid rgba(16, 46, 79, 0.12);
@@ -1374,6 +1374,22 @@ button:disabled {
   color: #64748b;
   font-size: 11px;
   line-height: 1.35;
+}
+
+.finance-member-pin {
+  padding: 7px 10px;
+  border: 1px solid rgba(16, 46, 79, 0.12);
+  border-radius: 9px;
+  background: white;
+}
+
+.finance-member-pin small {
+  margin: 0 0 2px;
+}
+
+.finance-member-pin strong {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
 }
 
 .finance-form-stack {

@@ -25,24 +25,28 @@ function cookieFrom(response) {
   return response.headers.get("set-cookie").split(";")[0];
 }
 
-test("named Board PINs create attributable sessions and are never stored as plaintext", async () => {
-  const [financeSql, boardMemberSql] = await Promise.all([
+test("named Board PINs create attributable sessions and remain viewable only through the admin response", async () => {
+  const [financeSql, boardMemberSql, viewablePinSql] = await Promise.all([
     readFile(new URL("../migrations/0008_finance.sql", import.meta.url), "utf8"),
     readFile(new URL("../migrations/0011_finance_board_members.sql", import.meta.url), "utf8"),
+    readFile(new URL("../migrations/0012_finance_viewable_pins.sql", import.meta.url), "utf8"),
   ]);
   const database = new DatabaseSync(":memory:");
   database.exec(financeSql);
   database.exec(boardMemberSql);
-  const env = { DB: d1(database) };
+  database.exec(viewablePinSql);
+  const env = { DB: d1(database), FINANCE_PIN_ENCRYPTION_KEY: "test-only-pin-encryption-key" };
   const editor = { actor: "Test finance editor", role: "editor" };
 
   const member = await createFinanceBoardMember(env, editor, { name: "Alex Board", pin: "274913" });
-  const stored = database.prepare("SELECT pin_hash FROM finance_board_members WHERE id = ?").get(member.id);
+  const stored = database.prepare("SELECT pin_hash, pin_ciphertext FROM finance_board_members WHERE id = ?").get(member.id);
   assert.notEqual(stored.pin_hash, "274913");
   assert.match(stored.pin_hash, /^pbkdf2\$sha256\$/);
+  assert.notEqual(stored.pin_ciphertext, "274913");
+  assert.match(stored.pin_ciphertext, /^aesgcm\$v1\$/);
   const admin = await getFinanceAdmin(env, "fy_2025_2026");
-  assert.deepEqual(admin.boardMembers.map(({ name, isActive, pinConfigured }) => ({ name, isActive, pinConfigured })), [
-    { name: "Alex Board", isActive: true, pinConfigured: true },
+  assert.deepEqual(admin.boardMembers.map(({ name, pin, isActive, pinConfigured }) => ({ name, pin, isActive, pinConfigured })), [
+    { name: "Alex Board", pin: "274913", isActive: true, pinConfigured: true },
   ]);
   assert.equal("pinHash" in admin.boardMembers[0], false);
 
@@ -58,6 +62,7 @@ test("named Board PINs create attributable sessions and are never stored as plai
   assert.equal(activeSession.boardMemberId, member.id);
 
   await updateFinanceBoardMember(env, editor, member.id, { pin: "830641" });
+  assert.equal((await getFinanceAdmin(env, "fy_2025_2026")).boardMembers[0].pin, "830641");
   assert.equal((await getFinanceSession(new Request("https://bgslwalkup.com/api/board/finance/session", { headers: { cookie: cookieFrom(login) } }), env)).ok, false);
   const relogin = await createFinanceSession(loginRequest, env, { role: "viewer", pin: "830641" });
   assert.equal(relogin.status, 200);

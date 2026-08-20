@@ -5,7 +5,7 @@
 The finance experience extends the existing application at `/finance`; it is not a separate app. Every API is under `/api/board/finance/*` and validates authorization in the Pages Function.
 
 - The dashboard is available only by navigating directly to `/finance`; it is not linked from the public site navigation.
-- Each Board member authenticates with an individually assigned six-digit PIN and receives a short-lived `HttpOnly`, `SameSite=Strict` finance cookie. PINs are salted PBKDF2 hashes in D1, never stored or returned as plaintext, and Board members can only use read APIs.
+- Each Board member authenticates with an individually assigned six-digit PIN and receives a short-lived `HttpOnly`, `SameSite=Strict` finance cookie. Sign-in verification uses salted PBKDF2 hashes. A separate AES-GCM-encrypted copy is returned only to an authenticated admin so they can remind members of their PINs; Board members can only use read APIs.
 - Finance editors manage named Board-member logins in Finance administration. Resetting a PIN or removing a member revokes that member's active sessions. Successful sign-ins and member changes are recorded in the finance audit history; failed PIN attempts are rate-limited.
 - Board viewers can see recorded activity and transaction detail from draft months so the dashboard remains useful before statements arrive. Draft figures and transaction rows are labeled preliminary; access still requires an authenticated Board session.
 - Finance editors authenticate with `FINANCE_EDITOR_KEY`; the existing `ADMIN_KEY` is accepted as an administrator fallback. The key is exchanged once for the same HttpOnly session and is never stored in `sessionStorage`.
@@ -64,6 +64,7 @@ npx wrangler d1 execute YOUR_D1_DATABASE --local --file=./migrations/0008_financ
 npx wrangler d1 execute YOUR_D1_DATABASE --local --file=./migrations/0009_finance_backfill.sql
 npx wrangler d1 execute YOUR_D1_DATABASE --local --file=./migrations/0010_finance_ai.sql
 npx wrangler d1 execute YOUR_D1_DATABASE --local --file=./migrations/0011_finance_board_members.sql
+npx wrangler d1 execute YOUR_D1_DATABASE --local --file=./migrations/0012_finance_viewable_pins.sql
 ```
 
 Inspect the local schema:
@@ -79,11 +80,12 @@ npx wrangler d1 execute YOUR_D1_DATABASE --remote --file=./migrations/0008_finan
 npx wrangler d1 execute YOUR_D1_DATABASE --remote --file=./migrations/0009_finance_backfill.sql
 npx wrangler d1 execute YOUR_D1_DATABASE --remote --file=./migrations/0010_finance_ai.sql
 npx wrangler d1 execute YOUR_D1_DATABASE --remote --file=./migrations/0011_finance_board_members.sql
+npx wrangler d1 execute YOUR_D1_DATABASE --remote --file=./migrations/0012_finance_viewable_pins.sql
 ```
 
-If migrations 0008–0010 are already applied, run only `0011_finance_board_members.sql`. Migration 0011 adds named Board-member PIN records, login-attempt rate limiting, and a nullable Board-member link on finance sessions. It does not modify transactions, balances, or reconciliation records.
+If migrations 0008–0011 are already applied, run only `0012_finance_viewable_pins.sql`. Migration 0012 adds the encrypted PIN copy used by the admin screen. Existing hashes cannot be reversed, so each existing member needs one final PIN update before their current PIN becomes visible.
 
-The migrations are additive. Migration 0011 creates two tables and adds one nullable column to `finance_sessions`; it does not replace or delete existing records. Apply each numbered migration once and in order. Current Wrangler syntax is documented in [Cloudflare's D1 command reference](https://developers.cloudflare.com/d1/wrangler-commands/).
+The migrations are additive and do not replace or delete existing records. Apply each numbered migration once and in order. Current Wrangler syntax is documented in [Cloudflare's D1 command reference](https://developers.cloudflare.com/d1/wrangler-commands/).
 
 Applying a remote migration changes production data. It is separate from deploying the Pages application and should be run only after approval and backup review.
 
@@ -101,7 +103,7 @@ Wrangler normally serves this at `http://localhost:8788`. Cloudflare documents t
 The recommended local path is to sign in as a finance editor using the local-only editor key. If a bypass is genuinely needed, it must be explicit:
 
 ```sh
-npx wrangler pages dev dist --d1 DB=YOUR_D1_DATABASE_ID --r2=FINANCE_DOCUMENTS --binding=FINANCE_LOCAL_AUTH_BYPASS=true --binding=FINANCE_LOCAL_AUTH_ROLE=editor
+npx wrangler pages dev dist --d1 DB=YOUR_D1_DATABASE_ID --r2=FINANCE_DOCUMENTS --binding=FINANCE_LOCAL_AUTH_BYPASS=true --binding=FINANCE_LOCAL_AUTH_ROLE=editor --binding=FINANCE_PIN_ENCRYPTION_KEY=CHOOSE_A_LOCAL_ONLY_PIN_KEY
 ```
 
 Do not use either `FINANCE_LOCAL_AUTH_BYPASS` setting in preview or production.
@@ -159,8 +161,9 @@ In **Workers & Pages → the existing BGSL Pages project** configure both Previe
 2. Create or select a private R2 bucket for finance documents and add an R2 binding named exactly `FINANCE_DOCUMENTS`. Do not enable a public bucket domain.
 3. Add a Workers AI binding named exactly `AI` to both Preview and Production. No provider API key is needed.
 4. Under **Settings → Variables and Secrets**, add secret `FINANCE_EDITOR_KEY` with a strong unique value. Do not put it in source or a plain environment variable. Existing `ADMIN_KEY` remains an accepted administrator fallback.
-5. Do not configure `FINANCE_LOCAL_AUTH_BYPASS` in Cloudflare.
-6. Redeploy is required for new bindings/secrets to reach Pages Functions. Deployment is not performed by these implementation steps.
+5. Optionally add a dedicated secret named `FINANCE_PIN_ENCRYPTION_KEY`. If omitted, PIN encryption uses `FINANCE_EDITOR_KEY`, then `ADMIN_KEY`; a dedicated secret lets login keys rotate without making saved PINs unreadable.
+6. Do not configure `FINANCE_LOCAL_AUTH_BYPASS` in Cloudflare.
+7. Redeploy is required for new bindings/secrets to reach Pages Functions. Deployment is not performed by these implementation steps.
 
 Cloudflare's current dashboard binding steps are in [Pages Functions bindings](https://developers.cloudflare.com/pages/functions/bindings/).
 
