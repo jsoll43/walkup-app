@@ -108,6 +108,19 @@ function normalizeRequestStatus(request) {
   return request.displayStatus || (request.hasConflict ? "conflict" : "pending");
 }
 
+function isBoardReservationAudit(request) {
+  return String(request?.id || "").startsWith("sched_req_board_reservation_") &&
+    ["Auto-approved", "Deleted"].includes(request?.reviewedBy);
+}
+
+function isAutoApprovedBoardReservation(request) {
+  return isBoardReservationAudit(request) && request.reviewedBy === "Auto-approved";
+}
+
+function isDeletedBoardReservation(request) {
+  return isBoardReservationAudit(request) && request.reviewedBy === "Deleted";
+}
+
 function getRequestReviewedTime(request) {
   const timestamp = request?.reviewedAt || (request?.status !== "pending" ? request?.requestedAt : "");
   if (!timestamp) return Number.NaN;
@@ -366,12 +379,20 @@ function ReservationFormCard({
 }
 
 function RequestCard({ request }) {
+  const isBoardDeletion = isDeletedBoardReservation(request);
+
   return (
     <div key={request.id} className="scheduling-request-card">
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontWeight: 1000, fontSize: 16 }}>
-            {request.requestType === "remove" ? "Remove Reservation Request" : request.title || request.team}
+            {isBoardDeletion
+              ? "Board Reservation Deleted"
+              : isAutoApprovedBoardReservation(request)
+              ? "Board Reservation Auto-Approved"
+              : request.requestType === "remove"
+              ? "Remove Reservation Request"
+              : request.title || request.team}
           </div>
           <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
             {request.team} - {fieldLabel(request.field)} - {formatLongDate(request.date)}
@@ -380,26 +401,43 @@ function RequestCard({ request }) {
             {formatTimeRange(request.startTime, request.endTime)}
           </div>
         </div>
-        <StatusPill status={normalizeRequestStatus(request)} />
+        {isBoardDeletion ? (
+          <span className="scheduling-pill scheduling-pill-denied">Deleted</span>
+        ) : (
+          <StatusPill status={normalizeRequestStatus(request)} />
+        )}
       </div>
 
       <div style={{ marginTop: 10, display: "flex", gap: 14, flexWrap: "wrap", fontSize: 13 }}>
-        <div>
-          <strong>Requested by:</strong> {request.requestedBy || "Coach shared login"}
-        </div>
-        <div>
-          <strong>Date requested:</strong> {formatRequestDate(request.requestedAt)}
-        </div>
-        {request.reviewedBy ? (
-          <div>
-            <strong>Reviewed by:</strong> {request.reviewedBy}
-          </div>
-        ) : null}
-        {request.status === "approved" || request.status === "denied" ? (
-          <div>
-            <strong>{getReviewDateLabel(request)}:</strong> {formatRequestDate(request.reviewedAt)}
-          </div>
-        ) : null}
+        {isBoardDeletion ? (
+          <>
+            <div>
+              <strong>Deleted by:</strong> {request.requestedBy || "Board member shared login"}
+            </div>
+            <div>
+              <strong>Date deleted:</strong> {formatRequestDate(request.requestedAt)}
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <strong>Requested by:</strong> {request.requestedBy || "Coach shared login"}
+            </div>
+            <div>
+              <strong>Date requested:</strong> {formatRequestDate(request.requestedAt)}
+            </div>
+            {request.reviewedBy ? (
+              <div>
+                <strong>Reviewed by:</strong> {request.reviewedBy}
+              </div>
+            ) : null}
+            {request.status === "approved" || request.status === "denied" ? (
+              <div>
+                <strong>{getReviewDateLabel(request)}:</strong> {formatRequestDate(request.reviewedAt)}
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
 
       {request.hasConflict && request.conflictDetails?.length ? (
@@ -977,6 +1015,7 @@ export default function Scheduling() {
   const coachRequestGroups = useMemo(() => {
     return requests.reduce(
       (groups, request) => {
+        if (isBoardReservationAudit(request)) return groups;
         if (shouldArchiveRequest(request, archiveClock)) {
           groups.archived.push(request);
         } else {
@@ -1625,15 +1664,27 @@ export default function Scheduling() {
           </div>
         </div>
 
-        <div className="scheduling-toolbar-actions">
-          <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, -7))}>
-            Previous Week
+        <div className="scheduling-toolbar-actions scheduling-week-navigation" role="group" aria-label="Week navigation">
+          <button
+            className="btn-secondary scheduling-week-nav-button"
+            onClick={() => setSelectedDate(addDays(selectedDate, -7))}
+            aria-label="Previous week"
+          >
+            <span className="scheduling-week-nav-arrow" aria-hidden="true">←</span>
+            <span className="scheduling-week-label-desktop" aria-hidden="true">Previous Week</span>
+            <span className="scheduling-week-label-mobile" aria-hidden="true">Previous</span>
           </button>
-          <button className="btn-secondary" onClick={() => setSelectedDate(today)}>
+          <button className="btn-secondary scheduling-week-nav-button scheduling-week-today" onClick={() => setSelectedDate(today)}>
             This Week
           </button>
-          <button className="btn-secondary" onClick={() => setSelectedDate(addDays(selectedDate, 7))}>
-            Next Week
+          <button
+            className="btn-secondary scheduling-week-nav-button"
+            onClick={() => setSelectedDate(addDays(selectedDate, 7))}
+            aria-label="Next week"
+          >
+            <span className="scheduling-week-label-desktop" aria-hidden="true">Next Week</span>
+            <span className="scheduling-week-label-mobile" aria-hidden="true">Next</span>
+            <span className="scheduling-week-nav-arrow" aria-hidden="true">→</span>
           </button>
           <input
             className="input scheduling-week-picker"

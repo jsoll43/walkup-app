@@ -2204,6 +2204,36 @@ button:disabled {
   margin-bottom: 12px;
 }
 
+.scheduling-week-navigation {
+  align-items: stretch;
+}
+
+.scheduling-week-nav-button {
+  gap: 7px;
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.scheduling-week-nav-arrow {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.scheduling-week-today {
+  background: var(--bgsl-gold);
+  border-color: #b58b0f;
+  color: var(--bgsl-navy-dark);
+  box-shadow: 0 3px 8px rgba(16, 46, 79, 0.14);
+}
+
+.scheduling-week-today:hover {
+  background: #e0b52d;
+}
+
+.scheduling-week-label-mobile {
+  display: none;
+}
+
 .scheduling-week-picker {
   width: 170px;
   min-width: 0;
@@ -3175,7 +3205,29 @@ button:disabled {
     flex-wrap: wrap;
   }
 
+  .scheduling-week-navigation {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .scheduling-week-nav-button {
+    width: 100%;
+    min-width: 0;
+    padding: 10px 8px;
+    gap: 5px;
+  }
+
+  .scheduling-week-label-desktop {
+    display: none;
+  }
+
+  .scheduling-week-label-mobile {
+    display: inline;
+  }
+
   .scheduling-week-picker {
+    grid-column: 1 / -1;
     width: 100%;
   }
 

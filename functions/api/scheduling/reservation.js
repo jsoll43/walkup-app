@@ -6,6 +6,7 @@ import {
   json,
   normalizeScheduleDraft,
   recalculateSchedulingRequestConflicts,
+  recordBoardReservationDeletion,
   verifySchedulingAuth,
 } from "../../lib/scheduling.js";
 
@@ -44,6 +45,7 @@ export const onRequestDelete = async ({ request, env }) => {
     if (!reservation) return json({ ok: false, error: "That reservation no longer exists." }, 404);
 
     await deleteReservation(env, reservationId);
+    await recordBoardReservationDeletion(env, reservation, auth.requestedBy);
     await approvePendingRemovalRequestsForReservation(env, reservationId, auth.requestedBy);
     await recalculateSchedulingRequestConflicts(env);
 

@@ -784,6 +784,33 @@ export async function ensureSchedulingTables(env) {
   await ensureColumn(env, "scheduling_settings", "board_notification_email", "TEXT NOT NULL DEFAULT ''");
   await ensureColumn(env, "scheduling_settings", "bubble_schedule_json", "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn(env, "scheduling_settings", "bubble_comments_json", "TEXT NOT NULL DEFAULT '[]'");
+
+  // Preserve Board-created reservations in the existing field request audit trail.
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO field_requests
+      (id, request_type, reservation_id, field, team, title, reservation_type, date, start_time, end_time, notes, status, has_conflict, conflict_details, requested_by, requested_at, reviewed_by, reviewed_at)
+     SELECT
+       'sched_req_board_reservation_' || id,
+       'add',
+       id,
+       field,
+       team,
+       title,
+       reservation_type,
+       date,
+       start_time,
+       end_time,
+       '',
+       'approved',
+       0,
+       '[]',
+       'Board member shared login',
+       created_at,
+       'Auto-approved',
+       created_at
+     FROM field_reservations
+     WHERE created_by_role = 'board'`
+  ).run();
 }
 
 export async function getSchedulingSettings(env) {
@@ -1206,12 +1233,55 @@ export async function createReservation(env, payload) {
     ]
   );
 
+  if (payload.createdByRole === "board") {
+    await run(
+      env,
+      `INSERT OR IGNORE INTO field_requests
+        (id, request_type, reservation_id, field, team, title, reservation_type, date, start_time, end_time, notes, status, has_conflict, conflict_details, requested_by, requested_at, reviewed_by, reviewed_at)
+       VALUES (?, 'add', ?, ?, ?, ?, ?, ?, ?, ?, '', 'approved', 0, '[]', 'Board member shared login', ?, 'Auto-approved', ?)`,
+      [
+        `sched_req_board_reservation_${id}`,
+        id,
+        payload.field,
+        payload.team,
+        payload.title,
+        payload.reservationType,
+        payload.date,
+        payload.startTime,
+        payload.endTime,
+        now,
+        now,
+      ]
+    );
+  }
+
   return getReservationById(env, id);
 }
 
 export async function deleteReservation(env, reservationId) {
   await ensureSchedulingTables(env);
   return run(env, `DELETE FROM field_reservations WHERE id = ?`, [String(reservationId || "").trim()]);
+}
+
+export async function recordBoardReservationDeletion(env, reservation, actor = "Board member shared login") {
+  const deletedAt = nowIso();
+  return createFieldRequest(env, {
+    id: `sched_req_board_reservation_deleted_${reservation.id}`,
+    requestType: "delete",
+    reservationId: reservation.id,
+    field: reservation.field,
+    team: reservation.team,
+    title: reservation.title,
+    reservationType: reservation.reservationType,
+    date: reservation.date,
+    startTime: reservation.startTime,
+    endTime: reservation.endTime,
+    status: "approved",
+    requestedBy: actor,
+    requestedAt: deletedAt,
+    reviewedBy: "Deleted",
+    reviewedAt: deletedAt,
+  });
 }
 
 export async function createFieldRequest(env, payload) {
