@@ -1346,6 +1346,19 @@ export async function updateFieldRequestStatus(env, requestId, status, reviewedB
   );
 }
 
+export async function cancelPendingFieldRequest(env, requestId, canceledBy, canceledAt) {
+  await ensureSchedulingTables(env);
+
+  return run(
+    env,
+    `UPDATE field_requests
+     SET status = 'canceled', reviewed_by = ?, reviewed_at = ?
+     WHERE id = ?
+       AND status = 'pending'`,
+    [canceledBy || "", canceledAt || nowIso(), String(requestId || "").trim()]
+  );
+}
+
 export async function approvePendingRemovalRequestsForReservation(env, reservationId, reviewedBy) {
   await ensureSchedulingTables(env);
 

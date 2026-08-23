@@ -12,6 +12,7 @@ export const STATUS_META = {
   maintenance: { label: "Maintenance / Blocked", tone: "maintenance" },
   removal_requested: { label: "Removal Requested", tone: "removal" },
   denied: { label: "Denied", tone: "denied" },
+  canceled: { label: "Canceled", tone: "denied" },
 };
 
 function makeDateFromText(dateText) {

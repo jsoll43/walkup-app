@@ -95,6 +95,7 @@ function formatRequestDate(ts) {
 function getReviewDateLabel(request) {
   if (request?.status === "approved") return "Date approved";
   if (request?.status === "denied") return "Date denied";
+  if (request?.status === "canceled") return "Date canceled";
   return "Date reviewed";
 }
 
@@ -104,7 +105,7 @@ function getStatusMeta(status) {
 
 function normalizeRequestStatus(request) {
   if (!request) return "pending";
-  if (request.status === "approved" || request.status === "denied") return request.status;
+  if (["approved", "denied", "canceled"].includes(request.status)) return request.status;
   return request.displayStatus || (request.hasConflict ? "conflict" : "pending");
 }
 
@@ -378,8 +379,9 @@ function ReservationFormCard({
   );
 }
 
-function RequestCard({ request }) {
+function RequestCard({ request, onCancelRequest, actionKey = "" }) {
   const isBoardDeletion = isDeletedBoardReservation(request);
+  const cancelKey = `cancel-request:${request.id}`;
 
   return (
     <div key={request.id} className="scheduling-request-card">
@@ -428,10 +430,10 @@ function RequestCard({ request }) {
             </div>
             {request.reviewedBy ? (
               <div>
-                <strong>Reviewed by:</strong> {request.reviewedBy}
+                <strong>{request.status === "canceled" ? "Canceled by:" : "Reviewed by:"}</strong> {request.reviewedBy}
               </div>
             ) : null}
-            {request.status === "approved" || request.status === "denied" ? (
+            {["approved", "denied", "canceled"].includes(request.status) ? (
               <div>
                 <strong>{getReviewDateLabel(request)}:</strong> {formatRequestDate(request.reviewedAt)}
               </div>
@@ -450,15 +452,23 @@ function RequestCard({ request }) {
           </div>
         </div>
       ) : null}
+
+      {request.status === "pending" && onCancelRequest ? (
+        <div style={{ marginTop: 12 }}>
+          <button className="btn-danger" type="button" onClick={() => onCancelRequest(request)} disabled={actionKey === cancelKey}>
+            {actionKey === cancelKey ? "Canceling..." : "Cancel Request"}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function RequestList({ requests }) {
+function RequestList({ requests, onCancelRequest, actionKey }) {
   return (
     <div className="scheduling-request-list" style={{ marginTop: 14 }}>
       {requests.map((request) => (
-        <RequestCard key={request.id} request={request} />
+        <RequestCard key={request.id} request={request} onCancelRequest={onCancelRequest} actionKey={actionKey} />
       ))}
     </div>
   );
@@ -472,6 +482,8 @@ function RequestHistoryCard({
   visibleRequestCount = null,
   onShowMoreRequests,
   showMoreLabel,
+  onCancelRequest,
+  actionKey,
   children,
 }) {
   const visibleRequests = Number.isFinite(visibleRequestCount) ? requests.slice(0, visibleRequestCount) : requests;
@@ -488,7 +500,7 @@ function RequestHistoryCard({
         <div style={{ marginTop: 14, opacity: 0.75 }}>{emptyText}</div>
       ) : (
         <>
-          <RequestList requests={visibleRequests} />
+          <RequestList requests={visibleRequests} onCancelRequest={onCancelRequest} actionKey={actionKey} />
           {hiddenRequestCount > 0 && onShowMoreRequests ? (
             <button className="btn-secondary" type="button" style={{ marginTop: 12 }} onClick={onShowMoreRequests}>
               {showMoreLabel || `Show ${Math.min(5, hiddenRequestCount)} More`}
@@ -842,6 +854,7 @@ function SelectedScheduleItemCard({
   onRequestRemoval,
   onDeleteReservation,
   onReviewRequest,
+  onCancelRequest,
   actionKey,
 }) {
   if (!item) return null;
@@ -853,6 +866,7 @@ function SelectedScheduleItemCard({
   const reviewDenyKey = `review:${item.id}:deny`;
   const removalKey = `remove-request:${item.id}`;
   const deleteKey = `delete-reservation:${item.id}`;
+  const cancelKey = `cancel-request:${item.id}`;
 
   return (
     <div className="card scheduling-panel-card">
@@ -926,6 +940,14 @@ function SelectedScheduleItemCard({
           </button>
           <button className="btn-danger" onClick={() => onReviewRequest(item, "deny")} disabled={actionKey === reviewDenyKey}>
             {actionKey === reviewDenyKey ? "Denying..." : "Deny"}
+          </button>
+        </div>
+      ) : null}
+
+      {!isReservation && role === "coach" && item.status === "pending" ? (
+        <div style={{ marginTop: 14 }}>
+          <button className="btn-danger" onClick={() => onCancelRequest(item)} disabled={actionKey === cancelKey}>
+            {actionKey === cancelKey ? "Canceling..." : "Cancel Request"}
           </button>
         </div>
       ) : null}
@@ -1434,6 +1456,34 @@ export default function Scheduling() {
     }
   }
 
+  async function cancelPendingRequest(item) {
+    const cancelKey = `cancel-request:${item.id}`;
+    setActionKey(cancelKey);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/scheduling/request", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          ...schedulingHeaders(authRole, authKey),
+        },
+        body: JSON.stringify({ requestId: item.id }),
+      });
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || "Failed to cancel the request.");
+      }
+      setSuccess("Pending request canceled.");
+      setSelectedItemKey("");
+      await refreshState(authRole, authKey, { silent: true });
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setActionKey("");
+    }
+  }
+
   async function removeReservation(item) {
     setActionKey(`delete-reservation:${item.id}`);
     setError("");
@@ -1731,6 +1781,7 @@ export default function Scheduling() {
             onRequestRemoval={requestRemoval}
             onDeleteReservation={removeReservation}
             onReviewRequest={reviewRequest}
+            onCancelRequest={cancelPendingRequest}
             actionKey={actionKey}
           />
         </div>
@@ -1806,6 +1857,8 @@ export default function Scheduling() {
                 archivedRequests={coachRequestGroups.archived}
                 visibleRequestCount={visibleCoachRequestCount}
                 onShowMoreRequests={() => setVisibleCoachRequestCount((current) => current + COACH_REQUEST_INCREMENT)}
+                onCancelRequest={cancelPendingRequest}
+                actionKey={actionKey}
                 showMoreLabel={`Show ${Math.min(
                   COACH_REQUEST_INCREMENT,
                   Math.max(0, coachRequestGroups.active.length - visibleCoachRequestCount)
@@ -1850,6 +1903,7 @@ export default function Scheduling() {
                 onRequestRemoval={requestRemoval}
                 onDeleteReservation={removeReservation}
                 onReviewRequest={reviewRequest}
+                onCancelRequest={cancelPendingRequest}
                 actionKey={actionKey}
               />
             </div>
