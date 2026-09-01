@@ -473,10 +473,6 @@ export default function Coach() {
           <div style={{ marginTop: 6, fontWeight: 900 }}>
             Current season: {currentSeason?.label || "Loading…"}
           </div>
-          <div style={{ marginTop: 12 }}>
-            <a className="btn-secondary" href="/archive">Browse Archived Seasons</a>
-          </div>
-
           <div style={{ marginTop: 8 }}>
             <label className="label">Team</label>
             <select className="input" defaultValue="" onChange={(e) => {
@@ -498,6 +494,10 @@ export default function Coach() {
           <div style={{ marginTop: 12, opacity: 0.8 }}>
             After choosing a team, enter the coach key on the Coach page.
           </div>
+
+          <div className="coach-archive-action">
+            <a className="btn-secondary btn-sm coach-archive-link" href="/archive">Browse Archived Seasons</a>
+          </div>
         </div>
       </div>
     );
@@ -509,9 +509,6 @@ export default function Coach() {
         <div className="card">
           <div style={{ fontWeight: 900 }}>
             Current season: {currentSeason?.label || "Loading…"}
-          </div>
-          <div style={{ marginTop: 10 }}>
-            <a className="btn-secondary" href="/archive">Browse Archived Seasons</a>
           </div>
           <div className="cardTitle">Team</div>
           <div style={{ marginTop: 6 }}>
@@ -564,6 +561,10 @@ export default function Coach() {
               <strong>Error:</strong> {err}
             </div>
           ) : null}
+
+          <div className="coach-archive-action">
+            <a className="btn-secondary btn-sm coach-archive-link" href="/archive">Browse Archived Seasons</a>
+          </div>
         </div>
       </div>
     );

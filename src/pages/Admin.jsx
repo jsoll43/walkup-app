@@ -60,9 +60,9 @@ function formatPlayer(p) {
   return p.number ? `#${p.number} ${name}`.trim() : name || p.id;
 }
 
-function AccordionSection({ title, subtitle, children, defaultOpen = false }) {
+function AccordionSection({ id, title, subtitle, children, defaultOpen = false }) {
   return (
-    <details className="card admin-accordion" open={defaultOpen}>
+    <details id={id} className="card admin-accordion" open={defaultOpen}>
       <summary className="admin-accordion-summary">
         <div>
           <h2 className="admin-accordion-title">{title}</h2>
@@ -73,6 +73,143 @@ function AccordionSection({ title, subtitle, children, defaultOpen = false }) {
 
       <div className="admin-accordion-body">{children}</div>
     </details>
+  );
+}
+
+const SEASON_TERM_ORDER = {
+  spring: 0,
+  summer: 1,
+  fall: 2,
+};
+
+function getSeasonYear(team) {
+  const explicitYear = Number(team?.season_year);
+  if (Number.isFinite(explicitYear) && explicitYear > 0) return explicitYear;
+  const labelYear = String(team?.season_label || "").match(/\b(19|20)\d{2}\b/);
+  return labelYear ? Number(labelYear[0]) : 0;
+}
+
+function getSeasonTermOrder(team) {
+  const explicitTerm = String(team?.season_term || "").trim().toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(SEASON_TERM_ORDER, explicitTerm)) {
+    return SEASON_TERM_ORDER[explicitTerm];
+  }
+  const label = String(team?.season_label || "").toLowerCase();
+  const matchedTerm = Object.keys(SEASON_TERM_ORDER).find((term) => label.includes(term));
+  return matchedTerm ? SEASON_TERM_ORDER[matchedTerm] : -1;
+}
+
+function sortTeamsNewestSeasonFirst(teams) {
+  return [...teams].sort((a, b) => {
+    const statusDifference =
+      Number(b?.season_status === "current") - Number(a?.season_status === "current");
+    if (statusDifference) return statusDifference;
+
+    const yearDifference = getSeasonYear(b) - getSeasonYear(a);
+    if (yearDifference) return yearDifference;
+
+    const termDifference = getSeasonTermOrder(b) - getSeasonTermOrder(a);
+    if (termDifference) return termDifference;
+
+    const seasonDifference = String(b?.season_label || "").localeCompare(
+      String(a?.season_label || "")
+    );
+    if (seasonDifference) return seasonDifference;
+
+    return String(a?.name || "").localeCompare(String(b?.name || ""));
+  });
+}
+
+function TeamDropdown({ id, value, options, onChange, disabled = false, placeholder = "Select a team" }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const rootRef = useRef(null);
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
+  const selectedOption = options.find((option) => option.value === value) || null;
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    function handlePointerDown(event) {
+      if (!rootRef.current?.contains(event.target)) setIsOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    window.requestAnimationFrame(() => {
+      const first = menuRef.current?.querySelector('[role="option"]');
+      if (menuRef.current) menuRef.current.scrollTop = 0;
+      first?.focus({ preventScroll: true });
+    });
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [isOpen]);
+
+  function handleMenuKeyDown(event) {
+    const items = Array.from(menuRef.current?.querySelectorAll('[role="option"]') || []);
+    const currentIndex = items.indexOf(document.activeElement);
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setIsOpen(false);
+      triggerRef.current?.focus();
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const direction = event.key === "ArrowDown" ? 1 : -1;
+    const nextIndex = currentIndex < 0
+      ? 0
+      : (currentIndex + direction + items.length) % items.length;
+    items[nextIndex]?.focus();
+  }
+
+  return (
+    <div className="team-dropdown" ref={rootRef}>
+      <button
+        id={id}
+        ref={triggerRef}
+        type="button"
+        className="input team-dropdown-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        disabled={disabled}
+        onClick={() => setIsOpen((open) => !open)}
+        onKeyDown={(event) => {
+          if (["ArrowDown", "ArrowUp"].includes(event.key)) {
+            event.preventDefault();
+            setIsOpen(true);
+          }
+        }}
+      >
+        <span>{selectedOption?.label || placeholder}</span>
+        <span className="team-dropdown-chevron" aria-hidden="true">▾</span>
+      </button>
+
+      {isOpen ? (
+        <div
+          ref={menuRef}
+          className="team-dropdown-menu"
+          role="listbox"
+          aria-labelledby={id}
+          onKeyDown={handleMenuKeyDown}
+        >
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className="team-dropdown-option"
+              role="option"
+              aria-selected={option.value === value}
+              onClick={() => {
+                onChange(option.value);
+                setIsOpen(false);
+                triggerRef.current?.focus();
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -109,6 +246,7 @@ export default function Admin() {
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [showManageKeysModal, setShowManageKeysModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showPastTeamsModal, setShowPastTeamsModal] = useState(false);
   const [deleteTeamSlug, setDeleteTeamSlug] = useState(sessionStorage.getItem("ADMIN_TEAM_SLUG") || "default");
   const [renameTeamSlug, setRenameTeamSlug] = useState(sessionStorage.getItem("ADMIN_TEAM_SLUG") || "default");
   const [manageKeysTeamSlug, setManageKeysTeamSlug] = useState(sessionStorage.getItem("ADMIN_TEAM_SLUG") || "default");
@@ -189,6 +327,25 @@ export default function Admin() {
   const currentTeams = useMemo(
     () => teams.filter((team) => team.season_status === "current"),
     [teams]
+  );
+  const archivedTeams = useMemo(
+    () => teams.filter((team) => team.season_status === "archived"),
+    [teams]
+  );
+  const seasonSortedTeams = useMemo(
+    () => sortTeamsNewestSeasonFirst(teams),
+    [teams]
+  );
+  const teamDropdownOptions = useMemo(
+    () => seasonSortedTeams.map((team) => ({
+      value: team.slug,
+      label: `${team.name}${team.season_label ? ` — ${team.season_label}` : ""}`,
+    })),
+    [seasonSortedTeams]
+  );
+  const inboxTeamOptions = useMemo(
+    () => [{ value: "all", label: "All teams" }, ...teamDropdownOptions],
+    [teamDropdownOptions]
   );
   const playersTeamIsArchived = playersTeam?.season_status === "archived";
 
@@ -287,13 +444,13 @@ export default function Admin() {
         setManageTeamSlug(next);
         sessionStorage.setItem("ADMIN_TEAM_SLUG", next);
       }
-      if (!nextCurrentTeams.some((team) => team.slug === renameTeamSlug)) {
+      if (!list.some((team) => team.slug === renameTeamSlug)) {
         setRenameTeamSlug(next);
       }
       if (!nextCurrentTeams.some((team) => team.slug === manageKeysTeamSlug)) {
         setManageKeysTeamSlug(next);
       }
-      if (!nextCurrentTeams.some((team) => team.slug === deleteTeamSlug)) {
+      if (!list.some((team) => team.slug === deleteTeamSlug)) {
         setDeleteTeamSlug(next);
       }
       return next;
@@ -805,7 +962,13 @@ export default function Admin() {
     if (!slug) return;
     if (slug === "default") return setErr("Cannot delete the default team.");
 
-    const ok = window.confirm(`Delete team "${slug}"? This hides it from parents/coaches.`);
+    const selectedTeam = teams.find((team) => team.slug === slug);
+    const teamLabel = selectedTeam
+      ? `${selectedTeam.name}${selectedTeam.season_label ? ` (${selectedTeam.season_label})` : ""}`
+      : slug;
+    const ok = window.confirm(
+      `Delete ${teamLabel}? Its roster and archived songs will no longer be available.`
+    );
     if (!ok) return;
 
     setDeletingTeam(true);
@@ -838,6 +1001,18 @@ export default function Admin() {
     sessionStorage.setItem("ADMIN_TEAM_SLUG", nextSlug);
     fetchRosterForTeam(nextSlug).catch(() => {});
     fetchFinalStatusForTeam(nextSlug).catch(() => {});
+  }
+
+  function openArchivedTeamRoster(teamSlug) {
+    setPlayersTeamSlug(teamSlug);
+    sessionStorage.setItem("ADMIN_TEAM_SLUG", teamSlug);
+    setShowPastTeamsModal(false);
+    window.requestAnimationFrame(() => {
+      const section = document.getElementById("admin-roster-section");
+      if (!section) return;
+      section.open = true;
+      section.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   const filteredInbox = useMemo(() => {
@@ -989,13 +1164,16 @@ export default function Admin() {
 
       <AccordionSection
         title="Walkup Song Team Management"
-        subtitle="Manage the current season, teams, credentials, and authorization errors."
+        subtitle="Manage current and past season teams, credentials, and authorization errors."
       >
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
           <button className="btn" onClick={() => setShowCreateModal(true)}>Create a New Team</button>
-          <button className="btn" onClick={() => setShowRenameModal(true)} disabled={currentTeams.length === 0}>Rename a Team</button>
+          <button className="btn" onClick={() => setShowRenameModal(true)} disabled={teams.length === 0}>Rename a Team</button>
           <button className="btn" onClick={() => setShowManageKeysModal(true)} disabled={currentTeams.length === 0}>Manage Team Settings</button>
-          <button className="btn-danger" onClick={() => setShowDeleteModal(true)} disabled={deletingTeam || currentTeams.length === 0}>Delete a Team</button>
+          <button className="btn-danger" onClick={() => setShowDeleteModal(true)} disabled={deletingTeam || teams.length === 0}>Delete a Team</button>
+          <button className="btn-secondary" onClick={() => setShowPastTeamsModal(true)} disabled={archivedTeams.length === 0}>
+            Manage Past Seasons{archivedTeams.length ? ` (${archivedTeams.length})` : ""}
+          </button>
           <button className="btn" onClick={() => { fetchAuthLogs(); setShowAuthLogsModal(true); }}>View Auth Errors</button>
         </div>
         <div
@@ -1026,15 +1204,13 @@ export default function Admin() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ minWidth: 220 }}>
-              <label className="label">Filter inbox by team</label>
-              <select className="input" value={inboxFilterSlug} onChange={(e) => setInboxFilterSlug(e.target.value)}>
-                <option value="all">All teams</option>
-                {teams.map((t) => (
-                  <option key={t.slug} value={t.slug}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
+              <label className="label" htmlFor="admin-inbox-team-filter">Filter inbox by team</label>
+              <TeamDropdown
+                id="admin-inbox-team-filter"
+                value={inboxFilterSlug}
+                options={inboxTeamOptions}
+                onChange={setInboxFilterSlug}
+              />
             </div>
 
             <button className="btn-secondary" onClick={() => fetchInbox()} disabled={loading}>
@@ -1124,6 +1300,7 @@ export default function Admin() {
       </AccordionSection>
 
       <AccordionSection
+        id="admin-roster-section"
         title="Roster And Final Walk-Up Clips"
         subtitle="Modify players by team and manage uploaded final audio files."
       >
@@ -1132,18 +1309,15 @@ export default function Admin() {
             <h2 style={{ marginTop: 0, marginBottom: 4 }}>Add/Remove players and set Final Walk-Up Clips</h2>
             <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 6 }}>
               <div style={{ minWidth: 260 }}>
-                <label className="label">Team to modify</label>
-                <select className="input" value={playersTeamSlug} onChange={(e) => setPlayersTeamSlug(e.target.value)}>
-                  {teams.length === 0 ? (
-                    <option value="default">No teams</option>
-                  ) : (
-                    teams.map((t) => (
-                      <option key={t.slug} value={t.slug}>
-                        {t.season_label ? `${t.season_label} — ` : ""}{t.name}
-                      </option>
-                    ))
-                  )}
-                </select>
+                <label className="label" htmlFor="admin-roster-team-filter">Team to modify</label>
+                <TeamDropdown
+                  id="admin-roster-team-filter"
+                  value={playersTeamSlug}
+                  options={teamDropdownOptions}
+                  onChange={setPlayersTeamSlug}
+                  disabled={teams.length === 0}
+                  placeholder={teams.length === 0 ? "No teams" : "Select a team"}
+                />
               </div>
 
               <div style={{ fontSize: 12, opacity: 0.75 }}>
@@ -1350,6 +1524,69 @@ export default function Admin() {
           </div>
         ) : null}
 
+        {/* Past Season Teams Modal */}
+        {showPastTeamsModal ? (
+          <div className="admin-modal-overlay" role="presentation">
+            <div
+              className="admin-modal-card admin-past-teams-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="past-season-teams-title"
+            >
+              <div className="admin-modal-heading">
+                <div>
+                  <h3 id="past-season-teams-title">Manage past season teams</h3>
+                  <p>Review archived rosters and songs, correct team names, or remove teams you no longer need.</p>
+                </div>
+                <button className="btn-secondary btn-sm" onClick={() => setShowPastTeamsModal(false)}>
+                  Close
+                </button>
+              </div>
+
+              <div className="admin-past-team-list">
+                {archivedTeams.map((team) => (
+                  <div className="admin-past-team-row" key={team.id || team.slug}>
+                    <div className="admin-past-team-details">
+                      <strong>{team.name}</strong>
+                      <span>{team.season_label || "Past season"}</span>
+                    </div>
+                    <div className="admin-past-team-actions">
+                      <button className="btn-secondary btn-sm" onClick={() => openArchivedTeamRoster(team.slug)}>
+                        Roster &amp; Songs
+                      </button>
+                      <button
+                        className="btn-secondary btn-sm"
+                        onClick={() => {
+                          setRenameTeamSlug(team.slug);
+                          setShowPastTeamsModal(false);
+                          setShowRenameModal(true);
+                        }}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        className="btn-danger btn-sm"
+                        onClick={() => {
+                          setDeleteTeamSlug(team.slug);
+                          setShowPastTeamsModal(false);
+                          setShowDeleteModal(true);
+                        }}
+                        disabled={team.slug === "default"}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="admin-past-team-note">
+                Archived rosters stay read-only. Use Roster &amp; Songs to play or download archived clips and copy returning players into the current season.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         {/* Rename Team Modal */}
         {showRenameModal ? (
           <div
@@ -1369,11 +1606,13 @@ export default function Admin() {
                 <div>
                   <label className="label">Team to rename</label>
                   <select className="input" value={renameTeamSlug} onChange={(e) => setRenameTeamSlug(e.target.value)}>
-                    {currentTeams.length === 0 ? (
+                    {teams.length === 0 ? (
                       <option value="default">No teams</option>
                     ) : (
-                      currentTeams.map((t) => (
-                        <option key={t.slug} value={t.slug}>{t.name}</option>
+                      teams.map((t) => (
+                        <option key={t.slug} value={t.slug}>
+                          {t.season_label ? `${t.season_label} — ` : ""}{t.name}
+                        </option>
                       ))
                     )}
                   </select>
@@ -1407,11 +1646,13 @@ export default function Admin() {
                 <div>
                   <label className="label">Team to delete</label>
                   <select className="input" value={deleteTeamSlug} onChange={(e) => setDeleteTeamSlug(e.target.value)}>
-                    {currentTeams.length === 0 ? (
+                    {teams.length === 0 ? (
                       <option value="default">No teams</option>
                     ) : (
-                      currentTeams.filter((t) => t.slug !== "default").map((t) => (
-                        <option key={t.slug} value={t.slug}>{t.name}</option>
+                      teams.filter((t) => t.slug !== "default").map((t) => (
+                        <option key={t.slug} value={t.slug}>
+                          {t.season_label ? `${t.season_label} — ` : ""}{t.name}
+                        </option>
                       ))
                     )}
                   </select>

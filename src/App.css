@@ -201,6 +201,197 @@ a {
   border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
+.admin-accordion[open] {
+  overflow: visible;
+}
+
+.team-dropdown {
+  position: relative;
+  width: 100%;
+}
+
+.team-dropdown-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  background: white;
+  color: var(--bgsl-ink);
+  font-weight: 700;
+  text-align: left;
+}
+
+.team-dropdown-trigger > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-dropdown-chevron {
+  flex: 0 0 auto;
+  font-size: 12px;
+  transition: transform 140ms ease;
+}
+
+.team-dropdown-trigger[aria-expanded="true"] .team-dropdown-chevron {
+  transform: rotate(180deg);
+}
+
+.team-dropdown-menu {
+  --team-dropdown-row-height: 38px;
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 4px);
+  left: 0;
+  width: max(100%, 320px);
+  max-width: min(420px, calc(100vw - 40px));
+  max-height: calc((var(--team-dropdown-row-height) * 8) + 2px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1px;
+  border: 1px solid rgba(16, 46, 79, 0.2);
+  border-radius: 10px;
+  background: white;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2);
+}
+
+.team-dropdown-option {
+  display: block;
+  width: 100%;
+  height: var(--team-dropdown-row-height);
+  overflow: hidden;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--bgsl-ink);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-dropdown-option:hover,
+.team-dropdown-option:focus-visible {
+  background: rgba(16, 46, 79, 0.08);
+  outline: none;
+}
+
+.team-dropdown-option[aria-selected="true"] {
+  background: rgba(211, 165, 28, 0.2);
+}
+
+.admin-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.46);
+}
+
+.admin-modal-card {
+  width: min(720px, 100%);
+  max-height: min(80vh, 760px);
+  overflow: auto;
+  padding: 20px;
+  border-radius: 14px;
+  background: white;
+  color: var(--bgsl-ink);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+}
+
+.admin-modal-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-modal-heading h3 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.admin-modal-heading p {
+  margin: 6px 0 0;
+  opacity: 0.75;
+  line-height: 1.45;
+}
+
+.admin-past-team-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.admin-past-team-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid rgba(16, 46, 79, 0.14);
+  border-radius: 12px;
+  background: rgba(16, 46, 79, 0.03);
+}
+
+.admin-past-team-details {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-past-team-details span {
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.admin-past-team-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-past-team-note {
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid rgba(16, 46, 79, 0.12);
+  font-size: 13px;
+  line-height: 1.45;
+  opacity: 0.76;
+}
+
+@media (max-width: 640px) {
+  .team-dropdown-menu {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .admin-modal-overlay {
+    align-items: flex-end;
+    padding: 10px;
+  }
+
+  .admin-modal-card {
+    max-height: 88vh;
+  }
+
+  .admin-past-team-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-past-team-actions,
+  .admin-past-team-actions > * {
+    width: 100%;
+  }
+}
+
 .label {
   display: block;
   font-size: 12px;
@@ -1965,6 +2156,26 @@ button:disabled {
   padding: 6px 10px;
   border-radius: 10px;
   font-size: 14px;
+}
+
+.coach-archive-action {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.coach-archive-link {
+  background: transparent;
+  border-color: rgba(16, 46, 79, 0.12);
+  color: rgba(11, 42, 73, 0.72);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.coach-archive-link:hover,
+.coach-archive-link:focus-visible {
+  background: rgba(16, 46, 79, 0.06);
+  color: var(--bgsl-ink);
 }
 
 .coach-add-row {

@@ -43,7 +43,8 @@ export const onRequestGet = async ({ request, env }) => {
     const res = await env.DB.prepare(
       `SELECT t.id, t.name, t.slug, t.parent_key, t.coach_key,
               t.parent_recording_max_seconds, t.status, t.created_at, t.deleted_at,
-              t.season_id, s.label AS season_label, s.status AS season_status,
+              t.season_id, s.label AS season_label, s.year AS season_year,
+              s.term AS season_term, s.status AS season_status,
               t.copied_from_team_id
        FROM teams t
        LEFT JOIN seasons s ON s.id = t.season_id
@@ -143,7 +144,7 @@ export const onRequestPost = async ({ request, env }) => {
   }
 };
 
-// Allow updating team keys/name by slug
+// Allow updating active teams from the current season or the archive.
 export const onRequestPut = async ({ request, env }) => {
   try {
     const key = getAdminKey(request);
@@ -175,9 +176,7 @@ export const onRequestPut = async ({ request, env }) => {
     await ensureSeasonSchema(env);
 
     const existing = await env.DB.prepare(
-      `SELECT t.id FROM teams t
-       JOIN seasons s ON s.id = t.season_id
-       WHERE t.slug = ? AND t.status = 'active' AND s.status = 'current'`
+      `SELECT id FROM teams WHERE slug = ? AND status = 'active'`
     ).bind(slug).first();
     if (!existing) return json({ ok: false, error: "Unknown team" }, 404);
 
@@ -223,11 +222,9 @@ export const onRequestDelete = async ({ request, env }) => {
 
     await ensureSeasonSchema(env);
     const team = await env.DB.prepare(
-      `SELECT t.id FROM teams t
-       JOIN seasons s ON s.id = t.season_id
-       WHERE t.slug = ? AND t.status = 'active' AND s.status = 'current'`
+      `SELECT id FROM teams WHERE slug = ? AND status = 'active'`
     ).bind(slug).first();
-    if (!team) return json({ ok: false, error: "Current-season team not found." }, 404);
+    if (!team) return json({ ok: false, error: "Team not found." }, 404);
 
     const now = new Date().toISOString();
 
