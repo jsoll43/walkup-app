@@ -265,6 +265,9 @@ export default function Admin() {
   const [inboxNotificationEmail, setInboxNotificationEmail] = useState(() => localStorage.getItem("PARENT_INBOX_NOTIFY_EMAIL") || "");
   const [inboxNotificationStatus, setInboxNotificationStatus] = useState("");
   const inboxNotificationSyncReadyRef = useRef(false);
+  const [submissionPreview, setSubmissionPreview] = useState(null);
+  const [submissionPreviewLoadingId, setSubmissionPreviewLoadingId] = useState("");
+  const submissionPreviewUrlRef = useRef("");
   const [finalStatus, setFinalStatus] = useState({});
   const [finalUploading, setFinalUploading] = useState({});
   const [finalFile, setFinalFile] = useState({});
@@ -575,14 +578,37 @@ export default function Admin() {
     }
   }
 
+  function clearSubmissionPreview() {
+    if (submissionPreviewUrlRef.current) {
+      URL.revokeObjectURL(submissionPreviewUrlRef.current);
+      submissionPreviewUrlRef.current = "";
+    }
+    setSubmissionPreview(null);
+  }
+
   async function previewSubmission(id) {
     setErr("");
+    if (submissionPreview?.id === id) {
+      clearSubmissionPreview();
+      return;
+    }
+    if (submissionPreview) clearSubmissionPreview();
+
+    setSubmissionPreviewLoadingId(id);
     try {
-      const url = `/api/admin/parent-audio?id=${encodeURIComponent(id)}`;
-      const w = window.open(url, "_blank");
-      if (!w) throw new Error("Popup blocked. Please allow popups or use Download.");
+      const res = await fetch(`/api/admin/parent-audio?id=${encodeURIComponent(id)}`, {
+        headers: adminHeaders,
+      });
+      if (!res.ok) throw new Error(await res.text());
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      submissionPreviewUrlRef.current = url;
+      setSubmissionPreview({ id, url });
     } catch (e) {
       setErr(e?.message || String(e));
+    } finally {
+      setSubmissionPreviewLoadingId("");
     }
   }
 
@@ -621,6 +647,7 @@ export default function Admin() {
       if (!res.ok || data?.ok === false) {
         throw new Error(data?.error || data?.raw || `Delete failed (HTTP ${res.status})`);
       }
+      if (submissionPreview?.id === id) clearSubmissionPreview();
       await fetchInbox();
     } catch (e) {
       setErr(e?.message || String(e));
@@ -1021,6 +1048,14 @@ export default function Admin() {
   }, [inbox, inboxFilterSlug]);
 
   useEffect(() => {
+    return () => {
+      if (submissionPreviewUrlRef.current) {
+        URL.revokeObjectURL(submissionPreviewUrlRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const saved = getSavedAdminKey();
     if (saved) tryLogin(saved);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1142,6 +1177,7 @@ export default function Admin() {
           <button
             className="btn-secondary"
             onClick={() => {
+              clearSubmissionPreview();
               clearAdminKey();
               setIsAuthed(false);
               setAdminKey("");
@@ -1283,8 +1319,17 @@ export default function Admin() {
                 </div>
 
                 <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button className="btn-secondary" onClick={() => previewSubmission(it.id)}>
-                    ▶️ Preview
+                  <button
+                    className="btn-secondary"
+                    onClick={() => previewSubmission(it.id)}
+                    disabled={Boolean(submissionPreviewLoadingId)}
+                    aria-expanded={submissionPreview?.id === it.id}
+                  >
+                    {submissionPreviewLoadingId === it.id
+                      ? "Loading…"
+                      : submissionPreview?.id === it.id
+                        ? "Hide Preview"
+                        : "▶️ Preview"}
                   </button>
                   <button className="btn-secondary" onClick={() => downloadSubmission(it.id, it.player_name || "parent-recording")}>
                     ⬇️ Download
@@ -1293,6 +1338,20 @@ export default function Admin() {
                     🗑 Delete
                   </button>
                 </div>
+
+                {submissionPreview?.id === it.id ? (
+                  <div className="admin-inbox-audio-preview">
+                    <audio
+                      controls
+                      autoPlay
+                      preload="metadata"
+                      src={submissionPreview.url}
+                      onError={() => setErr("This recording could not be played in the browser. Try Download instead.")}
+                    >
+                      Your browser does not support audio playback.
+                    </audio>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
@@ -1632,6 +1691,7 @@ export default function Admin() {
                     Save Name
                   </button>
                 </div>
+
               </div>
             </div>
           </div>

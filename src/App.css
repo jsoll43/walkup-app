@@ -366,6 +366,19 @@ a {
   opacity: 0.76;
 }
 
+.admin-inbox-audio-preview {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgba(16, 46, 79, 0.12);
+  border-radius: 12px;
+  background: rgba(16, 46, 79, 0.04);
+}
+
+.admin-inbox-audio-preview audio {
+  display: block;
+  width: 100%;
+}
+
 @media (max-width: 640px) {
   .team-dropdown-menu {
     width: 100%;
