@@ -3340,8 +3340,18 @@ button:disabled {
   }
 
   .coach-actions {
+    display: grid;
     grid-column: 1 / -1;
-    justify-content: flex-start;
+    grid-template-columns: 40px 40px minmax(0, 1fr) auto;
+    gap: 4px;
+  }
+
+  .coach-actions > button {
+    min-width: 0;
+    min-height: 44px;
+    padding: 10px 6px;
+    font-size: clamp(12px, 3.5vw, 14px);
+    white-space: nowrap;
   }
 
   button {
