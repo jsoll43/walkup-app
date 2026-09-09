@@ -581,12 +581,12 @@ export default function Coach() {
       ) : null}
 
       <div className="card" style={{ marginBottom: 24 }}>
-        <div className="cardTitle">Team</div>
-        <div style={{ fontWeight: 1000, marginTop: 6 }}>{teamName || teamSlug}</div>
-        {currentSeason?.label ? (
-          <div style={{ marginTop: 4, fontSize: 13, opacity: 0.75 }}>{currentSeason.label}</div>
-        ) : null}
-        <div className="cardTitle" style={{ marginTop: 14 }}>Game mode</div>
+        <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", columnGap: 12, rowGap: 4 }}>
+          <div style={{ fontWeight: 1000 }}>{teamName || teamSlug}</div>
+          {currentSeason?.label ? (
+            <div style={{ fontSize: 13, opacity: 0.75 }}>{currentSeason.label}</div>
+          ) : null}
+        </div>
 
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>LAST UP</div>
