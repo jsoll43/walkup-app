@@ -586,10 +586,6 @@ export default function Coach() {
         {currentSeason?.label ? (
           <div style={{ marginTop: 4, fontSize: 13, opacity: 0.75 }}>{currentSeason.label}</div>
         ) : null}
-        <div style={{ marginTop: 10 }}>
-          <a className="btn-secondary" href="/archive">Browse Previous Seasons</a>
-        </div>
-
         <div className="cardTitle" style={{ marginTop: 14 }}>Game mode</div>
 
         <div style={{ marginTop: 10 }}>
