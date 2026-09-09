@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import SchedulingAdminSection from "../components/SchedulingAdminSection.jsx";
 import StartSeasonModal from "../components/StartSeasonModal.jsx";
+import ParentInboxAudit from "../components/ParentInboxAudit.jsx";
 
 function getSavedAdminKey() {
   return sessionStorage.getItem("ADMIN_KEY") || "";
@@ -15,7 +16,11 @@ function clearAdminKey() {
 
 function formatET(ts) {
   if (!ts) return "";
-  const d = new Date(ts);
+  // SQLite timestamps are stored in UTC, even when they omit a timezone.
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(ts)
+    ? `${ts.replace(" ", "T")}Z`
+    : ts;
+  const d = new Date(normalized);
   if (Number.isNaN(d.getTime())) return String(ts);
   return new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -261,6 +266,7 @@ export default function Admin() {
   // Data
   const [roster, setRoster] = useState([]);
   const [inbox, setInbox] = useState([]);
+  const [inboxAuditRevision, setInboxAuditRevision] = useState(0);
   const [inboxNotificationEnabled, setInboxNotificationEnabled] = useState(() => localStorage.getItem("PARENT_INBOX_NOTIFY_ENABLED") === "true");
   const [inboxNotificationEmail, setInboxNotificationEmail] = useState(() => localStorage.getItem("PARENT_INBOX_NOTIFY_EMAIL") || "");
   const [inboxNotificationStatus, setInboxNotificationStatus] = useState("");
@@ -648,6 +654,7 @@ export default function Admin() {
         throw new Error(data?.error || data?.raw || `Delete failed (HTTP ${res.status})`);
       }
       if (submissionPreview?.id === id) clearSubmissionPreview();
+      setInboxAuditRevision((revision) => revision + 1);
       await fetchInbox();
     } catch (e) {
       setErr(e?.message || String(e));
@@ -1334,7 +1341,7 @@ export default function Admin() {
                   <button className="btn-secondary" onClick={() => downloadSubmission(it.id, it.player_name || "parent-recording")}>
                     ⬇️ Download
                   </button>
-                  <button className="btn-danger" onClick={() => deleteSubmission(it.id)}>
+                  <button className="btn-danger" onClick={() => deleteSubmission(it.id)} disabled={loading}>
                     🗑 Delete
                   </button>
                 </div>
@@ -1356,6 +1363,15 @@ export default function Admin() {
             ))}
           </div>
         )}
+        <details style={{ marginTop: 20 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 800 }}>Deletion audit log</summary>
+          <ParentInboxAudit
+            key={`${inboxFilterSlug}:${inboxAuditRevision}`}
+            adminHeaders={adminHeaders}
+            teamSlug={inboxFilterSlug}
+            formatTimestamp={formatET}
+          />
+        </details>
       </AccordionSection>
 
       <AccordionSection
