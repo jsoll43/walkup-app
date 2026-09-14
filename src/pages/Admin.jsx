@@ -276,8 +276,10 @@ export default function Admin() {
   const submissionPreviewUrlRef = useRef("");
   const [finalStatus, setFinalStatus] = useState({});
   const [finalUploading, setFinalUploading] = useState({});
+  const [matchingSongCopying, setMatchingSongCopying] = useState({});
   const [finalFile, setFinalFile] = useState({});
   const [finalRowError, setFinalRowError] = useState({});
+  const [finalRowNotice, setFinalRowNotice] = useState({});
   const [copyDestinationTeamId, setCopyDestinationTeamId] = useState("");
   const [copyingPlayerId, setCopyingPlayerId] = useState("");
   const [copyingTeamId, setCopyingTeamId] = useState("");
@@ -665,6 +667,7 @@ export default function Admin() {
 
   async function uploadFinal(playerId) {
     setFinalRowError((prev) => ({ ...prev, [playerId]: "" }));
+    setFinalRowNotice((prev) => ({ ...prev, [playerId]: "" }));
     const file = finalFile[playerId];
     if (!file) {
       setFinalRowError((prev) => ({ ...prev, [playerId]: "Choose a file first." }));
@@ -793,6 +796,36 @@ export default function Admin() {
       setErr(e?.message || String(e));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function copyMatchingSong(playerId) {
+    setFinalRowError((prev) => ({ ...prev, [playerId]: "" }));
+    setFinalRowNotice((prev) => ({ ...prev, [playerId]: "" }));
+    setMatchingSongCopying((prev) => ({ ...prev, [playerId]: true }));
+    try {
+      const res = await fetch("/api/admin/copy-matching-song", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...adminHeaders },
+        body: JSON.stringify({ destinationPlayerId: playerId }),
+      });
+      const data = await safeJsonOrText(res);
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.raw || `Copy failed (HTTP ${res.status})`);
+      }
+
+      await fetchFinalStatusForTeam(playersTeamSlug);
+      const sourceLabel = [data.source?.teamName, data.source?.seasonLabel]
+        .filter(Boolean)
+        .join(" — ");
+      setFinalRowNotice((prev) => ({
+        ...prev,
+        [playerId]: `Copied the newest matching song${sourceLabel ? ` from ${sourceLabel}` : ""}.`,
+      }));
+    } catch (e) {
+      setFinalRowError((prev) => ({ ...prev, [playerId]: e?.message || String(e) }));
+    } finally {
+      setMatchingSongCopying((prev) => ({ ...prev, [playerId]: false }));
     }
   }
 
@@ -1467,7 +1500,9 @@ export default function Admin() {
               const pid = p.id;
               const exists = !!finalStatus[pid];
               const uploading = !!finalUploading[pid];
+              const copyingMatchingSong = !!matchingSongCopying[pid];
               const rowErr = finalRowError[pid] || "";
+              const rowNotice = finalRowNotice[pid] || "";
 
               return (
                 <div key={pid} style={{ border: "1px solid rgba(0,0,0,0.12)", borderRadius: 14, padding: 12 }}>
@@ -1495,6 +1530,15 @@ export default function Admin() {
                     <button className="btn" onClick={() => uploadFinal(pid)} disabled={uploading || !finalFile[pid]}>
                       {uploading ? "Uploading…" : "Upload final"}
                     </button>
+                    {!exists ? (
+                      <button
+                        className="btn-secondary"
+                        onClick={() => copyMatchingSong(pid)}
+                        disabled={uploading || copyingMatchingSong}
+                      >
+                        {copyingMatchingSong ? "Finding newest match…" : "Copy Matching Song"}
+                      </button>
+                    ) : null}
                       </>
                     ) : null}
 
@@ -1521,7 +1565,12 @@ export default function Admin() {
 
                   {rowErr ? (
                     <div style={{ marginTop: 8, color: "crimson" }}>
-                      <strong>Upload error:</strong> {rowErr}
+                      <strong>Song error:</strong> {rowErr}
+                    </div>
+                  ) : null}
+                  {rowNotice ? (
+                    <div style={{ marginTop: 8, color: "#166534", fontWeight: 800 }}>
+                      {rowNotice}
                     </div>
                   ) : null}
                 </div>

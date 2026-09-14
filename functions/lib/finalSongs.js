@@ -10,36 +10,45 @@ export function finalSongKeys(
   ];
 }
 
-export async function findFinalSong(
+async function findFinalSongWithMethod(
   bucket,
   team,
   playerId,
-  { prefixFallback = false, includeGlobalLegacy = team.slug === "default" } = {}
+  { prefixFallback = false, includeGlobalLegacy = team.slug === "default" } = {},
+  method = "get"
 ) {
   const teamKeys = finalSongKeys(team, playerId, { includeGlobalLegacy: false });
   for (const key of teamKeys) {
-    const object = await bucket.get(key);
+    const object = await bucket[method](key);
     if (object) return { object, key };
   }
 
   if (prefixFallback) {
     for (const prefix of teamKeys) {
-      const found = await findPrefixedSong(bucket, prefix);
+      const found = await findPrefixedSong(bucket, prefix, method);
       if (found) return found;
     }
   }
 
   if (includeGlobalLegacy) {
     const legacyKey = `final/${playerId}`;
-    const object = await bucket.get(legacyKey);
+    const object = await bucket[method](legacyKey);
     if (object) return { object, key: legacyKey };
-    if (prefixFallback) return findPrefixedSong(bucket, legacyKey);
+    if (prefixFallback) return findPrefixedSong(bucket, legacyKey, method);
   }
 
   return null;
 }
 
-async function findPrefixedSong(bucket, prefix) {
+export async function findFinalSong(bucket, team, playerId, options = {}) {
+  return findFinalSongWithMethod(bucket, team, playerId, options, "get");
+}
+
+export async function findFinalSongMetadata(bucket, team, playerId, options = {}) {
+  return findFinalSongWithMethod(bucket, team, playerId, options, "head");
+}
+
+async function findPrefixedSong(bucket, prefix, method = "get") {
   let cursor;
   do {
     const listed = await bucket.list({ prefix, cursor });
@@ -47,7 +56,7 @@ async function findPrefixedSong(bucket, prefix) {
       key === prefix || key.startsWith(`${prefix}.`)
     );
     if (match?.key) {
-      const object = await bucket.get(match.key);
+      const object = await bucket[method](match.key);
       if (object) return { object, key: match.key };
     }
     cursor = listed.truncated ? listed.cursor : undefined;
