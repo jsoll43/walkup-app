@@ -77,13 +77,29 @@ test("calls out a capital project as a year-over-year insight without splitting 
       expenseChangeCents: -1497500,
     },
     categoryChanges: [{ name: "Field improvements", currentCents: 0, priorCents: 1497500, changeCents: -1497500, statementMonths: ["2025-05"] }],
-    notableCapitalExpenses: [{ comparisonPeriod: "prior", statementMonth: "2025-05", description: "Landscape project", amountCents: -1497500 }],
+    notableCapitalExpenses: [{ comparisonPeriod: "prior", statementMonth: "2025-05", categoryName: "Field improvements", description: "Landscape project", amountCents: -1497500 }],
   });
   const categoryInsight = insights.find((insight) => insight.type === "category_change");
   const capitalInsight = insights.find((insight) => insight.type === "capital_expense_difference");
-  assert.equal(categoryInsight.text, "Field improvements [May 2025] changed by a decrease.");
-  assert.match(capitalInsight.text, /last year's capital project \[May 2025\]: Landscape project/i);
-  assert.equal(capitalInsight.amountCents, 1497500);
+  assert.equal(categoryInsight.title, "Field improvements spending fell");
+  assert.equal(categoryInsight.detail, "Last year included a one-time project in May 2025.");
+  assert.equal(categoryInsight.changeCents, -1497500);
+  assert.equal(capitalInsight, undefined);
+  assert.equal(insights.find((insight) => insight.type === "expense_change").changeCents, -1497500);
+});
+
+test("shows open follow-up questions without stale import warnings or duplicate balances", () => {
+  const insights = deterministicInsights({
+    duplicateCount: 1,
+    projection: { isProjected: false, valueCents: 1208499 },
+    dataIssues: [
+      { issueType: "category_review", statementMonth: "2026-05", severity: "info", status: "open", amountCents: 41799, description: "Five checks totaling $417.99 are reimbursements; supporting receipts remain to be reviewed." },
+      { issueType: "category_review", statementMonth: "2026-07", severity: "info", status: "open", amountCents: null, description: "July Walmart purchases need treasurer review." },
+      { issueType: "category_review", statementMonth: "2026-02", severity: "info", status: "resolved", amountCents: null, description: "Resolved." },
+    ],
+  });
+  assert.deepEqual(insights.map((insight) => insight.title), ["May 2026: Review reimbursements", "Jul 2026: Review Walmart purchases"]);
+  assert.equal(insights[0].amountCents, 41799);
 });
 
 test("calculates unvalidated historical balances around official statement anchors", () => {

@@ -433,6 +433,30 @@ function AiInsights({ dashboard, fiscalYearId }) {
   );
 }
 
+function FinancialInsights({ insights }) {
+  const sections = [
+    { heading: "Compared with last year", items: insights.filter((insight) => ["income_change", "expense_change", "comparison_missing"].includes(insight.type)) },
+    { heading: "Main spending changes", items: insights.filter((insight) => ["category_change", "capital_expense_difference"].includes(insight.type)) },
+    { heading: "Needs follow-up", items: insights.filter((insight) => !["income_change", "expense_change", "comparison_missing", "category_change", "capital_expense_difference"].includes(insight.type)) },
+  ].filter((section) => section.items.length);
+
+  return (
+    <section className="card finance-panel finance-insights-panel">
+      <h2>Financial insights</h2>
+      {insights.some((insight) => ["income_change", "expense_change", "category_change"].includes(insight.type)) ? <p className="finance-insight-intro">Changes compare the same completed months in each fiscal year.</p> : null}
+      {sections.length ? <div className="finance-insight-sections">{sections.map((section) => <div className="finance-insight-section" key={section.heading}>
+        <h3>{section.heading}</h3>
+        <div className="finance-insights">{section.items.map((insight, index) => <div className={`finance-insight is-${insight.tone || "neutral"}`} key={`${insight.type}-${index}`}>
+          <div className="finance-insight-copy"><strong>{insight.title}</strong>{insight.detail ? <span>{insight.detail}</span> : null}</div>
+          {Number.isSafeInteger(insight.changeCents)
+            ? <strong className="finance-insight-amount">{insight.changeCents > 0 ? "+" : ""}{money(insight.changeCents)}</strong>
+            : Number.isSafeInteger(insight.amountCents) ? <strong className="finance-insight-amount">{money(insight.amountCents)}</strong> : null}
+        </div>)}</div>
+      </div>)}</div> : <EmptyState>Insights appear after transactions are published.</EmptyState>}
+    </section>
+  );
+}
+
 function Overview({ dashboard }) {
   const { overview } = dashboard;
   const activityRange = overview.activityEndMonth
@@ -456,7 +480,7 @@ function Overview({ dashboard }) {
         </div>
       </section>
       <div className="finance-two-column">
-        <section className="card finance-panel"><h2>Financial insights</h2>{dashboard.insights.length ? <div className="finance-insights">{dashboard.insights.map((insight, index) => <div className={`finance-insight is-${insight.tone || "neutral"}`} key={`${insight.type}-${index}`}><span>{insight.text}</span>{Number.isSafeInteger(insight.amountCents) ? <strong>{money(insight.amountCents)}</strong> : null}</div>)}</div> : <EmptyState>Insights appear after transactions are published.</EmptyState>}</section>
+        <FinancialInsights insights={dashboard.insights} />
         <section className="card finance-panel"><h2>Close status</h2><dl className="finance-definition-list"><div><dt>Latest reconciled month</dt><dd>{monthLabel(overview.latestReconciledMonth)}</dd></div><div><dt>Reporting basis</dt><dd>October 1–September 30</dd></div><div><dt>Internal transfers</dt><dd>Excluded from league-wide results</dd></div></dl></section>
       </div>
       <section className="card finance-panel">

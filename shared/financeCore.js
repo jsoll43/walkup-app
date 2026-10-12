@@ -340,22 +340,34 @@ function insightMonthContext(statementMonths, limit = 2) {
   const months = [...new Set((statementMonths || []).filter((month) => /^\d{4}-\d{2}$/.test(month)))].sort();
   if (!months.length || months.length > limit) return "";
   const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return ` [${months.map((month) => `${names[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`).join(", ")}]`;
+  return months.map((month) => `${names[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`).join(", ");
 }
 
-function datedInsightText(text, statementMonth) {
-  const context = insightMonthContext([statementMonth], 1);
-  return context ? `${String(text).replace(/[.\s]+$/, "")}${context}.` : text;
+function movementVerb(changeCents) {
+  return changeCents > 0 ? "rose" : changeCents < 0 ? "fell" : "was unchanged";
 }
 
-export function deterministicInsights({ comparison, categoryChanges = [], notableCapitalExpenses = [], reconciliations = [], missingMonths = [], duplicateCount = 0, projection = null, dataIssues = [] }) {
+function issueSummary(issue) {
+  const month = insightMonthContext([issue.statementMonth], 1);
+  const prefix = month ? `${month}: ` : "";
+  if (issue.issueType === "category_review" && /reimbursements/i.test(issue.description)) {
+    return { title: `${prefix}Review reimbursements`, detail: "Confirm receipts and final expense categories." };
+  }
+  if (issue.issueType === "category_review" && /Walmart/i.test(issue.description)) {
+    return { title: `${prefix}Review Walmart purchases`, detail: "Confirm purchase purposes and expense categories." };
+  }
+  return { title: `${prefix}Needs review`, detail: issue.description };
+}
+
+export function deterministicInsights({ comparison, categoryChanges = [], notableCapitalExpenses = [], reconciliations = [], missingMonths = [], dataIssues = [] }) {
   const insights = [];
   if (comparison) {
     if (comparison.prior.transactionCount === 0) {
       insights.push({
         type: "comparison_missing",
         tone: "warning",
-        text: "Prior-year same-period transactions are not available, so year-over-year changes are withheld.",
+        title: "Year-over-year comparison unavailable",
+        detail: "There are no transactions for the same months last year.",
       });
     } else {
     const incomePercent = percentChange(comparison.current.externalIncomeCents, comparison.prior.externalIncomeCents);
@@ -363,34 +375,56 @@ export function deterministicInsights({ comparison, categoryChanges = [], notabl
     insights.push({
       type: "income_change",
       tone: comparison.incomeChangeCents >= 0 ? "positive" : "warning",
-      text: `Income is ${comparison.incomeChangeCents >= 0 ? "up" : "down"}${incomePercent === null ? "" : ` ${Math.abs(incomePercent)}%`} versus the same completed months last year.`,
-      amountCents: Math.abs(comparison.incomeChangeCents),
+      title: `Income ${movementVerb(comparison.incomeChangeCents)}${incomePercent === null || comparison.incomeChangeCents === 0 ? "" : ` ${Math.abs(incomePercent)}%`}`,
+      changeCents: comparison.incomeChangeCents,
     });
     insights.push({
       type: "expense_change",
       tone: comparison.expenseChangeCents <= 0 ? "positive" : "warning",
-      text: `Expenses are ${comparison.expenseChangeCents >= 0 ? "up" : "down"}${expensePercent === null ? "" : ` ${Math.abs(expensePercent)}%`} versus the same completed months last year.`,
-      amountCents: Math.abs(comparison.expenseChangeCents),
+      title: `Expenses ${movementVerb(comparison.expenseChangeCents)}${expensePercent === null || comparison.expenseChangeCents === 0 ? "" : ` ${Math.abs(expensePercent)}%`}`,
+      changeCents: comparison.expenseChangeCents,
     });
     }
   }
-  categoryChanges.slice(0, 3).forEach((change) => insights.push({
-    type: "category_change",
-    tone: change.changeCents > 0 ? "warning" : "neutral",
-    text: `${change.name}${insightMonthContext(change.statementMonths)} changed by ${change.changeCents >= 0 ? "an increase" : "a decrease"}.`,
-    amountCents: Math.abs(change.changeCents),
-  }));
-  notableCapitalExpenses.slice(0, 3).forEach((transaction) => insights.push({
-    type: "capital_expense_difference",
-    tone: "neutral",
-    text: `A major year-over-year difference is ${transaction.comparisonPeriod === "prior" ? "last year's" : "this year's"} capital project${insightMonthContext([transaction.statementMonth], 1)}: ${transaction.description}.`,
-    amountCents: Math.abs(transaction.amountCents),
-  }));
+  const describedCapital = new Set();
+  categoryChanges.slice(0, 3).forEach((change) => {
+    const capitalIndex = notableCapitalExpenses.findIndex((transaction, index) =>
+      !describedCapital.has(index)
+      && (!transaction.categoryName || transaction.categoryName === change.name)
+      && Math.abs(change.changeCents) === Math.abs(transaction.amountCents)
+      && (transaction.comparisonPeriod === "prior" ? change.changeCents < 0 : change.changeCents > 0));
+    const capital = capitalIndex < 0 ? null : notableCapitalExpenses[capitalIndex];
+    if (capital) describedCapital.add(capitalIndex);
+    const capitalMonth = capital && insightMonthContext([capital.statementMonth], 1);
+    insights.push({
+      type: "category_change",
+      tone: change.changeCents > 0 ? "warning" : "neutral",
+      title: change.name === "Other expense" ? `Other expenses ${movementVerb(change.changeCents)}` : `${change.name} spending ${movementVerb(change.changeCents)}`,
+      detail: capital
+        ? `${capital.comparisonPeriod === "prior" ? "Last year" : "This year"} included a one-time project${capitalMonth ? ` in ${capitalMonth}` : ""}.`
+        : undefined,
+      changeCents: change.changeCents,
+    });
+  });
+  notableCapitalExpenses.slice(0, 3).forEach((transaction, index) => {
+    if (describedCapital.has(index)) return;
+    const month = insightMonthContext([transaction.statementMonth], 1);
+    insights.push({
+      type: "capital_expense_difference",
+      tone: "neutral",
+      title: `${transaction.comparisonPeriod === "prior" ? "Last year's" : "This year's"} one-time project${month ? ` · ${month}` : ""}`,
+      detail: transaction.description,
+      amountCents: Math.abs(transaction.amountCents),
+    });
+  });
   const unreconciled = reconciliations.filter((item) => item.status !== "reconciled");
-  if (unreconciled.length) insights.push({ type: "unreconciled", tone: "danger", text: `${unreconciled.length} month/account reconciliation${unreconciled.length === 1 ? " is" : "s are"} incomplete.` });
-  if (missingMonths.length) insights.push({ type: "missing_months", tone: "warning", text: `Missing statements: ${missingMonths.join(", ")}.` });
-  if (duplicateCount) insights.push({ type: "duplicates", tone: "warning", text: `${duplicateCount} possible duplicate transaction${duplicateCount === 1 ? " requires" : "s require"} review.` });
-  if (projection) insights.push({ type: "projection", tone: "neutral", text: projection.isProjected ? "Projected fiscal-year ending balance." : "No future forecast is loaded; this is the current reconciled balance.", amountCents: projection.valueCents, isProjected: projection.isProjected });
-  dataIssues.filter((issue) => issue.status === "open").forEach((issue) => insights.push({ type: issue.issueType, tone: issue.severity === "error" ? "danger" : "warning", text: datedInsightText(issue.description, issue.statementMonth), amountCents: issue.amountCents }));
+  if (unreconciled.length) insights.push({ type: "unreconciled", tone: "danger", title: `${unreconciled.length} reconciliation${unreconciled.length === 1 ? " is" : "s are"} incomplete`, detail: "Review the affected month and account." });
+  if (missingMonths.length) insights.push({ type: "missing_months", tone: "warning", title: "Statements are missing", detail: missingMonths.map((month) => insightMonthContext([month], 1) || month).join(", ") });
+  dataIssues.filter((issue) => issue.status === "open").forEach((issue) => insights.push({
+    type: issue.issueType,
+    tone: issue.severity === "error" ? "danger" : "warning",
+    ...issueSummary(issue),
+    amountCents: issue.amountCents,
+  }));
   return insights;
 }

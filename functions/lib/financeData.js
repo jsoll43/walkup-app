@@ -501,7 +501,6 @@ export async function getFinanceDashboard(env, session, fiscalYearId, options = 
     forecasts,
   );
   const missingMonths = months.filter((month) => month <= (actualMonths.at(-1) || "") && !reconciliations.some((item) => item.statementMonth === month));
-  const duplicateCount = imports.reduce((sum, batch) => sum + Number(batch.duplicate_count || 0), 0);
   const mappedIssues = issues.map((issue) => ({ issueType: issue.issue_type, statementMonth: issue.statement_month || "", severity: issue.severity, description: issue.description, amountCents: issue.amount_cents == null ? null : Number(issue.amount_cents), status: issue.status }));
   const mappedControls = controls
     .filter((control) => !["one_time_expenses", "normalized_expenses"].includes(control.metric))
@@ -594,8 +593,6 @@ export async function getFinanceDashboard(env, session, fiscalYearId, options = 
       notableCapitalExpenses,
       reconciliations,
       missingMonths,
-      duplicateCount,
-      projection,
       dataIssues: mappedIssues,
     }),
     discrepancies,

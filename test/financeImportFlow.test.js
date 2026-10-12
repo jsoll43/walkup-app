@@ -173,6 +173,8 @@ test("historical import needs neither account selection nor statement balances",
   assert.equal(dashboardWithPriorCashFlow.yearOverYear.fullFiscalYear.priorEndMonth, "2024-10");
   assert.equal(dashboardWithPriorCashFlow.yearOverYear.fullFiscalYear.currentIsComplete, false);
   assert.equal(dashboardWithPriorCashFlow.yearOverYear.fullFiscalYear.priorIsComplete, false);
-  assert.match(dashboardWithPriorCashFlow.insights.find((insight) => insight.type === "category_change").text, /Field improvements \[Oct 2024\]/);
+  const fieldInsight = dashboardWithPriorCashFlow.insights.find((insight) => insight.type === "category_change");
+  assert.equal(fieldInsight.title, "Field improvements spending fell");
+  assert.match(fieldInsight.detail, /one-time project in Oct 2024/);
   database.close();
 });
