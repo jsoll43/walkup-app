@@ -437,7 +437,7 @@ function FinancialInsights({ insights }) {
   const sections = [
     { heading: "Compared with last year", items: insights.filter((insight) => ["income_change", "expense_change", "comparison_missing"].includes(insight.type)) },
     { heading: "Main spending changes", items: insights.filter((insight) => ["category_change", "capital_expense_difference"].includes(insight.type)) },
-    { heading: "Needs follow-up", items: insights.filter((insight) => !["income_change", "expense_change", "comparison_missing", "category_change", "capital_expense_difference"].includes(insight.type)) },
+    { heading: "May need follow-up", items: insights.filter((insight) => !["income_change", "expense_change", "comparison_missing", "category_change", "capital_expense_difference"].includes(insight.type)) },
   ].filter((section) => section.items.length);
 
   return (
