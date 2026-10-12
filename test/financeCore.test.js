@@ -109,6 +109,28 @@ test("calculates unvalidated historical balances around official statement ancho
   assert.equal(rows[4].rollforwardDifferenceCents, 4500);
 });
 
+test("shows workbook balances without using them to fill missing months or reconcile cash", () => {
+  const rows = calculateHistoricalBalances({
+    months: ["2026-06", "2026-07", "2026-08", "2026-09"],
+    officialBalances: [
+      { statementMonth: "2026-06", balanceCents: 1413172, status: "control", source: "statement_control" },
+    ],
+    monthlyMovements: [
+      { statementMonth: "2026-08", movementCents: -167034 },
+      { statementMonth: "2026-09", movementCents: -112577 },
+    ],
+    reportedBalances: [
+      { statementMonth: "2026-08", balanceCents: 1396300 },
+      { statementMonth: "2026-09", balanceCents: 1208499 },
+    ],
+  });
+
+  assert.deepEqual(rows.map((row) => row.balanceCents), [1413172, null, 1396300, 1208499]);
+  assert.deepEqual(rows.map((row) => row.status), ["control", "missing", "reported", "reported"]);
+  assert.equal(rows[2].source, "workbook_summary");
+  assert.equal(rows[3].rollforwardDifferenceCents, -75224);
+});
+
 test("compares the same completed fiscal months year over year", () => {
   const result = compareSamePeriod(
     [transaction({ statementMonth: "2025-10", amountCents: 30000 }), transaction({ statementMonth: "2025-11", amountCents: 99999 })],

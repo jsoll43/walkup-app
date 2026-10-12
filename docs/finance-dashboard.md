@@ -17,7 +17,7 @@ The finance experience extends the existing application at `/finance`; it is not
 - Internal transfers are visible but excluded from league-wide income, expenses, and results.
 - A manually entered ending balance never reconciles a month. Reconciliation requires a zero calculated difference and no unreviewed transactions. Publishing requires every account in the month to be reconciled.
 - Historical transaction backfills do not require an account or statement balances at import time. The server assigns them to `Consolidated historical source`; balances remain explicitly pending and cannot contribute to cash, reconciliation, or publication until an editor enters both official statement balances.
-- The historical balance chart can calculate display-only month-end balances from official balance anchors and recorded external cash activity. Calculated balances are labeled unvalidated, reset at every official balance, leave a gap when activity is missing, and never contribute to reconciled cash, available cash, publication, or reconciliation decisions.
+- The historical balance chart can calculate display-only month-end balances from official balance anchors and recorded external cash activity. Calculated balances are labeled unvalidated, reset at every official balance, and leave a gap when activity is missing. Workbook-reported ending balances may appear as separately labeled preliminary points; they never anchor calculations. Neither calculated nor workbook-reported balances contribute to reconciled cash, available cash, publication, or reconciliation decisions.
 - The monthly cash-flow chart includes the selected reporting period and the immediately preceding reporting period so its Earlier control can cross the October fiscal-year boundary. The month cards remain scoped to the selected reporting period.
 - Months without a confirmed import are labeled not uploaded and withhold income, expense, net, and running-net figures instead of presenting missing data as zero. The cash-flow chart stops at the latest month with actual or forecast data.
 - Year-over-year reporting uses all recorded activity in each fiscal year and clearly labels each year's latest recorded month so an incomplete current year is not presented as a finished September total.
@@ -65,6 +65,7 @@ npx wrangler d1 execute YOUR_D1_DATABASE --local --file=./migrations/0009_financ
 npx wrangler d1 execute YOUR_D1_DATABASE --local --file=./migrations/0010_finance_ai.sql
 npx wrangler d1 execute YOUR_D1_DATABASE --local --file=./migrations/0011_finance_board_members.sql
 npx wrangler d1 execute YOUR_D1_DATABASE --local --file=./migrations/0012_finance_viewable_pins.sql
+npx wrangler d1 execute YOUR_D1_DATABASE --local --file=./migrations/0013_finance_workbook_balances.sql
 ```
 
 Inspect the local schema:
@@ -81,9 +82,10 @@ npx wrangler d1 execute YOUR_D1_DATABASE --remote --file=./migrations/0009_finan
 npx wrangler d1 execute YOUR_D1_DATABASE --remote --file=./migrations/0010_finance_ai.sql
 npx wrangler d1 execute YOUR_D1_DATABASE --remote --file=./migrations/0011_finance_board_members.sql
 npx wrangler d1 execute YOUR_D1_DATABASE --remote --file=./migrations/0012_finance_viewable_pins.sql
+npx wrangler d1 execute YOUR_D1_DATABASE --remote --file=./migrations/0013_finance_workbook_balances.sql
 ```
 
-If migrations 0008–0011 are already applied, run only `0012_finance_viewable_pins.sql`. Migration 0012 adds the encrypted PIN copy used by the admin screen. Existing hashes cannot be reversed, so each existing member needs one final PIN update before their current PIN becomes visible.
+Migration 0012 adds the encrypted PIN copy used by the admin screen. Existing hashes cannot be reversed, so each existing member needs one final PIN update before their current PIN becomes visible. Migration 0013 adds a separate table for preliminary workbook-reported balances; apply only migrations not yet present in the target database.
 
 The migrations are additive and do not replace or delete existing records. Apply each numbered migration once and in order. Current Wrangler syntax is documented in [Cloudflare's D1 command reference](https://developers.cloudflare.com/d1/wrangler-commands/).
 

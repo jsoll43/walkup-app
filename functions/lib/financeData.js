@@ -258,7 +258,7 @@ function monthRange(firstMonth, lastMonth) {
 }
 
 async function loadHistoricalBalances(env) {
-  const [boundary, controls, reconciliations, movements] = await Promise.all([
+  const [boundary, controls, reconciliations, movements, reportedBalances] = await Promise.all([
     first(env, `SELECT MIN(substr(starts_on, 1, 7)) AS first_month FROM finance_fiscal_years`),
     all(env, `SELECT statement_month, expected_cents
               FROM finance_validation_controls
@@ -283,6 +283,9 @@ async function loadHistoricalBalances(env) {
               WHERE t.deleted_at IS NULL AND t.reconciliation_status != 'void'
               GROUP BY t.statement_month
               ORDER BY t.statement_month`),
+    all(env, `SELECT statement_month, balance_cents
+              FROM finance_workbook_balance_observations
+              ORDER BY statement_month`),
   ]);
   const knownByMonth = new Map(controls.map((row) => [row.statement_month, {
     balanceCents: Number(row.expected_cents),
@@ -296,14 +299,16 @@ async function loadHistoricalBalances(env) {
   }));
   const knownMonths = [...knownByMonth.keys()].sort();
   const movementMonths = movements.map((row) => row.statement_month).sort();
-  const lastMonth = [...knownMonths, ...movementMonths].sort().at(-1);
+  const reportedMonths = reportedBalances.map((row) => row.statement_month).sort();
+  const lastMonth = [...knownMonths, ...movementMonths, ...reportedMonths].sort().at(-1);
   if (!lastMonth) return [];
-  const earliestDataMonth = [...knownMonths, ...movementMonths].sort()[0];
+  const earliestDataMonth = [...knownMonths, ...movementMonths, ...reportedMonths].sort()[0];
   const firstMonth = boundary?.first_month && boundary.first_month <= lastMonth ? boundary.first_month : earliestDataMonth;
   return calculateHistoricalBalances({
     months: monthRange(firstMonth, lastMonth),
     officialBalances: [...knownByMonth.entries()].map(([statementMonth, row]) => ({ statementMonth, ...row })),
     monthlyMovements: movements.map((row) => ({ statementMonth: row.statement_month, movementCents: Number(row.movement_cents) })),
+    reportedBalances: reportedBalances.map((row) => ({ statementMonth: row.statement_month, balanceCents: Number(row.balance_cents) })),
   });
 }
 

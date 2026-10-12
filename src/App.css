@@ -1249,6 +1249,12 @@ button:disabled {
   stroke-dasharray: 7 6;
 }
 
+.finance-balance-chart-line.is-reported {
+  stroke: #7c3aed;
+  stroke-width: 3;
+  stroke-dasharray: 3 6;
+}
+
 .finance-balance-chart-point {
   fill: var(--bgsl-gold);
   stroke: #fff;
@@ -1263,6 +1269,12 @@ button:disabled {
 .finance-balance-chart-point.is-calculated {
   fill: #fff;
   stroke: #64748b;
+  stroke-width: 4;
+}
+
+.finance-balance-chart-point.is-reported {
+  fill: #ede9fe;
+  stroke: #7c3aed;
   stroke-width: 4;
 }
 
@@ -1347,7 +1359,20 @@ button:disabled {
   background: #fff;
 }
 
+.finance-balance-legend .is-balance-reported {
+  border: 2px solid #7c3aed;
+  background: #ede9fe;
+}
+
 .finance-balance-legend .is-balance-missing { background: #cbd5e1; }
+
+.finance-balance-reported-note {
+  margin: 10px 0 0;
+  color: #5b21b6;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
 
 .finance-month-cards {
   display: grid;

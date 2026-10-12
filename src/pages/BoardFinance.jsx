@@ -252,7 +252,7 @@ function HistoricalBalanceChart({ rows = [] }) {
   const [requestedStart, setRequestedStart] = useState(maxStart);
   const [tooltip, setTooltip] = useState(null);
   const windowStart = Math.min(requestedStart, maxStart);
-  if (!rows.length) return <EmptyState>No official historical balances are available.</EmptyState>;
+  if (!rows.length) return <EmptyState>No historical balances are available.</EmptyState>;
 
   const visibleRows = rows.slice(windowStart, windowStart + windowSize);
   const knownRows = visibleRows.filter((row) => Number.isSafeInteger(row.balanceCents));
@@ -271,32 +271,36 @@ function HistoricalBalanceChart({ rows = [] }) {
   const lineSegments = visibleRows.slice(1).map((row, index) => {
     const previous = visibleRows[index];
     if (!Number.isSafeInteger(previous.balanceCents) || !Number.isSafeInteger(row.balanceCents)) return null;
-    return { previous, row, x1: x(index), y1: y(previous.balanceCents), x2: x(index + 1), y2: y(row.balanceCents) };
+    return {
+      previous, row, x1: x(index), y1: y(previous.balanceCents), x2: x(index + 1), y2: y(row.balanceCents),
+      isReported: previous.status === "reported" || row.status === "reported",
+    };
   }).filter(Boolean);
   const areaSegments = [];
   let activeArea = [];
   visibleRows.forEach((row, index) => {
-    if (Number.isSafeInteger(row.balanceCents)) activeArea.push({ x: x(index), y: y(row.balanceCents) });
+    if (Number.isSafeInteger(row.balanceCents) && row.status !== "reported") activeArea.push({ x: x(index), y: y(row.balanceCents) });
     else if (activeArea.length) { areaSegments.push(activeArea); activeArea = []; }
   });
   if (activeArea.length) areaSegments.push(activeArea);
-  const statusLabel = (row) => row.status === "reconciled" ? "Reconciled" : row.status === "unreconciled" ? "Unreconciled statement balance" : row.status === "calculated" ? `Calculated ${row.calculationDirection === "backward" ? "backward from the next official balance" : "forward from the prior official balance"}; not validated` : "Statement control";
+  const statusLabel = (row) => row.status === "reconciled" ? "Reconciled" : row.status === "unreconciled" ? "Unreconciled statement balance" : row.status === "reported" ? "Workbook-reported balance; not validated" : row.status === "calculated" ? `Calculated ${row.calculationDirection === "backward" ? "backward from the next official balance" : "forward from the prior official balance"}; not validated` : "Statement control";
   const rollforwardNote = (row) => Number.isSafeInteger(row.rollforwardDifferenceCents) && row.rollforwardDifferenceCents !== 0
-    ? ` · official balance is ${money(Math.abs(row.rollforwardDifferenceCents))} ${row.rollforwardDifferenceCents > 0 ? "higher" : "lower"} than recorded activity projected`
+    ? ` · ${row.status === "reported" ? "workbook balance" : "official balance"} is ${money(Math.abs(row.rollforwardDifferenceCents))} ${row.rollforwardDifferenceCents > 0 ? "higher" : "lower"} than recorded activity projected`
     : "";
   const visibleRange = `${monthLabel(visibleRows[0].statementMonth)} – ${monthLabel(visibleRows.at(-1).statementMonth)}`;
+  const latestReported = [...visibleRows].reverse().find((row) => row.status === "reported") || null;
 
   return (
     <div>
-      <div className="finance-chart is-balance" role="img" aria-label={`Official and calculated historical balances from ${visibleRange}`}>
+      <div className="finance-chart is-balance" role="img" aria-label={`Official, calculated, and workbook-reported historical balances from ${visibleRange}`}>
         <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
           {areaSegments.filter((segment) => segment.length > 1).map((segment, index) => <polygon key={index} points={`${segment[0].x},${y(0)} ${segment.map((point) => `${point.x},${point.y}`).join(" ")} ${segment.at(-1).x},${y(0)}`} className="finance-balance-chart-area" />)}
           {ticks.map((value) => <g key={value}><line x1={left} y1={y(value)} x2={width - right} y2={y(value)} className={value === minimum ? "finance-chart-axis" : "finance-chart-grid"} />{allKnownRows.length ? <text x={left - 8} y={y(value) + 4} textAnchor="end">{compactMoney(value)}</text> : null}</g>)}
-          {lineSegments.map((segment) => <line key={`${segment.previous.statementMonth}-${segment.row.statementMonth}`} x1={segment.x1} y1={segment.y1} x2={segment.x2} y2={segment.y2} stroke={segment.previous.status === "calculated" || segment.row.status === "calculated" ? "#64748b" : "#9a6f00"} className={`finance-balance-chart-line ${segment.previous.status === "calculated" || segment.row.status === "calculated" ? "is-calculated" : ""}`} />)}
+          {lineSegments.map((segment) => <line key={`${segment.previous.statementMonth}-${segment.row.statementMonth}`} x1={segment.x1} y1={segment.y1} x2={segment.x2} y2={segment.y2} className={`finance-balance-chart-line ${segment.isReported ? "is-reported" : segment.previous.status === "calculated" || segment.row.status === "calculated" ? "is-calculated" : ""}`} />)}
           {visibleRows.map((row, index) => (
             <g key={row.statementMonth}>
               {Number.isSafeInteger(row.balanceCents)
-                ? <circle cx={x(index)} cy={y(row.balanceCents)} r="6" fill={row.status === "calculated" ? "#fff" : row.status === "control" || row.status === "unreconciled" ? "#d97706" : "#d9a514"} stroke={row.status === "calculated" ? "#64748b" : "#fff"} className={`finance-balance-chart-point is-${row.status}`} tabIndex={0} aria-label={`${monthLabel(row.statementMonth)} balance: ${money(row.balanceCents)}`} onMouseEnter={() => setTooltip({ x: x(index), y: y(row.balanceCents), label: `${monthLabel(row.statementMonth)} balance: ${money(row.balanceCents)}` })} onMouseLeave={() => setTooltip(null)} onFocus={() => setTooltip({ x: x(index), y: y(row.balanceCents), label: `${monthLabel(row.statementMonth)} balance: ${money(row.balanceCents)}` })} onBlur={() => setTooltip(null)}><title>{`${monthLabel(row.statementMonth)}: ${money(row.balanceCents)} · ${statusLabel(row)}${rollforwardNote(row)}`}</title></circle>
+                ? <circle cx={x(index)} cy={y(row.balanceCents)} r="6" className={`finance-balance-chart-point is-${row.status}`} tabIndex={0} aria-label={`${monthLabel(row.statementMonth)} balance: ${money(row.balanceCents)}. ${statusLabel(row)}`} onMouseEnter={() => setTooltip({ x: x(index), y: y(row.balanceCents), label: `${monthLabel(row.statementMonth)}: ${money(row.balanceCents)} · ${statusLabel(row)}` })} onMouseLeave={() => setTooltip(null)} onFocus={() => setTooltip({ x: x(index), y: y(row.balanceCents), label: `${monthLabel(row.statementMonth)}: ${money(row.balanceCents)} · ${statusLabel(row)}` })} onBlur={() => setTooltip(null)}><title>{`${monthLabel(row.statementMonth)}: ${money(row.balanceCents)} · ${statusLabel(row)}${rollforwardNote(row)}`}</title></circle>
                 : <circle cx={x(index)} cy={top + plotHeight} r="4" fill="#cbd5e1" className="finance-balance-chart-missing" tabIndex={0} aria-label={`${monthLabel(row.statementMonth)} balance unavailable`} onMouseEnter={() => setTooltip({ x: x(index), y: top + plotHeight, label: `${monthLabel(row.statementMonth)}: balance unavailable` })} onMouseLeave={() => setTooltip(null)} onFocus={() => setTooltip({ x: x(index), y: top + plotHeight, label: `${monthLabel(row.statementMonth)}: balance unavailable` })} onBlur={() => setTooltip(null)}><title>{`${monthLabel(row.statementMonth)}: recorded activity is missing, so the balance cannot be calculated`}</title></circle>}
               <text x={x(index)} y={height - 19} textAnchor="middle">{monthLabel(row.statementMonth).split(" ")[0]}</text>
             </g>
@@ -309,9 +313,11 @@ function HistoricalBalanceChart({ rows = [] }) {
           <span><i className="is-balance-known" /><span><b>Reconciled</b> Official statement balance</span></span>
           <span><i className="is-balance-review" /><span><b>Under review</b> Official control or unreconciled balance</span></span>
           <span><i className="is-balance-calculated" /><span><b>Calculated</b> Based on activity; not yet validated</span></span>
+          <span><i className="is-balance-reported" /><span><b>Workbook-reported</b> Entered balance; not yet validated</span></span>
           <span><i className="is-balance-missing" /><span><b>Unavailable</b> Not enough recorded activity</span></span>
         </div>
       </div>
+      {latestReported ? <p className="finance-balance-reported-note">Latest workbook balance: {monthLabel(latestReported.statementMonth)} {money(latestReported.balanceCents)}. Preliminary; not reconciled.{Number.isSafeInteger(latestReported.rollforwardDifferenceCents) && latestReported.rollforwardDifferenceCents !== 0 ? ` ${money(Math.abs(latestReported.rollforwardDifferenceCents))} difference from recorded activity.` : ""}</p> : null}
       <ChartNavigation ariaLabel="Historical balance date range" windowStart={windowStart} maxStart={maxStart} startMonth={visibleRows[0].statementMonth} endMonth={visibleRows.at(-1).statementMonth} onChange={setRequestedStart} />
     </div>
   );
@@ -466,7 +472,7 @@ function CashFlow({ dashboard }) {
   const allChartRows = dashboard.cashFlowHistory || dashboard.monthly;
   const latestReadyIndex = allChartRows.reduce((latest, row, index) => row.hasActual || row.hasForecast ? index : latest, -1);
   const chartRows = latestReadyIndex >= 0 ? allChartRows.slice(0, latestReadyIndex + 1) : [];
-  return <div className="finance-section-stack">{hasPreliminaryActuals ? <div className="finance-alert is-warning"><strong>Preliminary activity.</strong> Recorded transactions are shown before statement validation or reconciliation.</div> : null}<div className="finance-two-column finance-align-start"><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Actuals</div><h2>Monthly cash flow</h2><p>Use the controls below the graph to move through the reporting period.</p></div></div><MonthlyChart key={`${chartRows[0]?.month || dashboard.fiscalYear.id}-${chartRows.at(-1)?.month || "empty"}`} rows={chartRows} /></section><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Balance history</div><h2>Historical balance</h2><p>Official points anchor calculated balances. Hollow points are based on recorded activity and are not yet validated or reconciled.</p></div></div><HistoricalBalanceChart key={dashboard.historicalBalances.at(-1)?.statementMonth || "empty"} rows={dashboard.historicalBalances} /></section></div><div className="finance-month-cards">{dashboard.monthly.map((row) => { const isLoaded = row.isLoaded ?? row.hasActual; return <div className={`card finance-month-card ${isLoaded ? "" : "is-not-ready"}`} key={row.month}><div className="finance-month-card-heading"><h3>{monthLabel(row.month)}</h3>{isLoaded ? (row.isPreliminary ? <span>Preliminary</span> : null) : <span className="is-not-ready">Not uploaded</span>}</div>{isLoaded ? <dl><div><dt>Income</dt><dd>{money(row.incomeCents)}</dd></div><div><dt>Expenses</dt><dd>{money(row.expensesCents)}</dd></div><div><dt>Net</dt><dd className={row.netCents < 0 ? "is-negative" : "is-positive"}>{money(row.netCents)}</dd></div><div><dt>Running net</dt><dd>{money(row.runningNetCents)}</dd></div>{row.hasForecast ? <div><dt>Forecast net</dt><dd>{money(row.forecastNetCents)} <small>Projected</small></dd></div> : null}</dl> : <div className="finance-month-not-ready"><strong>Numbers not ready</strong><span>No file has been uploaded for this month.</span></div>}</div>; })}</div></div>;
+  return <div className="finance-section-stack">{hasPreliminaryActuals ? <div className="finance-alert is-warning"><strong>Preliminary activity.</strong> Recorded transactions are shown before statement validation or reconciliation.</div> : null}<div className="finance-two-column finance-align-start"><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Actuals</div><h2>Monthly cash flow</h2><p>Use the controls below the graph to move through the reporting period.</p></div></div><MonthlyChart key={`${chartRows[0]?.month || dashboard.fiscalYear.id}-${chartRows.at(-1)?.month || "empty"}`} rows={chartRows} /></section><section className="card finance-panel"><div className="finance-section-heading"><div><div className="finance-eyebrow">Balance history</div><h2>Historical balance</h2><p>Official points anchor calculated balances. Workbook-reported points show entered values for context and remain unvalidated.</p></div></div><HistoricalBalanceChart key={dashboard.historicalBalances.at(-1)?.statementMonth || "empty"} rows={dashboard.historicalBalances} /></section></div><div className="finance-month-cards">{dashboard.monthly.map((row) => { const isLoaded = row.isLoaded ?? row.hasActual; return <div className={`card finance-month-card ${isLoaded ? "" : "is-not-ready"}`} key={row.month}><div className="finance-month-card-heading"><h3>{monthLabel(row.month)}</h3>{isLoaded ? (row.isPreliminary ? <span>Preliminary</span> : null) : <span className="is-not-ready">Not uploaded</span>}</div>{isLoaded ? <dl><div><dt>Income</dt><dd>{money(row.incomeCents)}</dd></div><div><dt>Expenses</dt><dd>{money(row.expensesCents)}</dd></div><div><dt>Net</dt><dd className={row.netCents < 0 ? "is-negative" : "is-positive"}>{money(row.netCents)}</dd></div><div><dt>Running net</dt><dd>{money(row.runningNetCents)}</dd></div>{row.hasForecast ? <div><dt>Forecast net</dt><dd>{money(row.forecastNetCents)} <small>Projected</small></dd></div> : null}</dl> : <div className="finance-month-not-ready"><strong>Numbers not ready</strong><span>No file has been uploaded for this month.</span></div>}</div>; })}</div></div>;
 }
 
 function Spending({ dashboard, onTransactions }) {

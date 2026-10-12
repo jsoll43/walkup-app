@@ -39,13 +39,15 @@ function d1(database) {
 }
 
 test("historical import needs neither account selection nor statement balances", async () => {
-  const [financeSql, backfillSql] = await Promise.all([
+  const [financeSql, backfillSql, workbookBalanceSql] = await Promise.all([
     readFile(new URL("../migrations/0008_finance.sql", import.meta.url), "utf8"),
     readFile(new URL("../migrations/0009_finance_backfill.sql", import.meta.url), "utf8"),
+    readFile(new URL("../migrations/0013_finance_workbook_balances.sql", import.meta.url), "utf8"),
   ]);
   const database = new DatabaseSync(":memory:");
   database.exec(financeSql);
   database.exec(backfillSql);
+  database.exec(workbookBalanceSql);
   const env = { DB: d1(database) };
   const session = { actor: "test editor", role: "editor" };
   const row = {

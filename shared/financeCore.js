@@ -174,8 +174,9 @@ export function summarizeTransactions(transactions) {
   };
 }
 
-export function calculateHistoricalBalances({ months, officialBalances, monthlyMovements }) {
+export function calculateHistoricalBalances({ months, officialBalances, monthlyMovements, reportedBalances = [] }) {
   const officialByMonth = new Map(officialBalances.map((row) => [row.statementMonth, row]));
+  const reportedByMonth = new Map(reportedBalances.map((row) => [row.statementMonth, row]));
   const movementByMonth = new Map(monthlyMovements.map((row) => [row.statementMonth, assertIntegerCents(row.movementCents, "movementCents")]));
   const rows = months.map((statementMonth) => {
     const official = officialByMonth.get(statementMonth);
@@ -226,6 +227,20 @@ export function calculateHistoricalBalances({ months, officialBalances, monthlyM
     previous.source = "transaction_backcast";
     previous.calculationDirection = "backward";
   }
+
+  // Display workbook values only after roll-forwards are calculated so they never become anchors.
+  rows.forEach((row, index) => {
+    const reported = reportedByMonth.get(row.statementMonth);
+    if (!reported || officialByMonth.has(row.statementMonth)) return;
+    row.balanceCents = assertIntegerCents(reported.balanceCents, "reportedBalanceCents");
+    row.status = "reported";
+    row.source = "workbook_summary";
+    row.calculationDirection = "";
+    const previous = rows[index - 1];
+    row.rollforwardDifferenceCents = previous && Number.isSafeInteger(previous.balanceCents) && Number.isSafeInteger(row.movementCents)
+      ? row.balanceCents - (previous.balanceCents + row.movementCents)
+      : null;
+  });
 
   return rows;
 }
