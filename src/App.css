@@ -919,6 +919,7 @@ button:disabled {
 
 .finance-insight-sections {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 20px;
   margin-top: 18px;
 }
@@ -2078,6 +2079,7 @@ button:disabled {
   }
 
   .finance-two-column,
+  .finance-insight-sections,
   .finance-recon-grid,
   .finance-form-grid,
   .finance-form-grid.is-compact,

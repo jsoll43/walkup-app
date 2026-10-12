@@ -469,20 +469,17 @@ function Overview({ dashboard }) {
       : { label: "Reconciled balance", tone: "is-good" };
   return (
     <div className="finance-section-stack">
-      {overview.hasUnreconciled || overview.balanceIsPreliminary ? <div className="finance-alert is-warning"><strong>Preliminary figures.</strong> <span>{overview.hasUnreconciled ? "At least one expected month is missing or unreconciled. " : ""}The bank balance uses the latest reconciled statements only.{overview.balanceIsPreliminary ? " The latest reconciled balance is shown even though its reporting period is not yet published." : ""}</span></div> : null}
+      {overview.hasUnreconciled ? <div className="finance-alert is-warning"><strong>Reconciliation incomplete.</strong> <span>Check the Reconciliation tab for missing statements or balances.</span></div> : null}
       <section>
         <div className="finance-section-heading"><div><div className="finance-eyebrow">Fiscal-year-to-date summary</div><h2>{activityRange} recorded activity</h2></div><span className={`finance-status-pill ${balanceStatus.tone}`}>{balanceStatus.label}</span></div>
         <div className="finance-metric-grid is-four">
-          <MoneyMetric label="Reconciled bank balance" cents={overview.bankBalancesCents} note={overview.balanceIsPreliminary ? "Latest reconciled balance; reporting period not yet published" : "Latest reconciled statement balance"} />
+          <MoneyMetric label="Reconciled bank balance" cents={overview.bankBalancesCents} note={overview.latestReconciledMonth ? `${monthLabel(overview.latestReconciledMonth)} reconciled statement${overview.balanceIsPreliminary ? "; reporting period not yet published" : ""}` : "No reconciled statement balance available"} />
           <MoneyMetric label="Fiscal-year-to-date income" cents={overview.ytdIncomeCents} note={activityRange} />
           <MoneyMetric label="Fiscal-year-to-date expenses" cents={overview.ytdExpensesCents} note={activityRange} />
           <MoneyMetric label="Fiscal-year-to-date surplus / deficit" cents={overview.ytdSurplusCents} note="Recorded income minus expenses; not a full-year forecast" tone={overview.ytdSurplusCents < 0 ? "danger" : "positive"} />
         </div>
       </section>
-      <div className="finance-two-column">
-        <FinancialInsights insights={dashboard.insights} />
-        <section className="card finance-panel"><h2>Close status</h2><dl className="finance-definition-list"><div><dt>Latest reconciled month</dt><dd>{monthLabel(overview.latestReconciledMonth)}</dd></div><div><dt>Reporting basis</dt><dd>October 1–September 30</dd></div><div><dt>Internal transfers</dt><dd>Excluded from league-wide results</dd></div></dl></section>
-      </div>
+      <FinancialInsights insights={dashboard.insights} />
       <section className="card finance-panel">
         <div className="finance-section-heading"><div><div className="finance-eyebrow">Validation controls</div><h2>Source discrepancy report</h2></div></div>
         {dashboard.discrepancies.length ? <div className="finance-discrepancies">{dashboard.discrepancies.map((item) => <details className={`finance-discrepancy is-${item.status}`} key={item.id}><summary><span>{item.statementMonth ? monthLabel(item.statementMonth) : dashboard.fiscalYear.label} · {item.metric.replaceAll("_", " ")}</span><strong>{item.status === "matched" ? "Matched" : item.status === "missing" ? "Missing" : `${money(item.differenceCents)} difference`}</strong></summary><div className="finance-discrepancy-body"><dl><div><dt>Expected control</dt><dd>{money(item.expectedCents)}</dd></div><div><dt>Imported actual</dt><dd>{money(item.actualCents)}</dd></div><div><dt>Difference</dt><dd>{money(item.differenceCents)}</dd></div></dl>{item.sourceRows?.length ? <div><strong>Contributing source rows</strong><div className="finance-source-row-list">{item.sourceRows.map((row, index) => <span key={`${row.transactionId}-${index}`}>{row.statementMonth} · {row.sourceFilename || "Manual"}{row.sourceRow ? ` row ${row.sourceRow}` : ""} · {money(row.amountCents)}</span>)}</div></div> : null}</div></details>)}</div> : <EmptyState>Validation controls appear after the migration is applied.</EmptyState>}
