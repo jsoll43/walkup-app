@@ -181,6 +181,14 @@ a {
   cursor: pointer;
 }
 
+.admin-accordion-summary > div { min-width: 0; }
+.admin-accordion-actions { display: inline-flex; align-items: center; gap: 14px; flex-shrink: 0; }
+.admin-accordion-actions .btn { text-align: center; }
+@media (max-width: 520px) {
+  .admin-accordion-summary { flex-wrap: wrap; }
+  .admin-accordion-actions { margin-left: auto; }
+}
+
 .admin-accordion-title {
   margin: 0;
   font-size: 22px;

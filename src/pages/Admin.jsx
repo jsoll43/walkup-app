@@ -66,7 +66,7 @@ function formatPlayer(p) {
   return p.number ? `#${p.number} ${name}`.trim() : name || p.id;
 }
 
-function AccordionSection({ id, title, subtitle, children, defaultOpen = false }) {
+function AccordionSection({ id, title, subtitle, children, defaultOpen = false, action }) {
   return (
     <details id={id} className="card admin-accordion" open={defaultOpen}>
       <summary className="admin-accordion-summary">
@@ -74,7 +74,10 @@ function AccordionSection({ id, title, subtitle, children, defaultOpen = false }
           <h2 className="admin-accordion-title">{title}</h2>
           {subtitle ? <div className="admin-accordion-subtitle">{subtitle}</div> : null}
         </div>
-        <span className="admin-accordion-icon" aria-hidden="true" />
+        <span className="admin-accordion-actions">
+          {action}
+          <span className="admin-accordion-icon" aria-hidden="true" />
+        </span>
       </summary>
 
       <div className="admin-accordion-body">{children}</div>
@@ -1212,7 +1215,6 @@ export default function Admin() {
       >
         <h1 style={{ margin: 0, color: "white" }}>Admin</h1>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Link className="btn" to="/admin/loop-walkup-songs">Loop Walkup Songs</Link>
           <button className="btn-secondary" onClick={() => refreshAll()} disabled={loading}>
             Refresh all
           </button>
@@ -1413,6 +1415,7 @@ export default function Admin() {
         id="admin-roster-section"
         title="Roster And Final Walk-Up Clips"
         subtitle="Modify players by team and manage uploaded final audio files."
+        action={<Link className="btn btn-sm" to="/admin/loop-walkup-songs" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>Loop Walkup Songs</Link>}
       >
         <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
           <div>

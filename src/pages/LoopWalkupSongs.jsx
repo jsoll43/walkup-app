@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { WalkupPlaylist } from "../audio/WalkupPlaylist.js";
+import { removeDuplicatePlayers } from "../audio/playlistPlayers.js";
 
 const STORAGE_KEY = "BGSL_PARADE_PLAYLIST_V1";
 
@@ -43,6 +44,7 @@ export default function LoopWalkupSongs() {
   const [loadingRoster, setLoadingRoster] = useState(false);
   const [error, setError] = useState("");
   const [storageError, setStorageError] = useState("");
+  const [notice, setNotice] = useState("");
   const [progress, setProgress] = useState(null);
   const [playback, setPlayback] = useState({ status: "idle", index: 0, error: "" });
   const audioRef = useRef(null);
@@ -52,6 +54,8 @@ export default function LoopWalkupSongs() {
   const busy = progress !== null || playback.status === "playing";
   const prepared = !["idle"].includes(playback.status);
   const current = tracks[playback.index];
+  const uniqueTracks = removeDuplicatePlayers(tracks);
+  const duplicateCount = tracks.length - uniqueTracks.length;
 
   useEffect(() => {
     const player = new WalkupPlaylist(audioRef.current, setPlayback);
@@ -127,6 +131,7 @@ export default function LoopWalkupSongs() {
     urls.current.forEach(URL.revokeObjectURL);
     urls.current = [];
     setError("");
+    setNotice("");
     setTracks(next);
   }
 
@@ -135,7 +140,7 @@ export default function LoopWalkupSongs() {
     const additions = players.filter((p) => p.hasSong && !tracks.some((t) => t.teamSlug === teamSlug && t.id === p.id));
     if (!additions.length) return;
     changeTracks([...tracks, ...additions.map((p) => ({
-      id: p.id, name: playerName(p), teamSlug,
+      id: p.id, name: playerName(p), fullName: `${p.first || ""} ${p.last || ""}`.trim(), teamSlug,
       teamName: `${team.name}${team.season_label ? ` (${team.season_label})` : ""}`,
     }))]);
   }
@@ -235,8 +240,16 @@ export default function LoopWalkupSongs() {
 
         <section className="card" aria-labelledby="parade-list-title">
           <div className="parade-row"><h2 id="parade-list-title">Your playlist ({tracks.length})</h2>
-            <button className="btn-secondary" disabled={busy || !tracks.length} onClick={() => changeTracks([])}>Clear</button></div>
+            <div className="parade-actions">
+              <button className="btn-secondary" disabled={busy || !duplicateCount} onClick={() => {
+                changeTracks(uniqueTracks);
+                setNotice(`Removed ${duplicateCount} duplicate ${duplicateCount === 1 ? "entry" : "entries"}.`);
+              }}>Remove duplicates{duplicateCount ? ` (${duplicateCount})` : ""}</button>
+              <button className="btn-secondary" disabled={busy || !tracks.length} onClick={() => changeTracks([])}>Clear</button>
+            </div></div>
           <p className="parade-hint">Saved on this device. Pause playback to edit; prepare songs again after changes.</p>
+          <p className="parade-hint">Remove duplicates matches full names across teams and keeps the first entry. Move a player’s preferred team entry above her other entries before removing duplicates.</p>
+          {notice ? <p role="status">{notice}</p> : null}
           {!tracks.length ? <p>Your playlist is empty. Add players from a team to get started.</p> :
             <ol className="parade-list">{tracks.map((track, index) => <li key={`${track.teamSlug}/${track.id}`} className={`parade-row ${prepared && index === playback.index ? "parade-current" : ""}`}>
               <span><strong>{index + 1}. {track.name}</strong><small>{track.teamName}</small></span>
