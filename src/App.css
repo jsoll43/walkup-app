@@ -9,6 +9,8 @@
 .parade-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .parade-player > .parade-actions button { min-height: 52px; min-width: 110px; font-size: 18px; }
 .parade-hint { font-size: 14px; line-height: 1.5; opacity: .8; }
+.parade-duration { margin: 14px 0; font-variant-numeric: tabular-nums; }
+.parade-duration > strong { font-size: 22px; }
 .parade-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 16px; align-items: start; }
 .parade-list { list-style: none; padding: 0; margin-bottom: 0; }
 .parade-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0; border-bottom: 1px solid #d8dfe6; }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { WalkupPlaylist } from "../audio/WalkupPlaylist.js";
 import { removeDuplicatePlayers } from "../audio/playlistPlayers.js";
+import { PlaylistAudioCache, formatDuration, summarizeDuration, trackAudioKey } from "../audio/playlistDuration.js";
 
 const STORAGE_KEY = "BGSL_PARADE_PLAYLIST_V1";
 
@@ -46,27 +47,53 @@ export default function LoopWalkupSongs() {
   const [storageError, setStorageError] = useState("");
   const [notice, setNotice] = useState("");
   const [progress, setProgress] = useState(null);
+  const [durations, setDurations] = useState({});
   const [playback, setPlayback] = useState({ status: "idle", index: 0, error: "" });
   const audioRef = useRef(null);
   const controller = useRef(null);
-  const urls = useRef([]);
+  const audioCache = useRef(null);
   const prepareAbort = useRef(null);
   const busy = progress !== null || playback.status === "playing";
   const prepared = !["idle"].includes(playback.status);
   const current = tracks[playback.index];
   const uniqueTracks = removeDuplicatePlayers(tracks);
   const duplicateCount = tracks.length - uniqueTracks.length;
+  const duration = summarizeDuration(tracks, durations);
+  const durationLabel = `${formatDuration(duration.seconds)}${duration.pending || duration.unavailable ? "+" : ""}`;
 
   useEffect(() => {
     const player = new WalkupPlaylist(audioRef.current, setPlayback);
+    const cache = new PlaylistAudioCache(adminKey);
+    audioCache.current = cache;
     controller.current = player;
     return () => {
       prepareAbort.current?.abort();
       player.dispose();
-      urls.current.forEach(URL.revokeObjectURL);
-      urls.current = [];
+      cache.dispose();
     };
-  }, []);
+  }, [adminKey]);
+
+  useEffect(() => {
+    if (!adminKey) return;
+    let cancelled = false;
+    const remaining = [...tracks];
+    // Limit background downloads while the admin continues building the playlist.
+    async function worker() {
+      while (!cancelled && remaining.length) {
+        const track = remaining.shift();
+        const key = trackAudioKey(track);
+        try {
+          const audio = await audioCache.current.load(track);
+          if (!cancelled) setDurations((previous) => ({ ...previous, [key]: audio.duration }));
+        } catch {
+          if (!cancelled) setDurations((previous) => ({ ...previous, [key]: null }));
+        }
+      }
+    }
+    void worker();
+    void worker();
+    return () => { cancelled = true; };
+  }, [tracks, adminKey]);
 
   useEffect(() => {
     controller.current.loop = loop;
@@ -128,8 +155,6 @@ export default function LoopWalkupSongs() {
 
   function changeTracks(next) {
     controller.current.setTracks([]);
-    urls.current.forEach(URL.revokeObjectURL);
-    urls.current = [];
     setError("");
     setNotice("");
     setTracks(next);
@@ -159,22 +184,16 @@ export default function LoopWalkupSongs() {
     setError("");
     try {
       for (const track of tracks) {
-        const query = new URLSearchParams({ playerId: track.id, teamSlug: track.teamSlug });
-        const res = await fetch(`/api/admin/voice-file?${query}`, {
-          headers: { "x-admin-key": adminKey }, signal: abort.signal,
-        });
-        if (!res.ok) throw new Error(`Could not load ${track.name} from ${track.teamName}. Check that her finished song is uploaded, then try again.`);
-        const blob = await res.blob();
+        const audio = await audioCache.current.load(track);
         if (abort.signal.aborted) return;
-        loaded.push(URL.createObjectURL(blob));
+        loaded.push(audio.url);
+        setDurations((previous) => ({ ...previous, [trackAudioKey(track)]: audio.duration }));
         setProgress(loaded.length);
       }
-      urls.current = loaded;
       controller.current.setTracks(loaded);
     } catch (e) {
       if (!abort.signal.aborted) setError(e.message);
     } finally {
-      if (abort.signal.aborted || loaded.length !== tracks.length) loaded.forEach(URL.revokeObjectURL);
       if (!abort.signal.aborted) setProgress(null);
     }
   }
@@ -192,6 +211,7 @@ export default function LoopWalkupSongs() {
 
       <section className="card parade-player" aria-labelledby="parade-playback-title">
         <h2 id="parade-playback-title">Parade player</h2>
+        <p className="parade-duration"><strong>{durationLabel}</strong> per {loop ? "loop" : "playthrough"}</p>
         <label className="parade-mode" htmlFor="parade-mode">Playback mode
           <select id="parade-mode" className="input" value={loop ? "loop" : "once"} onChange={(e) => setLoop(e.target.value === "loop")}>
             <option value="loop">Loop continuously</option>
@@ -247,12 +267,18 @@ export default function LoopWalkupSongs() {
               }}>Remove duplicates{duplicateCount ? ` (${duplicateCount})` : ""}</button>
               <button className="btn-secondary" disabled={busy || !tracks.length} onClick={() => changeTracks([])}>Clear</button>
             </div></div>
+          <div className="parade-duration" role="status" aria-live="polite">
+            <strong>Total audio: {durationLabel}</strong>
+            <div className="parade-hint">{duration.pending ? `Checking ${duration.pending} ${duration.pending === 1 ? "song" : "songs"}... ` : ""}
+              {duration.unavailable ? `${duration.unavailable} ${duration.unavailable === 1 ? "song length is" : "song lengths are"} unavailable; total includes measured songs only. ` : ""}
+              One full {loop ? "loop" : "playthrough"} of your playlist.</div>
+          </div>
           <p className="parade-hint">Saved on this device. Pause playback to edit; prepare songs again after changes.</p>
           <p className="parade-hint">Remove duplicates matches full names across teams and keeps the first entry. Move a player’s preferred team entry above her other entries before removing duplicates.</p>
           {notice ? <p role="status">{notice}</p> : null}
           {!tracks.length ? <p>Your playlist is empty. Add players from a team to get started.</p> :
             <ol className="parade-list">{tracks.map((track, index) => <li key={`${track.teamSlug}/${track.id}`} className={`parade-row ${prepared && index === playback.index ? "parade-current" : ""}`}>
-              <span><strong>{index + 1}. {track.name}</strong><small>{track.teamName}</small></span>
+              <span><strong>{index + 1}. {track.name}</strong><small>{track.teamName}</small><small>{durations[trackAudioKey(track)] === undefined ? "Checking length..." : durations[trackAudioKey(track)] === null ? "Length unavailable" : formatDuration(durations[trackAudioKey(track)])}</small></span>
               <div className="parade-actions">
                 <button className="btn-secondary" disabled={busy || index === 0} onClick={() => move(index, -1)} aria-label={`Move ${track.name} up`}>↑</button>
                 <button className="btn-secondary" disabled={busy || index === tracks.length - 1} onClick={() => move(index, 1)} aria-label={`Move ${track.name} down`}>↓</button>
