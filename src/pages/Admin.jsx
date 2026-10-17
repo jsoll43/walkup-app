@@ -1,5 +1,6 @@
 // src/pages/Admin.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import SchedulingAdminSection from "../components/SchedulingAdminSection.jsx";
 import StartSeasonModal from "../components/StartSeasonModal.jsx";
 import ParentInboxAudit from "../components/ParentInboxAudit.jsx";
@@ -1211,6 +1212,7 @@ export default function Admin() {
       >
         <h1 style={{ margin: 0, color: "white" }}>Admin</h1>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Link className="btn" to="/admin/loop-walkup-songs">Loop Walkup Songs</Link>
           <button className="btn-secondary" onClick={() => refreshAll()} disabled={loading}>
             Refresh all
           </button>

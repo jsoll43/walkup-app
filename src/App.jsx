@@ -6,6 +6,7 @@ import ParentLogin from "./pages/ParentLogin.jsx";
 import ParentHome from "./pages/ParentHome.jsx";
 import Coach from "./pages/Coach.jsx";
 import Admin from "./pages/Admin.jsx";
+import LoopWalkupSongs from "./pages/LoopWalkupSongs.jsx";
 import Scheduling from "./pages/Scheduling.jsx";
 import Archive from "./pages/Archive.jsx";
 import BoardFinance from "./pages/BoardFinance.jsx";
@@ -19,7 +20,7 @@ function TopNav() {
   // ✅ Consider BOTH routes as "Parent" for highlighting
   const isParent = pathname === "/parent" || pathname === "/parent-login";
   const isCoach = pathname === "/coach" || pathname === "/archive";
-  const isAdmin = pathname === "/admin";
+  const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
   const isScheduling = pathname === "/scheduling";
 
   // ✅ If parent already selected team + key, go straight to /parent.
@@ -114,6 +115,7 @@ export default function App() {
           <Route path="/coach" element={<Coach />} />
           <Route path="/archive" element={<Archive />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/admin/loop-walkup-songs" element={<LoopWalkupSongs />} />
           <Route path="/scheduling" element={<Scheduling />} />
           <Route path="/finance" element={<BoardFinance />} />
 

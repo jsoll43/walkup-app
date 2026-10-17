@@ -1,4 +1,24 @@
 /* src/App.css */
+.parade-page { max-width: 1080px; margin: 0 auto; }
+.parade-page h2 { margin-top: 0; }
+.parade-player { margin: 20px 0; }
+.parade-mode { display: grid; gap: 6px; max-width: 320px; font-weight: 700; }
+.parade-now { padding: 22px 0; font-size: 18px; }
+.parade-now strong { display: block; font-size: 26px; margin: 6px 0; }
+.parade-up-next { margin-top: 10px; font-size: 15px; }
+.parade-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.parade-player > .parade-actions button { min-height: 52px; min-width: 110px; font-size: 18px; }
+.parade-hint { font-size: 14px; line-height: 1.5; opacity: .8; }
+.parade-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 16px; align-items: start; }
+.parade-list { list-style: none; padding: 0; margin-bottom: 0; }
+.parade-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0; border-bottom: 1px solid #d8dfe6; }
+.parade-row > span { flex: 1; min-width: 130px; overflow-wrap: anywhere; }
+.parade-row h2 { margin: 0; }
+.parade-row small { display: block; margin-top: 4px; opacity: .75; }
+.parade-current { border-left: 4px solid var(--bgsl-gold); padding-left: 10px; background: #faf4df; }
+.parade-error { margin-top: 16px; border: 2px solid #b91c1c; color: #991b1b; }
+@media (max-width: 760px) { .parade-columns { grid-template-columns: 1fr; } }
+
 :root {
   --bgsl-navy: #102e4f;
   --bgsl-navy-dark: #012144;
