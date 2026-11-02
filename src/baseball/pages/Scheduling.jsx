@@ -11,6 +11,9 @@ import {
   STATUS_META,
   addDays,
   buildCalendarItems,
+  buildBubbleSoftballBlocks,
+  bubbleBookingError,
+  BUBBLE_SOFTBALL_NOTICE,
   formatDayHeader,
   formatLongDate,
   formatTimeLabel,
@@ -169,6 +172,13 @@ function getCellKey(date, field) {
 
 function ScheduleEventCard({ item, isSelected, onSelect }) {
   const status = getCalendarStatus(item);
+  if (item.kind === "closure") return (
+    <div className="schedule-block is-maintenance" role="note" aria-label={item.notes}>
+      <div className="schedule-block-topline"><div className="schedule-block-time">All day</div><span className="scheduling-pill scheduling-pill-maintenance">Blocked</span></div>
+      <div className="schedule-block-title">Reserved for softball</div>
+      <div className="schedule-block-note">No baseball bookings</div>
+    </div>
+  );
   return (
     <button
       type="button"
@@ -314,11 +324,13 @@ function ReservationFormCard({
   hideTitle = false,
 }) {
   const fields = useContext(SchedulingFieldsContext);
+  const blockedMessage = bubbleBookingError(form.field, form.date);
   const sortedTeams = [...teams].sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
   return (
     <div className="card scheduling-panel-card">
       {!hideTitle ? <h2 style={{ marginTop: 0 }}>{title}</h2> : null}
       <div style={{ opacity: 0.8 }}>{description}</div>
+      {form.field === "bubble" ? <p className="bubble-softball-notice">{BUBBLE_SOFTBALL_NOTICE}</p> : null}
 
       <div className="scheduling-form-grid" style={{ marginTop: 14 }}>
         <div>
@@ -366,7 +378,8 @@ function ReservationFormCard({
       </div>
 
       <div style={{ marginTop: 14 }}>
-        <button className="btn" onClick={onSubmit} disabled={submitting}>
+        {blockedMessage ? <div role="alert" style={{ marginBottom: 10 }}>{blockedMessage}</div> : null}
+        <button className="btn" onClick={onSubmit} disabled={submitting || !!blockedMessage}>
           {submitting ? "Saving..." : submitLabel}
         </button>
       </div>
@@ -1032,7 +1045,7 @@ export default function Scheduling({ adminKey = "", mode = "field", onModeChange
     setSuccess("");
   }, [defaultField]);
   const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
-  const calendarItems = useMemo(() => buildCalendarItems(reservations, requests), [reservations, requests]);
+  const calendarItems = useMemo(() => [...buildCalendarItems(reservations, requests), ...(isBubble ? buildBubbleSoftballBlocks(weekDates) : [])], [reservations, requests, isBubble, weekDates]);
   const weekItems = useMemo(
     () => calendarItems.filter((item) => weekDates.includes(item.date)),
     [calendarItems, weekDates]
@@ -1361,6 +1374,8 @@ export default function Scheduling({ adminKey = "", mode = "field", onModeChange
   }
 
   async function submitCoachAddRequest() {
+    const blocked = bubbleBookingError(coachForm.field, coachForm.date);
+    if (blocked) { setError(blocked); return; }
     if (coachConflictPreview.length > 0) {
       openConflictModal({
         submitType: "coach-add",
@@ -1373,6 +1388,8 @@ export default function Scheduling({ adminKey = "", mode = "field", onModeChange
   }
 
   async function submitBoardReservation() {
+    const blocked = bubbleBookingError(boardForm.field, boardForm.date);
+    if (blocked) { setError(blocked); return; }
     if (boardConflictPreview.length > 0) {
       openConflictModal({
         submitType: "board-add",

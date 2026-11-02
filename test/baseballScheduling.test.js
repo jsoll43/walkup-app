@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import * as baseball from "../functions/lib/baseballScheduling.js";
 import * as softball from "../functions/lib/scheduling.js";
-import { buildBaseballSampleReservations, buildBubbleSampleReservations, buildLegacyBaseballSampleReservations, ensureBaseballSampleData } from "../functions/lib/baseballSampleData.js";
+import { buildBaseballSampleReservations, buildBubbleSampleReservations, buildLegacyBaseballSampleReservations, ensureBaseballSampleData, BASEBALL_SAMPLE_VERSION, BUBBLE_SAMPLE_VERSION } from "../functions/lib/baseballSampleData.js";
 import * as client from "../src/baseball/scheduling/utils.js";
 import { onRequestPost as submitRequest } from "../functions/api/baseball/scheduling/request.js";
 import { onRequestPost as reviewRequest } from "../functions/api/baseball/scheduling/review.js";
@@ -134,11 +134,15 @@ test("sample data fills the next 30 days once, respects existing reservations, a
   assert.ok(planned.every(event=>event.date>="2026-11-02" && event.date<="2026-12-01"));
   assert.deepEqual([...new Set(planned.map(event=>event.field))].sort(),["major","minor","tee-ball"]);
   const bubble = buildBubbleSampleReservations();
-  assert.equal(bubble.length,6);
+  assert.equal(bubble.length,17);
+  assert.equal(bubble[0].date,"2026-11-02");
+  assert.equal(bubble.at(-1).date,"2026-11-30");
+  assert.ok(bubble.every(item=>item.date <= "2026-12-01" && !client.bubbleBookingError(item.field,item.date)));
+  assert.ok(bubble.every(item=>!item.title.includes("Scrimmage") && item.reservationType !== "game"));
   assert.ok(bubble.every(item=>item.field==="bubble" && Number(item.endTime.slice(0,2))-Number(item.startTime.slice(0,2))===2));
   await ensureBaseballSampleData(env);
   assert.equal(sqlite.prepare("SELECT count(*) AS count FROM baseball_scheduling_teams").get().count,5);
-  assert.equal(sqlite.prepare("SELECT count(*) AS count FROM baseball_field_reservations WHERE created_by_role = 'sample_data'").get().count,60);
+  assert.equal(sqlite.prepare("SELECT count(*) AS count FROM baseball_field_reservations WHERE created_by_role = 'sample_data'").get().count,71);
   assert.equal(sqlite.prepare("SELECT title FROM baseball_field_reservations WHERE id = 'real-reservation'").get().title,"Existing reservation");
   const entries = sqlite.prepare("SELECT * FROM baseball_field_reservations").all();
   for (const a of entries) for (const b of entries) {
@@ -148,13 +152,13 @@ test("sample data fills the next 30 days once, respects existing reservations, a
   const removed = entries.find(event=>event.created_by_role==="sample_data");
   sqlite.prepare("DELETE FROM baseball_field_reservations WHERE id = ?").run(removed.id);
   await ensureBaseballSampleData(env);
-  assert.equal(sqlite.prepare("SELECT count(*) AS count FROM baseball_field_reservations WHERE created_by_role = 'sample_data'").get().count,59);
+  assert.equal(sqlite.prepare("SELECT count(*) AS count FROM baseball_field_reservations WHERE created_by_role = 'sample_data'").get().count,70);
   assert.equal(sqlite.prepare("SELECT count(*) AS count FROM baseball_field_requests WHERE requested_by <> 'Admin'").get().count,0);
   assert.deepEqual(sqlite.prepare("SELECT * FROM scheduling_teams").all(),original);
   sqlite.close();
 });
 
-test("revising the original 65 samples produces 55 field events and six bubble examples without changing real data", async () => {
+test("revising the original 65 samples produces 55 field events and 30 days of bubble examples without changing real data", async () => {
   const {sqlite,env}=database();
   env.BASEBALL_SAMPLE_DATA="on";
   await baseball.ensureSchedulingTables(env);
@@ -173,13 +177,13 @@ test("revising the original 65 samples produces 55 field events and six bubble e
   assert.equal(field.length,55);
   assert.equal(field.filter(item=>item.reservation_type==="game").length,29);
   assert.equal(field.filter(item=>item.reservation_type==="practice").length,26);
-  assert.equal(bubble.length,6);
+  assert.equal(bubble.length,17);
   assert.deepEqual(sqlite.prepare("SELECT * FROM baseball_field_reservations WHERE id='actual-booking'").get(),realBooking);
   assert.deepEqual(sqlite.prepare("SELECT * FROM baseball_field_requests WHERE id='actual-request'").get(),realRequest);
   const byId=new Map(buildBaseballSampleReservations().map(item=>[item.id,item]));
   assert.ok(field.every(item=>item.title===byId.get(item.id).title));
   await ensureBaseballSampleData(env);
-  assert.equal(sqlite.prepare("SELECT count(*) AS count FROM baseball_field_reservations WHERE created_by_role='sample_data'").get().count,61);
+  assert.equal(sqlite.prepare("SELECT count(*) AS count FROM baseball_field_reservations WHERE created_by_role='sample_data'").get().count,72);
   sqlite.close();
 });
 
@@ -254,5 +258,86 @@ test("baseball setup, requests, approvals, imports and passwords leave every BGS
   assert.equal((await baseball.getSchedulingNotificationSettings(env)).email,"");
   assert.deepEqual(snapshot(),before,"BGSL data, passwords, teams and history must not change");
   assert.ok(statements.every((sql)=>!/(?<!baseball_)\b(scheduling_settings|scheduling_teams|field_reservations|field_requests)\b/.test(sql)),"baseball SQL must reference only its own tables");
+  sqlite.close();
+});
+
+
+test("softball blocks the Bubble all day every Tuesday/Thursday indefinitely, with no field restriction", async () => {
+  const {sqlite,env}=database();
+  await baseball.setSchedulingPassword(env,"admin","baseball-admin");
+  for (const date of ["2026-11-03","2026-11-05","2026-12-01","2027-04-08","2027-04-13"]) {
+    const draft={requestType:"add",field:"bubble",date,startTime:"00:00",team:"Barrington 10U"};
+    assert.match(baseball.normalizeScheduleDraft(draft).error,/softball/);
+    assert.match(client.bubbleBookingError("bubble",date),/softball/);
+    for (const startTime of ["00:00","10:00","17:00","22:00"]) {
+      const response=await submitRequest({env,request:request({...draft,startTime})});
+      assert.equal(response.status,400);
+      assert.match((await response.json()).error,/softball/);
+    }
+    const response=await addReservation({env,request:request(draft,"admin","baseball-admin")});
+    assert.equal(response.status,400);
+    await assert.rejects(baseball.createReservation(env,{...draft,endTime:"02:00"}),/softball/);
+    for (const field of ["major","minor","tee-ball"]) {
+      assert.ok(baseball.normalizeScheduleDraft({...draft,field}).value);
+      assert.equal(client.bubbleBookingError(field,date),"");
+    }
+  }
+  for (const date of ["2026-11-02","2026-11-04","2026-11-06","2026-11-07","2026-11-08"]) {
+    assert.ok(baseball.normalizeScheduleDraft({field:"bubble",date,startTime:"17:00",team:"10U"}).value);
+  }
+  const result=await baseball.importSchedulingCsv(env,"date,field,team,startTime\n2027-04-13,bubble,10U,17:00\n2027-04-15,bubble,12U,17:00\n2027-04-14,bubble,14U,17:00\n2027-04-13,major,10U,17:00");
+  assert.equal(result.importedCount,2);
+  assert.equal(result.errorCount,2);
+  assert.ok(result.errors.every(error=>error.includes("softball")));
+  // Simulate a pending request submitted before the standing restriction existed.
+  sqlite.prepare(`INSERT INTO baseball_field_requests
+    (id, request_type, field, team, title, reservation_type, date, start_time, end_time, status, requested_by, requested_at)
+    VALUES ('old-request','add','bubble','10U','Practice','practice','2027-04-13','17:00','19:00','pending','Requester','2026-11-01')`).run();
+  const response=await reviewRequest({env,request:request({requestId:"old-request",action:"approve"},"admin","baseball-admin")});
+  assert.equal(response.status,400);
+  assert.equal(sqlite.prepare("SELECT status FROM baseball_field_requests WHERE id='old-request'").get().status,"pending");
+  assert.equal(sqlite.prepare("SELECT count(*) count FROM baseball_field_reservations WHERE field='bubble' AND date='2027-04-13'").get().count,0);
+  sqlite.close();
+});
+
+test("Bubble closures render for any selected week without counting as baseball bookings", () => {
+  const dates=client.getWeekDates("2027-04-13");
+  const blocks=client.buildBubbleSoftballBlocks(dates);
+  assert.deepEqual(blocks.map(item=>item.date),["2027-04-13","2027-04-15"]);
+  assert.ok(blocks.every(item=>item.kind==="closure" && item.allDay && item.startTime==="00:00" && item.endTime==="24:00" && item.displayStatus==="maintenance"));
+  assert.equal(client.scopeSchedulingData({reservations:[],requests:[]},"bubble").summary.approvedReservations,0);
+});
+
+test("Bubble-only revision fixes the old Thursday and scrimmage examples without restoring deleted field samples", async () => {
+  const {sqlite,env}=database();
+  env.BASEBALL_SAMPLE_DATA="on";
+  await baseball.ensureSchedulingTables(env);
+  await ensureBaseballSampleData(env);
+  const deleted=buildBaseballSampleReservations()[0].id;
+  sqlite.prepare("DELETE FROM baseball_field_reservations WHERE id=?").run(deleted);
+  sqlite.prepare("DELETE FROM baseball_sample_seed_versions WHERE id=?").run(BUBBLE_SAMPLE_VERSION);
+  sqlite.prepare("DELETE FROM baseball_field_reservations WHERE field='bubble'").run();
+  const oldBubble=[
+    {id:"bll_sample_20261102_bubble_2026-11-12_12u",date:"2026-11-12",team:"Barrington 12U",title:"[SAMPLE] 12U Hitting Session",reservationType:"practice",startTime:"19:00",endTime:"21:00"},
+    {id:"bll_sample_20261102_bubble_2026-11-14_10u",date:"2026-11-14",team:"Barrington 10U",title:"[SAMPLE] 10U Indoor Scrimmage",reservationType:"game",startTime:"12:00",endTime:"14:00"},
+  ];
+  const insert=sqlite.prepare(`INSERT INTO baseball_field_reservations
+    (id,field,team,title,reservation_type,date,start_time,end_time,status,notes,created_by_role,created_at,updated_at)
+    VALUES (?,'bubble',?,?,?,?,?,?,'approved','','sample_data','2026-11-01','2026-11-01')`);
+  for (const item of oldBubble) insert.run(item.id,item.team,item.title,item.reservationType,item.date,item.startTime,item.endTime);
+  await baseball.createReservation(env,{id:"real-bubble",field:"bubble",team:"Actual Team",title:"Actual booking",date:"2027-04-14",startTime:"17:00",endTime:"19:00",reservationType:"practice",createdByRole:"admin"});
+  const real=sqlite.prepare("SELECT * FROM baseball_field_reservations WHERE id='real-bubble'").get();
+  const fields=sqlite.prepare("SELECT * FROM baseball_field_reservations WHERE field<>'bubble' ORDER BY id").all();
+  assert.ok(sqlite.prepare("SELECT id FROM baseball_sample_seed_versions WHERE id=?").get(BASEBALL_SAMPLE_VERSION));
+  await ensureBaseballSampleData(env);
+  assert.deepEqual(sqlite.prepare("SELECT * FROM baseball_field_reservations WHERE field<>'bubble' ORDER BY id").all(),fields);
+  assert.deepEqual(sqlite.prepare("SELECT * FROM baseball_field_reservations WHERE id='real-bubble'").get(),real);
+  const bubbles=sqlite.prepare("SELECT * FROM baseball_field_reservations WHERE field='bubble' AND created_by_role='sample_data'").all();
+  assert.equal(bubbles.length,17);
+  assert.ok(bubbles.every(item=>!client.bubbleBookingError(item.field,item.date) && !item.title.includes("Scrimmage")));
+  assert.equal(bubbles.find(item=>item.date==="2026-11-14").reservation_type,"practice");
+  sqlite.prepare("DELETE FROM baseball_field_reservations WHERE id=?").run(bubbles[0].id);
+  await ensureBaseballSampleData(env);
+  assert.equal(sqlite.prepare("SELECT count(*) count FROM baseball_field_reservations WHERE field='bubble' AND created_by_role='sample_data'").get().count,16);
   sqlite.close();
 });

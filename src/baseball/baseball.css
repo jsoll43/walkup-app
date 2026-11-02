@@ -3846,3 +3846,7 @@ body { background: #d7ba58; color: #173f7a; }
   .scheduling-header-actions { gap:6px; }
   .baseball-mode-switch button { padding:8px 12px; }
 }
+
+/* Standing softball use is a read-only all-day closure in the Bubble calendar. */
+.schedule-block-note { margin-top: 3px; font-size: 12px; font-weight: 500; }
+.bubble-softball-notice { font-size: 13px; margin: 10px 0 0; }

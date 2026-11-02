@@ -1,3 +1,4 @@
+import { bubbleBookingError } from "../../../lib/baseballRules.js";
 import {
   approvePendingRemovalRequestsForReservation,
   createReservation,
@@ -35,6 +36,8 @@ export const onRequestPost = async ({ request, env }) => {
 
     if (action === "approve") {
       if (pendingRequest.requestType === "add") {
+        const bubbleError = bubbleBookingError(pendingRequest.field, pendingRequest.date);
+        if (bubbleError) return json({ ok: false, error: bubbleError }, 400);
         createdReservation = await createReservation(env, {
           field: pendingRequest.field,
           team: pendingRequest.team,

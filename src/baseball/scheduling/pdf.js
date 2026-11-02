@@ -1,4 +1,4 @@
-import { STATUS_META, formatDateInput, formatTimeLabel } from "./utils.js";
+import { STATUS_META, formatDateInput, formatTimeLabel, buildBubbleSoftballBlocks } from "./utils.js";
 
 const PAGE_WIDTH = 792;
 const PAGE_HEIGHT = 612;
@@ -182,6 +182,7 @@ function buildDayEntries(items, cellWidth, cellHeight) {
 }
 
 function buildEntryText(item) {
+  if (item.kind === "closure") return "Softball - All day [Blocked]";
   const status = getStatusKey(item);
   const statusSuffix = getStatusSuffix(status);
   const parts = [formatTimeLabel(item.startTime), getFieldShortLabel(item.field), getItemLabel(item)];
@@ -223,7 +224,9 @@ function buildCalendarOperations({ month, items, now, resourceLabel }) {
   const monthPrefix = `${year}-${String(monthIndex + 1).padStart(2, "0")}-`;
   const itemsByDate = new Map();
 
-  for (const item of items || []) {
+  const calendarItems = (items || []).filter(item => item.kind !== "closure");
+  if (resourceLabel === "Bubble") calendarItems.push(...buildBubbleSoftballBlocks(gridDates.map(formatDateInput)));
+  for (const item of calendarItems) {
     const dateKey = String(item?.date || "");
     if (!dateKey.startsWith(monthPrefix)) continue;
     const existing = itemsByDate.get(dateKey) || [];

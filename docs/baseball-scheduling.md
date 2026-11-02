@@ -34,10 +34,15 @@ notification recipient is explicitly saved.
 
 The versioned `bll-sample-20261102-refined-v2` seed creates Barrington 6U, 8U, 10U,
 12U, and 14U teams and up to 55 field sample reservations for November 2 through
-December 1, 2026: 29 fictional games against nearby towns and 26 practices. Six
-additional bubble examples cover indoor practice, a skills clinic, a hitting
-session, and an indoor scrimmage. This is a 15.4% reduction from the original
-65 field samples. The atomic revision removes only obsolete sample rows and
+December 1, 2026: 29 fictional games against nearby towns and 26 practices. This
+is a 15.4% reduction from the original 65 field samples.
+
+The separate `bll-bubble-20261102-30days-v3` revision adds 17
+bubble examples across the same full 30-day window, covering indoor practices,
+batting practices, skills clinics, and hitting sessions. It moves the old Thursday
+example to Friday and replaces the scrimmage example with an indoor practice.
+Bubble-only revisions never re-seed fields, preserving deleted field samples.
+The atomic revision removes only obsolete sample rows and
 updates sample game titles/types, preserving actual bookings and samples with
 pending removal requests. Missing examples skip occupied field times. No alerts
 are sent and no BGSL data is touched.
@@ -49,6 +54,16 @@ cancellations, conflict checks, and PDF export; field and bubble entries are
 scoped separately. Legacy standing-bubble notes remain stored but are not used
 as calendar bookings. Compact cards abbreviate team/title and whole-hour times;
 tapping a card reveals complete details. Approved status badges remain visible.
+
+### Standing Bubble restriction
+
+Every Tuesday and Thursday is reserved all day for softball, indefinitely, not
+just during the sample window. Read-only blocks appear in the Bubble calendar
+and month PDF without inflating baseball reservation totals. The request and
+admin forms explain the restriction and disable submission on those days. The
+API rejects requests, direct bookings, CSV rows, and approval of legacy pending
+requests on those dates. Field bookings and the original BGSL scheduler are
+unaffected. These are baseball availability rules, not edits to BGSL records.
 
 ### Build
 

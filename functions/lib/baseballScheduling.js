@@ -1,3 +1,4 @@
+import { bubbleBookingError } from "./baseballRules.js";
 import { ensureBaseballSampleData } from "./baseballSampleData.js";
 
 const ROLE_LABELS = {
@@ -404,6 +405,8 @@ export function normalizeScheduleDraft(body, options = {}) {
   if (!field) return { error: "Choose a valid field." };
   if (teamRequired && !teamRaw) return { error: "Team is required." };
   if (!date) return { error: "Choose a valid date." };
+  const bubbleError = bubbleBookingError(field, date);
+  if (bubbleError) return { error: bubbleError };
   if (!startTime) return { error: "Choose a valid start time." };
 
   const startMinutes = timeToMinutes(startTime);
@@ -1214,6 +1217,8 @@ export async function getReservationById(env, reservationId) {
 }
 
 export async function createReservation(env, payload) {
+  const bubbleError = bubbleBookingError(payload?.field, payload?.date);
+  if (bubbleError) throw new Error(bubbleError);
   await ensureSchedulingTables(env);
 
   const now = nowIso();
@@ -1294,6 +1299,8 @@ export async function recordBoardReservationDeletion(env, reservation, actor = "
 }
 
 export async function createFieldRequest(env, payload) {
+  const bubbleError = payload?.requestType === "add" && bubbleBookingError(payload?.field, payload?.date);
+  if (bubbleError) throw new Error(bubbleError);
   await ensureSchedulingTables(env);
 
   const now = nowIso();
