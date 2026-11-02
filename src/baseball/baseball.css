@@ -3817,3 +3817,8 @@ body { background: #d7ba58; color: #173f7a; }
   .bll-nav { display:grid; grid-template-columns:minmax(0, 1fr) auto; }
   .baseball-admin-top { align-items:flex-start; }
 }
+.scheduling-stat-value.is-gold,
+.scheduling-stat-value.is-pending,
+.scheduling-stat-value.is-removal,
+.scheduling-stat-value.is-conflict,
+.scheduling-header-actions .scheduling-pill { color: #173f7a; }
