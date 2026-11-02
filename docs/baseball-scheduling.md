@@ -55,6 +55,17 @@ scoped separately. Legacy standing-bubble notes remain stored but are not used
 as calendar bookings. Compact cards abbreviate team/title and whole-hour times;
 tapping a card reveals complete details. Approved status badges remain visible.
 
+### Field request examples
+
+The one-time `bll-field-requests-20261102-v1` seed adds two pending field
+requests per calendar week over the same November 2–December 1 window (ten total).
+Each week includes one free-slot pending request and one pending request that
+overlaps an existing sample reservation, producing a real computed conflict.
+They are labeled `[SAMPLE]`, use the existing approval flow, send no notifications,
+and do not change any approved reservation. Real requests retain priority when
+choosing free slots. The separate completion marker preserves admin reviews and
+sample deletions on subsequent loads.
+
 ### Standing Bubble restriction
 
 Every Tuesday and Thursday is reserved all day for softball, indefinitely, not

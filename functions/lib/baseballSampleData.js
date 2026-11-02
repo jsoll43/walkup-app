@@ -2,6 +2,7 @@
 // Everything is confined to baseball tables. No passwords, alerts, or BGSL rows change.
 export const BASEBALL_SAMPLE_VERSION = "bll-sample-20261102-refined-v2";
 export const BUBBLE_SAMPLE_VERSION = "bll-bubble-20261102-30days-v3";
+export const FIELD_REQUEST_SAMPLE_VERSION = "bll-field-requests-20261102-v1";
 export const BASEBALL_SAMPLE_START = "2026-11-02";
 export const BASEBALL_SAMPLE_TEAMS = [6, 8, 10, 12, 14].map(age => ({
   id: `bll_sample_team_${age}u`, name: `Barrington ${age}U`, slug: `barrington-${age}u`,
@@ -90,6 +91,73 @@ export function buildBubbleSampleReservations() {
   })).sort((a, b) => a.date.localeCompare(b.date));
 }
 
+
+function sampleWeek(dateText) {
+  const date = new Date(`${dateText}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - date.getUTCDay());
+  return date.toISOString().slice(0, 10);
+}
+
+export function buildBaseballSampleRequests(sampleReservations = buildBaseballSampleReservations(), occupied = sampleReservations) {
+  const weeks = new Map();
+  for (const reservation of [...sampleReservations].sort((a,b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`))) {
+    if (reservation.field === "bubble" || reservation.date < BASEBALL_SAMPLE_START || reservation.date > "2026-12-01") continue;
+    const week = sampleWeek(reservation.date);
+    if (!weeks.has(week)) weeks.set(week, reservation);
+  }
+  const output = [];
+  for (const [week, target] of weeks) {
+    const team = target.field === "major" ? "Barrington 14U" : target.field === "minor" ? "Barrington 8U" : "Barrington 6U";
+    output.push({
+      id: `bll_sample_request_${week}_conflict`, field: target.field, date: target.date,
+      startTime: target.startTime, endTime: target.endTime, team,
+      title: `[SAMPLE] ${team.replace("Barrington ", "")} Practice Request`,
+      notes: "Fictional sample request intentionally overlapping a sample reservation to demonstrate a conflict.",
+    });
+    // Find a free two-hour slot for the ordinary pending example. Existing real
+    // bookings and requests take priority; only the conflict example overlaps.
+    for (const hour of [8, 10, 12, 14, 16, 18, 20]) {
+      const startTime = `${String(hour).padStart(2, "0")}:00`;
+      const endTime = `${String(hour + 2).padStart(2, "0")}:00`;
+      const overlaps = [...occupied, ...output].some(item => item.field === "minor" && item.date === target.date && item.startTime < endTime && item.endTime > startTime);
+      if (overlaps) continue;
+      output.push({
+        id: `bll_sample_request_${week}_pending`, field: "minor", date: target.date,
+        startTime, endTime, team: "Barrington 10U", title: "[SAMPLE] 10U Practice Request",
+        notes: "Fictional sample request awaiting admin approval; not a confirmed booking.",
+      });
+      break;
+    }
+  }
+  return output;
+}
+
+async function seedFieldSampleRequests(env) {
+  const version = FIELD_REQUEST_SAMPLE_VERSION;
+  if (await env.DB.prepare("SELECT id FROM baseball_sample_seed_versions WHERE id = ?").bind(version).first()) return;
+  const reservations = (await env.DB.prepare(`SELECT id, field, team, date,
+    start_time AS startTime, end_time AS endTime, created_by_role AS createdByRole
+    FROM baseball_field_reservations`).all()).results || [];
+  const pending = (await env.DB.prepare(`SELECT field, date, start_time AS startTime, end_time AS endTime
+    FROM baseball_field_requests WHERE status = 'pending' AND request_type = 'add'`).all()).results || [];
+  const samples = reservations.filter(item => item.createdByRole === "sample_data" && item.id.startsWith("bll_sample_20261102_"));
+  const requests = buildBaseballSampleRequests(samples, [...reservations, ...pending]);
+  const now = new Date().toISOString();
+  await env.DB.batch([
+    env.DB.prepare(`INSERT OR IGNORE INTO baseball_field_requests
+      (id, request_type, field, team, title, reservation_type, date, start_time, end_time,
+       notes, status, has_conflict, conflict_details, requested_by, requested_at)
+      SELECT json_extract(sample.value, '$.id'), 'add', json_extract(sample.value, '$.field'),
+        json_extract(sample.value, '$.team'), json_extract(sample.value, '$.title'), 'practice',
+        json_extract(sample.value, '$.date'), json_extract(sample.value, '$.startTime'),
+        json_extract(sample.value, '$.endTime'), json_extract(sample.value, '$.notes'),
+        'pending', 0, '[]', 'Sample requester', ? FROM json_each(?) AS sample
+      WHERE NOT EXISTS (SELECT 1 FROM baseball_sample_seed_versions WHERE id = ?)`)
+      .bind(now, JSON.stringify(requests), version),
+    env.DB.prepare("INSERT OR IGNORE INTO baseball_sample_seed_versions (id, completed_at) VALUES (?, ?)").bind(version, now),
+  ]);
+}
+
 export async function ensureBaseballSampleData(env) {
   if (env.BASEBALL_SAMPLE_DATA === "off") return;
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS baseball_sample_seed_versions (
@@ -99,6 +167,7 @@ export async function ensureBaseballSampleData(env) {
   // that an admin has already removed.
   await seedSampleVersion(env, BASEBALL_SAMPLE_VERSION, buildBaseballSampleReservations(), "field <> 'bubble'");
   await seedSampleVersion(env, BUBBLE_SAMPLE_VERSION, buildBubbleSampleReservations(), "field = 'bubble'");
+  await seedFieldSampleRequests(env);
 }
 
 async function seedSampleVersion(env, version, events, scope) {
