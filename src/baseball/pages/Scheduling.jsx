@@ -1547,6 +1547,9 @@ export default function Scheduling({ adminKey = "" }) {
           <div className="scheduling-page-subtitle">
             Weekly field reservations on desktop, day timeline on mobile, and a shared approval queue for field requests. Each reservation holds a fixed 2-hour block.
           </div>
+          {reservations.some((item) => item.title?.startsWith("[SAMPLE]")) ? (
+            <p style={{fontSize: 13, marginBottom: 0}}>Games and practices marked [SAMPLE] are fictional examples, not confirmed bookings.</p>
+          ) : null}
         </div>
 
         <div className="scheduling-header-actions">
@@ -1811,25 +1814,6 @@ export default function Scheduling({ adminKey = "" }) {
           ) : null}
         </div>
       </div>
-
-      <BubbleSchedulingSection
-        role={authRole}
-        bubbleScheduling={bubbleScheduling}
-        draftEntries={bubbleEntriesDraft}
-        draftComments={bubbleCommentsDraft}
-        entryForm={bubbleEntryForm}
-        commentText={bubbleCommentText}
-        onEntryFormChange={updateBubbleEntryForm}
-        onAddEntry={addBubbleEntry}
-        onRemoveEntry={removeBubbleEntry}
-        onCommentTextChange={setBubbleCommentText}
-        onAddComment={addBubbleComment}
-        onRemoveComment={removeBubbleComment}
-        onSave={saveBubbleSchedule}
-        saving={actionKey === "bubble-save"}
-        expanded={showBubbleSchedule}
-        onToggleExpanded={() => setShowBubbleSchedule((value) => !value)}
-      />
 
       {showPdfModal ? (
         <div className="scheduling-modal-overlay" onClick={() => (pdfExporting ? null : setShowPdfModal(false))}>

@@ -30,6 +30,20 @@ notification recipient is explicitly saved.
 
 ## Development and deployment
 
+### Demonstration schedule
+
+The one-time `bll-sample-20261102-30days-v1` seed creates Barrington 6U, 8U, 10U,
+12U, and 14U teams and up to 65 clearly labeled sample reservations for
+November 2 through December 1, 2026: 45 practices and 20 fictional games against
+nearby towns. It runs transactionally when the baseball schedule is first read,
+skips occupied field times, sends no alerts, and never changes existing rows.
+The completion marker prevents later page loads from duplicating events or
+recreating samples deleted by the admin. `BASEBALL_SAMPLE_DATA=off` skips seeding
+in test or other environments. The baseball Bubble Schedule UI is hidden; saved
+bubble data is retained for a possible later restoration.
+
+### Build
+
 Run `npm ci`, then `node scripts/build-baseball.mjs` after changing baseball client
 source. Commit the generated `public/baseball.html` and `public/baseball/app-*`
 assets with the source. The existing `npm run build` copies these public assets;

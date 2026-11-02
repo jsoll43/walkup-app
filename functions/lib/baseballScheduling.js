@@ -1,3 +1,5 @@
+import { ensureBaseballSampleData } from "./baseballSampleData.js";
+
 const ROLE_LABELS = {
   requester: "Schedule Requester",
   admin: "Admin",
@@ -1398,8 +1400,9 @@ export async function getPendingRemovalRequestForReservation(env, reservationId)
   return row ? rowToRequest(row) : null;
 }
 
-async function getRawSchedulingRows(env) {
+async function getRawSchedulingRows(env, { seedSamples = false } = {}) {
   await ensureSchedulingTables(env);
+  if (seedSamples) await ensureBaseballSampleData(env);
 
   const [rawReservations, rawRequests, teams, bubbleScheduling] = await Promise.all([
     all(
@@ -1425,7 +1428,7 @@ async function getRawSchedulingRows(env) {
 }
 
 export async function loadSchedulingState(env) {
-  const rows = await getRawSchedulingRows(env);
+  const rows = await getRawSchedulingRows(env, { seedSamples: true });
   return {
     ...buildSchedulingStateFromRows(rows.rawReservations, rows.rawRequests, rows.teams),
     bubbleScheduling: rows.bubbleScheduling,

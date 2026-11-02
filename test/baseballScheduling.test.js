@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import * as baseball from "../functions/lib/baseballScheduling.js";
 import * as softball from "../functions/lib/scheduling.js";
+import { buildBaseballSampleReservations, ensureBaseballSampleData } from "../functions/lib/baseballSampleData.js";
 import * as client from "../src/baseball/scheduling/utils.js";
 import { onRequestPost as submitRequest } from "../functions/api/baseball/scheduling/request.js";
 import { onRequestPost as reviewRequest } from "../functions/api/baseball/scheduling/review.js";
@@ -27,8 +28,16 @@ function database() {
       };
     }
     return statement();
+  }, async batch(items) {
+    sqlite.exec("BEGIN");
+    try {
+      const results = [];
+      for (const item of items) results.push(await item.run());
+      sqlite.exec("COMMIT");
+      return results;
+    } catch (error) { sqlite.exec("ROLLBACK"); throw error; }
   } };
-  return {sqlite, statements, env:{DB, ADMIN_KEY:"local-test-admin"}};
+  return {sqlite, statements, env:{DB, ADMIN_KEY:"local-test-admin", BASEBALL_SAMPLE_DATA:"off"}};
 }
 
 function request(body, role = "requester", key = "", method = "POST", owner = "local-request-owner-00000001") {
@@ -59,6 +68,38 @@ test("three baseball fields have two-hour slots in server and client, including 
   assert.equal(baseball.scheduleEntriesOverlap(event,{...event,startTime:"19:00"}),false);
   assert.equal(baseball.scheduleEntriesOverlap(event,{...event,field:"minor"}),false);
   assert.match(client.getConflictsForDraft({...event,startTime:"18:45"},[event])[0],/Tee Ball Field/);
+});
+
+test("sample data fills the next 30 days once, respects existing reservations, and preserves sample deletions", async () => {
+  const {sqlite,env} = database();
+  env.BASEBALL_SAMPLE_DATA = "on";
+  await softball.ensureSchedulingTables(env);
+  await softball.createSchedulingTeam(env,"BGSL unchanged");
+  const original = sqlite.prepare("SELECT * FROM scheduling_teams").all();
+  await baseball.ensureSchedulingTables(env);
+  await baseball.createReservation(env,{id:"real-reservation",field:"major",team:"Actual Team",title:"Existing reservation",date:"2026-11-02",startTime:"17:00",endTime:"19:00",reservationType:"practice",status:"approved",createdByRole:"admin"});
+  const planned = buildBaseballSampleReservations();
+  assert.equal(planned.length,65);
+  assert.equal(planned.filter(event=>event.reservationType==="game").length,20);
+  assert.equal(planned.filter(event=>event.reservationType==="practice").length,45);
+  assert.ok(planned.every(event=>event.date>="2026-11-02" && event.date<="2026-12-01"));
+  assert.deepEqual([...new Set(planned.map(event=>event.field))].sort(),["major","minor","tee-ball"]);
+  await ensureBaseballSampleData(env);
+  assert.equal(sqlite.prepare("SELECT count(*) AS count FROM baseball_scheduling_teams").get().count,5);
+  assert.equal(sqlite.prepare("SELECT count(*) AS count FROM baseball_field_reservations WHERE created_by_role = 'sample_data'").get().count,64);
+  assert.equal(sqlite.prepare("SELECT title FROM baseball_field_reservations WHERE id = 'real-reservation'").get().title,"Existing reservation");
+  const entries = sqlite.prepare("SELECT * FROM baseball_field_reservations").all();
+  for (const a of entries) for (const b of entries) {
+    if (a.id===b.id || a.date!==b.date || a.field!==b.field) continue;
+    assert.equal(a.start_time < b.end_time && a.end_time > b.start_time,false);
+  }
+  const removed = entries.find(event=>event.created_by_role==="sample_data");
+  sqlite.prepare("DELETE FROM baseball_field_reservations WHERE id = ?").run(removed.id);
+  await ensureBaseballSampleData(env);
+  assert.equal(sqlite.prepare("SELECT count(*) AS count FROM baseball_field_reservations WHERE created_by_role = 'sample_data'").get().count,63);
+  assert.equal(sqlite.prepare("SELECT count(*) AS count FROM baseball_field_requests WHERE requested_by <> 'Admin'").get().count,0);
+  assert.deepEqual(sqlite.prepare("SELECT * FROM scheduling_teams").all(),original);
+  sqlite.close();
 });
 
 test("baseball setup, requests, approvals, imports and passwords leave every BGSL table unchanged", async () => {
