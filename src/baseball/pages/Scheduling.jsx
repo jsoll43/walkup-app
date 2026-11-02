@@ -175,8 +175,7 @@ function ScheduleEventCard({ item, isSelected, onSelect }) {
   if (item.kind === "closure") return (
     <div className="schedule-block is-maintenance" role="note" aria-label={item.notes}>
       <div className="schedule-block-topline"><div className="schedule-block-time">All day</div><span className="scheduling-pill scheduling-pill-maintenance">Blocked</span></div>
-      <div className="schedule-block-title">Reserved for softball</div>
-      <div className="schedule-block-note">No baseball bookings</div>
+      <div className="schedule-block-softball-line"><strong>Reserved for softball</strong><span> — No baseball bookings</span></div>
     </div>
   );
   return (

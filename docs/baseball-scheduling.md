@@ -61,7 +61,9 @@ The one-time `bll-field-requests-20261102-v1` seed adds two pending field
 requests per calendar week over the same November 2–December 1 window (ten total).
 Each week includes one free-slot pending request and one pending request that
 overlaps an existing sample reservation, producing a real computed conflict.
-They are labeled `[SAMPLE]`, use the existing approval flow, send no notifications,
+The `bll-field-request-days-20261102-v2` revision moves ordinary pending
+examples to a different day from each week’s conflict, updating only existing
+pending sample requests and preserving reviews/deletions. They are labeled `[SAMPLE]`, use the existing approval flow, send no notifications,
 and do not change any approved reservation. Real requests retain priority when
 choosing free slots. The separate completion marker preserves admin reviews and
 sample deletions on subsequent loads.
@@ -70,7 +72,8 @@ sample deletions on subsequent loads.
 
 Every Tuesday and Thursday is reserved all day for softball, indefinitely, not
 just during the sample window. Read-only blocks appear in the Bubble calendar
-and month PDF without inflating baseball reservation totals. The request and
+and month PDF without inflating baseball reservation totals. The on-screen
+closure combines “Reserved for softball — No baseball bookings” into one line. The request and
 admin forms explain the restriction and disable submission on those days. The
 API rejects requests, direct bookings, CSV rows, and approval of legacy pending
 requests on those dates. Field bookings and the original BGSL scheduler are

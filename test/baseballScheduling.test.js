@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import * as baseball from "../functions/lib/baseballScheduling.js";
 import * as softball from "../functions/lib/scheduling.js";
-import { buildBaseballSampleReservations, buildBubbleSampleReservations, buildLegacyBaseballSampleReservations, ensureBaseballSampleData, buildBaseballSampleRequests, FIELD_REQUEST_SAMPLE_VERSION, BASEBALL_SAMPLE_VERSION, BUBBLE_SAMPLE_VERSION } from "../functions/lib/baseballSampleData.js";
+import { buildBaseballSampleReservations, buildBubbleSampleReservations, buildLegacyBaseballSampleReservations, ensureBaseballSampleData, buildBaseballSampleRequests, FIELD_REQUEST_SAMPLE_VERSION, FIELD_REQUEST_LAYOUT_VERSION, BASEBALL_SAMPLE_VERSION, BUBBLE_SAMPLE_VERSION } from "../functions/lib/baseballSampleData.js";
 import * as client from "../src/baseball/scheduling/utils.js";
 import { onRequestPost as submitRequest } from "../functions/api/baseball/scheduling/request.js";
 import { onRequestPost as reviewRequest } from "../functions/api/baseball/scheduling/review.js";
@@ -358,6 +358,7 @@ test("field samples have two pending requests and one actual overlap in each of 
   for (const week of ["2026-11-01","2026-11-08","2026-11-15","2026-11-22","2026-11-29"]) {
     const requests=samples.filter(item=>client.getWeekStart(item.date)===week);
     assert.equal(requests.length,2);
+    assert.equal(new Set(requests.map(item=>item.date)).size,2,"pending and conflict examples belong on different days");
     assert.ok(requests.every(item=>item.status==="pending" && item.field!=="bubble" && item.title.startsWith("[SAMPLE]") && item.endTime===client.deriveReservationEndTime(item.startTime)));
     assert.equal(requests.filter(item=>item.displayStatus==="pending").length,1);
     const conflicting=requests.filter(item=>item.displayStatus==="conflict");
@@ -385,7 +386,7 @@ test("adding sample requests preserves existing data and does not restore delete
   sqlite.prepare("DELETE FROM baseball_sample_seed_versions WHERE id=?").run(FIELD_REQUEST_SAMPLE_VERSION);
   const first=buildBaseballSampleReservations()[0].id;
   sqlite.prepare("DELETE FROM baseball_field_reservations WHERE id=?").run(first);
-  await baseball.createFieldRequest(env,{id:"real-request",requestType:"add",field:"minor",team:"Real Team",title:"Actual request",reservationType:"practice",date:"2026-11-02",startTime:"08:00",endTime:"10:00",requestedBy:"Actual requester"});
+  await baseball.createFieldRequest(env,{id:"real-request",requestType:"add",field:"minor",team:"Real Team",title:"Actual request",reservationType:"practice",date:"2026-11-03",startTime:"08:00",endTime:"10:00",requestedBy:"Actual requester"});
   const real=sqlite.prepare("SELECT * FROM baseball_field_requests WHERE id='real-request'").get();
   const reservations=sqlite.prepare("SELECT * FROM baseball_field_reservations ORDER BY id").all();
   const state=await baseball.loadSchedulingState(env);
@@ -396,5 +397,42 @@ test("adding sample requests preserves existing data and does not restore delete
   assert.equal(examples.filter(item=>item.displayStatus==="conflict").length,5);
   assert.equal(examples.find(item=>item.id==="bll_sample_request_2026-11-01_pending").startTime,"10:00");
   assert.equal(buildBaseballSampleRequests().length,10);
+  sqlite.close();
+});
+
+
+test("moving pending examples preserves reviewed requests, deletions, conflict examples and reservations", async () => {
+  const {sqlite,env}=database();
+  env.BASEBALL_SAMPLE_DATA="on";
+  await baseball.ensureSchedulingTables(env);
+  await ensureBaseballSampleData(env);
+  sqlite.prepare("DELETE FROM baseball_sample_seed_versions WHERE id=?").run(FIELD_REQUEST_LAYOUT_VERSION);
+  // Restore the original same-day layout to exercise the production migration.
+  sqlite.exec(`UPDATE baseball_field_requests SET date = (
+    SELECT conflict.date FROM baseball_field_requests conflict
+    WHERE conflict.id = replace(baseball_field_requests.id, '_pending', '_conflict'))
+    WHERE id LIKE 'bll_sample_request_%_pending'`);
+  const denied="bll_sample_request_2026-11-08_pending";
+  const removed="bll_sample_request_2026-11-15_pending";
+  sqlite.prepare("UPDATE baseball_field_requests SET status='denied', reviewed_by='Admin' WHERE id=?").run(denied);
+  sqlite.prepare("DELETE FROM baseball_field_requests WHERE id=?").run(removed);
+  const reviewed=sqlite.prepare("SELECT * FROM baseball_field_requests WHERE id=?").get(denied);
+  const conflicts=sqlite.prepare("SELECT * FROM baseball_field_requests WHERE id LIKE '%_conflict' ORDER BY id").all();
+  const reservations=sqlite.prepare("SELECT * FROM baseball_field_reservations ORDER BY id").all();
+  const state=await baseball.loadSchedulingState(env);
+  for (const item of state.requests.filter(item=>item.id.endsWith("_pending") && item.status==="pending")) {
+    const conflict=state.requests.find(other=>other.id===item.id.replace("_pending","_conflict"));
+    assert.notEqual(item.date,conflict.date);
+    assert.equal(client.getWeekStart(item.date),client.getWeekStart(conflict.date));
+    assert.equal(item.displayStatus,"pending");
+    assert.ok(item.date>="2026-11-02" && item.date<="2026-12-01");
+  }
+  assert.deepEqual(sqlite.prepare("SELECT * FROM baseball_field_requests WHERE id=?").get(denied),reviewed);
+  assert.equal(sqlite.prepare("SELECT id FROM baseball_field_requests WHERE id=?").get(removed),undefined);
+  assert.deepEqual(sqlite.prepare("SELECT * FROM baseball_field_requests WHERE id LIKE '%_conflict' ORDER BY id").all(),conflicts);
+  assert.deepEqual(sqlite.prepare("SELECT * FROM baseball_field_reservations ORDER BY id").all(),reservations);
+  const after=sqlite.prepare("SELECT * FROM baseball_field_requests ORDER BY id").all();
+  await ensureBaseballSampleData(env);
+  assert.deepEqual(sqlite.prepare("SELECT * FROM baseball_field_requests ORDER BY id").all(),after);
   sqlite.close();
 });
