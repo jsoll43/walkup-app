@@ -6,19 +6,27 @@ storage keys, `/api/baseball/` routes, and `baseball_` database tables. The orig
 BGSL source and tables are not modified. Only the former hello-world page is
 replaced.
 
-## Initial setup
+## Access and initial setup
 
-1. Open `/baseball#admin` and log in using the site's existing administrator key.
-   This key is for the site owner; do not distribute it to baseball users.
-2. Set the separate Little League coach and board scheduling passwords.
+There are two views: **Schedule & Requests** and **Admin**. The schedule, PDF export,
+request form, and request history are available without login. Requests always
+need admin approval. A browser keeps a random requester token locally so only
+that browser can cancel its own pending requests; the token is never published.
+
+1. Open `/baseball#admin`. For initial setup, the site owner can use the existing
+   site administrator key. Do not share the BGSL key with the baseball scheduler.
+2. Expand **Admin Password, Teams & Imports** and set a separate Little League
+   admin password. It authorizes both approvals and setup, with no board or coach
+   login. A previously configured baseball board password remains usable as the
+   admin password; the legacy database column is retained to preserve data.
 3. Add baseball teams. CSV imports support `major`, `minor`, and `tee-ball` fields.
-4. Coaches and board members log in at `/baseball` using those new passwords.
-5. Board members can optionally set their own email alert destination. No BGSL
+4. The admin can optionally set their own email alert destination. No BGSL
    notification recipient, password, team, or reservation is copied.
 
-The new tables are created on first authenticated administrator use in the existing
-Cloudflare D1 `DB` binding. Email alerts reuse the configured Mailgun transport and
-are disabled until a baseball board notification recipient is explicitly saved.
+All baseball tables and the request ownership column are initialized in the
+existing Cloudflare D1 `DB` binding, without altering BGSL tables. Email alerts
+reuse the configured Mailgun transport and are disabled until a baseball
+notification recipient is explicitly saved.
 
 ## Development and deployment
 
@@ -31,5 +39,5 @@ no existing build configuration or package scripts are changed.
 testing uses Cloudflare Pages with a local D1 binding; Vite alone does not serve
 Pages Functions.
 
-The SVG logo is a vector interpretation of the lowercase b on the supplied
-Barrington baseball caps, using blue, red, and white.
+The header logo is an image-generated cartoon of the three supplied Barrington
+baseball caps. The page uses muted mustard yellow and royal blue lettering.

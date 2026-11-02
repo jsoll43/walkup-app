@@ -2,7 +2,7 @@ import { json, saveBubbleScheduling, verifySchedulingAuth } from "../../../lib/b
 
 export const onRequestPost = async ({ request, env }) => {
   try {
-    const auth = await verifySchedulingAuth(request, env, ["board"]);
+    const auth = await verifySchedulingAuth(request, env, ["admin"]);
     if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
 
     const body = await request.json().catch(() => ({}));

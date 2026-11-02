@@ -3783,3 +3783,37 @@ button:disabled {
  .baseball-fields { gap:5px; }
  .baseball-fields span { padding:5px 8px; font-size:11px; }
 }
+
+/* Little League cap palette: muted mustard background, royal blue lettering. */
+:root {
+  --bll-navy: #153f87;
+  --bll-navy-dark: #12366d;
+  --bll-gold: #d7ba58;
+  --bll-white: #173f7a;
+  --bll-ink: #173f7a;
+  --bll-card: #fff9e6;
+  --bll-border: rgba(21,63,135,.2);
+}
+body { background: #d7ba58; color: #173f7a; }
+.bll-header { background: #dfc56b; color: #173f7a; border-bottom: 1px solid rgba(21,63,135,.25); }
+.bll-logo { width: 160px; height: 64px; object-fit: contain; }
+.bll-link { color: #173f7a; background: rgba(255,249,230,.35); border-color: rgba(21,63,135,.25); }
+.bll-link.active { background: #173f7a; color: #fff9e6; }
+.bll-brand-subtitle { opacity: .85; }
+.baseball-fields span { color: #173f7a; border-color: rgba(21,63,135,.3); background: rgba(255,249,230,.2); }
+.scheduling-page-title, .scheduling-page-subtitle { color: #173f7a; }
+.btn { background: #173f7a; color: #fff9e6; border-color:#173f7a; }
+.btn:hover { background:#0d2c5c; }
+.btn-secondary { background: #fff9e6; color:#173f7a; border-color:rgba(21,63,135,.3); }
+.scheduling-role-button.is-active { background:#173f7a; color:#fff9e6; }
+.scheduling-stat-card, .scheduling-stat-label, .scheduling-stat-value { color:#173f7a; }
+.baseball-admin-settings { margin-top:24px; }
+.baseball-admin-settings > summary { cursor:pointer; font-size:18px; font-weight:800; padding:6px 0; }
+.baseball-admin-settings[open] > summary { margin-bottom:20px; }
+@media(max-width:520px) {
+  .bll-logo { width:125px; height:50px; }
+  .bll-title { font-size:17px; }
+  .bll-brand { gap:9px; }
+  .bll-nav { display:grid; grid-template-columns:minmax(0, 1fr) auto; }
+  .baseball-admin-top { align-items:flex-start; }
+}

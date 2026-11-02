@@ -1,11 +1,14 @@
-import { json, loadSchedulingState, roleLabel, verifySchedulingAuth } from "../../../lib/baseballScheduling.js";
+import { json, loadSchedulingState, roleLabel, requesterKeyHash, ownedRequestIds, verifySchedulingAuth } from "../../../lib/baseballScheduling.js";
 
 export const onRequestGet = async ({ request, env }) => {
   try {
-    const auth = await verifySchedulingAuth(request, env, ["coach", "board"]);
+    const auth = await verifySchedulingAuth(request, env, ["requester", "admin"]);
     if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
 
     const state = await loadSchedulingState(env);
+    const owned = await ownedRequestIds(env, await requesterKeyHash(request));
+    state.requests = state.requests.map(item => ({...item, canCancel: owned.has(item.id)}));
+    state.pendingRequests = state.pendingRequests.map(item => ({...item, canCancel: owned.has(item.id)}));
     return json({
       ok: true,
       role: auth.role,

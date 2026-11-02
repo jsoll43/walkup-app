@@ -12,7 +12,7 @@ import {
 
 export const onRequestPost = async ({ request, env }) => {
   try {
-    const auth = await verifySchedulingAuth(request, env, ["board"]);
+    const auth = await verifySchedulingAuth(request, env, ["admin"]);
     if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
 
     const body = await request.json().catch(() => ({}));
@@ -34,7 +34,7 @@ export const onRequestPost = async ({ request, env }) => {
 
 export const onRequestDelete = async ({ request, env }) => {
   try {
-    const auth = await verifySchedulingAuth(request, env, ["board"]);
+    const auth = await verifySchedulingAuth(request, env, ["admin"]);
     if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
 
     const body = await request.json().catch(() => ({}));

@@ -32,19 +32,23 @@ function Admin() {
   if (!authenticatedKey) return (
     <div className="page"><form className="card" onSubmit={login}>
       <div className="cardTitle">Barrington Little League</div>
-      <h1>Scheduling Administration</h1>
-      <p className="baseball-admin-note">Set Little League coach and board passwords, manage teams, and import field reservations.</p>
-      <label className="label" htmlFor="baseball-admin-key">Site Administrator Key</label>
+      <h1>Admin Login</h1>
+      <p className="baseball-admin-note">Approve field requests, manage reservations and teams, and update scheduling settings.</p>
+      <label className="label" htmlFor="baseball-admin-key">Admin Password</label>
       <input id="baseball-admin-key" className="input" type="password" autoComplete="off" required value={key} onChange={(event) => setKey(event.target.value)} />
-      <p className="baseball-admin-note">Use your existing site administrator key for initial setup. Give coaches and board members their separate Little League scheduling passwords.</p>
+      <p className="baseball-admin-note">For first-time setup, the site owner can use the existing site administrator key to create a separate Little League admin password.</p>
       {error && <p role="alert" style={{color:"crimson"}}>{error}</p>}
-      <button className="btn" disabled={busy}>{busy ? "Signing in..." : "Log in as Administrator"}</button>
+      <button className="btn" disabled={busy}>{busy ? "Signing in..." : "Log in as Admin"}</button>
     </form></div>
   );
 
   return <div className="baseball-admin-page">
-    <div className="baseball-admin-top"><h1>Little League Administration</h1><button className="btn-secondary" onClick={() => setAuthenticatedKey("")}>Log out</button></div>
-    <SchedulingAdminSection isAuthed adminHeaders={{Authorization:`Bearer ${authenticatedKey}`}} embedded />
+    <div className="baseball-admin-top"><h1>Little League Admin</h1><button className="btn-secondary" onClick={() => setAuthenticatedKey("")}>Log out</button></div>
+    <Scheduling adminKey={authenticatedKey} />
+    <details className="card baseball-admin-settings">
+      <summary>Admin Password, Teams &amp; Imports</summary>
+      <SchedulingAdminSection isAuthed adminHeaders={{Authorization:`Bearer ${authenticatedKey}`}} onAdminPasswordChange={setAuthenticatedKey} embedded />
+    </details>
   </div>;
 }
 
@@ -63,11 +67,11 @@ function App() {
     <header className={`bll-header ${hiddenHeader ? "is-mobile-hidden" : ""}`}>
       <div className="bll-header-inner">
         <a className="bll-brand" href="#schedule" aria-label="Barrington Little League home">
-          <img className="bll-logo" src="/baseball/logo.svg" alt="Barrington baseball b monogram" />
+          <img className="bll-logo" src="/baseball/hats-logo.png" alt="Three cartoon Barrington baseball hats: yellow, blue and red, white and blue" />
           <div><div className="bll-title">Barrington Little League</div><div className="bll-brand-subtitle">Field scheduling</div></div>
         </a>
         <nav className="bll-nav" aria-label="Little League navigation">
-          <a href="#schedule" className={`bll-link ${!admin ? "active" : ""}`} aria-current={!admin ? "page" : undefined}>Field Scheduling</a>
+          <a href="#schedule" className={`bll-link ${!admin ? "active" : ""}`} aria-current={!admin ? "page" : undefined}>Schedule &amp; Requests</a>
           <a href="#admin" className={`bll-link ${admin ? "active" : ""}`} aria-current={admin ? "page" : undefined}>Admin</a>
         </nav>
       </div>

@@ -7,7 +7,7 @@ import {
 
 export const onRequestGet = async ({ request, env }) => {
   try {
-    const auth = await verifySchedulingAuth(request, env, ["board"]);
+    const auth = await verifySchedulingAuth(request, env, ["admin"]);
     if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
 
     const settings = await getSchedulingNotificationSettings(env);
@@ -19,7 +19,7 @@ export const onRequestGet = async ({ request, env }) => {
 
 export const onRequestPost = async ({ request, env }) => {
   try {
-    const auth = await verifySchedulingAuth(request, env, ["board"]);
+    const auth = await verifySchedulingAuth(request, env, ["admin"]);
     if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
 
     const body = await request.json().catch(() => ({}));
@@ -31,8 +31,8 @@ export const onRequestPost = async ({ request, env }) => {
       ok: true,
       settings,
       message: settings.email
-        ? "Board request notification email saved."
-        : "Board request notification email cleared.",
+        ? "Admin request notification email saved."
+        : "Admin request notification email cleared.",
     });
   } catch (e) {
     return json({ ok: false, error: e?.message || String(e) }, 400);

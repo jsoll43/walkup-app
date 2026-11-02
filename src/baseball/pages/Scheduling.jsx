@@ -16,8 +16,6 @@ import {
 } from "../scheduling/utils.js";
 import { downloadSchedulingMonthPdf } from "../scheduling/pdf.js";
 
-const SCHEDULING_KEY_STORAGE = "BASEBALL_SCHEDULING_KEY";
-const SCHEDULING_ROLE_STORAGE = "BASEBALL_SCHEDULING_ROLE";
 const REQUEST_ARCHIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 const INITIAL_COACH_REQUEST_COUNT = 3;
 const COACH_REQUEST_INCREMENT = 5;
@@ -33,22 +31,12 @@ const WEEKDAY_OPTIONS = [
   { value: 7, label: "Sundays", shortLabel: "Sun" },
 ];
 
-function getSavedSchedulingKey() {
-  return sessionStorage.getItem(SCHEDULING_KEY_STORAGE) || "";
-}
-
-function getSavedSchedulingRole() {
-  return sessionStorage.getItem(SCHEDULING_ROLE_STORAGE) || "coach";
-}
-
-function saveSchedulingSession(role, key) {
-  sessionStorage.setItem(SCHEDULING_ROLE_STORAGE, role);
-  sessionStorage.setItem(SCHEDULING_KEY_STORAGE, key);
-}
-
-function clearSchedulingSession() {
-  sessionStorage.removeItem(SCHEDULING_ROLE_STORAGE);
-  sessionStorage.removeItem(SCHEDULING_KEY_STORAGE);
+function getRequesterKey() {
+  try {
+    let key = localStorage.getItem("BASEBALL_REQUESTER_KEY");
+    if (!key) { key = crypto.randomUUID(); localStorage.setItem("BASEBALL_REQUESTER_KEY", key); }
+    return key;
+  } catch { return ""; }
 }
 
 async function safeJsonOrText(res) {
@@ -62,9 +50,9 @@ async function safeJsonOrText(res) {
 
 function schedulingHeaders(role, key) {
   return {
-    Authorization: `Bearer ${key}`,
-    "x-scheduling-role": role,
-    "x-scheduling-key": key,
+    ...(key ? {Authorization:`Bearer ${key}`, "x-scheduling-key":key} : {}),
+    "x-scheduling-role":role,
+    "x-baseball-requester":getRequesterKey(),
   };
 }
 
@@ -333,7 +321,7 @@ function ReservationFormCard({
                 {team.name}
               </option>
             ))}
-            {includeLeagueOption ? <option value="League / Board">League / Board</option> : null}
+            {includeLeagueOption ? <option value="League / Admin">League / Admin</option> : null}
           </select>
         </div>
 
@@ -387,9 +375,9 @@ function RequestCard({ request, onCancelRequest, actionKey = "" }) {
         <div>
           <div style={{ fontWeight: 1000, fontSize: 16 }}>
             {isBoardDeletion
-              ? "Board Reservation Deleted"
+              ? "Admin Reservation Deleted"
               : isAutoApprovedBoardReservation(request)
-              ? "Board Reservation Auto-Approved"
+              ? "Admin Reservation Auto-Approved"
               : request.requestType === "remove"
               ? "Remove Reservation Request"
               : request.title || request.team}
@@ -412,7 +400,7 @@ function RequestCard({ request, onCancelRequest, actionKey = "" }) {
         {isBoardDeletion ? (
           <>
             <div>
-              <strong>Deleted by:</strong> {request.requestedBy || "Board member shared login"}
+              <strong>Deleted by:</strong> {request.requestedBy || "Admin shared login"}
             </div>
             <div>
               <strong>Date deleted:</strong> {formatRequestDate(request.requestedAt)}
@@ -421,7 +409,7 @@ function RequestCard({ request, onCancelRequest, actionKey = "" }) {
         ) : (
           <>
             <div>
-              <strong>Requested by:</strong> {request.requestedBy || "Coach shared login"}
+              <strong>Requested by:</strong> {request.requestedBy || "Schedule requester"}
             </div>
             <div>
               <strong>Date requested:</strong> {formatRequestDate(request.requestedAt)}
@@ -451,7 +439,7 @@ function RequestCard({ request, onCancelRequest, actionKey = "" }) {
         </div>
       ) : null}
 
-      {request.status === "pending" && onCancelRequest ? (
+      {request.status === "pending" && request.canCancel && onCancelRequest ? (
         <div style={{ marginTop: 12 }}>
           <button className="btn-danger" type="button" onClick={() => onCancelRequest(request)} disabled={actionKey === cancelKey}>
             {actionKey === cancelKey ? "Canceling..." : "Cancel Request"}
@@ -568,9 +556,9 @@ function BoardNotificationCard({
 }) {
   return (
     <div className="card scheduling-panel-card">
-      {!hideTitle ? <h2 style={{ marginTop: 0 }}>Board Email Alerts</h2> : null}
+      {!hideTitle ? <h2 style={{ marginTop: 0 }}>Admin Email Alerts</h2> : null}
       <div style={{ opacity: 0.8 }}>
-        Save an email address here to notify the board whenever a coach submits a new scheduling request.
+        Save an email address here to notify the admin whenever someone submits a new scheduling request.
       </div>
 
       <div style={{ marginTop: 14 }}>
@@ -580,12 +568,12 @@ function BoardNotificationCard({
           type="email"
           value={email}
           onChange={(e) => onEmailChange(e.target.value)}
-          placeholder="board-notify@example.com"
+          placeholder="admin-notify@example.com"
         />
       </div>
 
       <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>
-        Leave the field blank and save if you want to stop board request emails.
+        Leave the field blank and save if you want to stop admin request emails.
       </div>
 
       <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -632,7 +620,7 @@ function BubbleSchedulingSection({
   expanded,
   onToggleExpanded,
 }) {
-  const isBoard = role === "board";
+  const isBoard = role === "admin";
   const entries = isBoard ? draftEntries : bubbleScheduling.entries || [];
   const comments = isBoard ? draftComments : bubbleScheduling.comments || [];
 
@@ -776,7 +764,7 @@ function BubbleSchedulingSection({
 function BoardActionQueueCard({ pendingRequests, actionKey, onReviewRequest, hideTitle = false }) {
   return (
     <div className="card scheduling-panel-card">
-      {!hideTitle ? <h2 style={{ marginTop: 0 }}>Board Action Queue ({pendingRequests.length})</h2> : null}
+      {!hideTitle ? <h2 style={{ marginTop: 0 }}>Approval Queue ({pendingRequests.length})</h2> : null}
       {pendingRequests.length === 0 ? (
         <div style={{ opacity: 0.75 }}>There are currently no pending requests.</div>
       ) : (
@@ -800,7 +788,7 @@ function BoardActionQueueCard({ pendingRequests, actionKey, onReviewRequest, hid
 
               <div style={{ marginTop: 10, display: "flex", gap: 14, flexWrap: "wrap", fontSize: 13 }}>
                 <div>
-                  <strong>Requested by:</strong> {request.requestedBy || "Coach shared login"}
+                  <strong>Requested by:</strong> {request.requestedBy || "Schedule requester"}
                 </div>
                 <div>
                   <strong>Date requested:</strong> {formatRequestDate(request.requestedAt)}
@@ -858,7 +846,7 @@ function SelectedScheduleItemCard({
   if (!item) return null;
 
   const status = item.kind === "request" ? normalizeRequestStatus(item) : getCalendarStatus(item);
-  const isBoard = role === "board";
+  const isBoard = role === "admin";
   const isReservation = item.kind === "reservation";
   const reviewApproveKey = `review:${item.id}:approve`;
   const reviewDenyKey = `review:${item.id}:deny`;
@@ -910,12 +898,12 @@ function SelectedScheduleItemCard({
         <div className="scheduling-warning-card" style={{ marginTop: 12 }}>
           <div style={{ fontWeight: 1000 }}>Removal request pending</div>
           <div style={{ marginTop: 6 }}>
-            A coach has already requested this reservation to be removed and it is waiting for board review.
+            Someone has already requested this reservation to be removed and it is waiting for admin approval.
           </div>
         </div>
       ) : null}
 
-      {isReservation && role === "coach" && !item.hasPendingRemoval ? (
+      {isReservation && role === "requester" && !item.hasPendingRemoval ? (
         <div style={{ marginTop: 14 }}>
           <button className="btn-danger" onClick={() => onRequestRemoval(item)} disabled={actionKey === removalKey}>
             {actionKey === removalKey ? "Submitting..." : "Request Removal"}
@@ -942,7 +930,7 @@ function SelectedScheduleItemCard({
         </div>
       ) : null}
 
-      {!isReservation && role === "coach" && item.status === "pending" ? (
+      {!isReservation && role === "requester" && item.status === "pending" && item.canCancel ? (
         <div style={{ marginTop: 14 }}>
           <button className="btn-danger" onClick={() => onCancelRequest(item)} disabled={actionKey === cancelKey}>
             {actionKey === cancelKey ? "Canceling..." : "Cancel Request"}
@@ -953,14 +941,11 @@ function SelectedScheduleItemCard({
   );
 }
 
-export default function Scheduling() {
+export default function Scheduling({ adminKey = "" }) {
   const today = useMemo(() => getTodayInEt(), []);
   const [selectedDate, setSelectedDate] = useState(today);
-  const [loginRole, setLoginRole] = useState(getSavedSchedulingRole());
-  const [loginPassword, setLoginPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [authRole, setAuthRole] = useState(getSavedSchedulingRole());
-  const [authKey, setAuthKey] = useState(getSavedSchedulingKey());
+  const authRole = adminKey ? "admin" : "requester";
+  const authKey = adminKey;
   const [isAuthed, setIsAuthed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1086,7 +1071,7 @@ export default function Scheduling() {
   }, [requests.length]);
 
   useEffect(() => {
-    if (!isAuthed || authRole !== "board" || !authKey) return;
+    if (!isAuthed || authRole !== "admin" || !authKey) return;
     let active = true;
 
     async function loadBoardNotificationSettings() {
@@ -1098,7 +1083,7 @@ export default function Scheduling() {
         });
         const data = await safeJsonOrText(res);
         if (!res.ok || data?.ok === false) {
-          throw new Error(data?.error || data?.raw || "Failed to load board notification settings.");
+          throw new Error(data?.error || data?.raw || "Failed to load admin notification settings.");
         }
         if (!active) return;
         setBoardNotificationEmail(String(data?.settings?.email || ""));
@@ -1119,8 +1104,8 @@ export default function Scheduling() {
   }, [isAuthed, authRole, authKey]);
 
   async function refreshState(role = authRole, key = authKey, options = {}) {
-    const { persist = false, silent = false } = options;
-    if (!role || !key) return;
+    const { silent = false } = options;
+    if (!role) return;
 
     if (!silent) setLoading(true);
     setError("");
@@ -1134,8 +1119,6 @@ export default function Scheduling() {
       }
 
       setIsAuthed(true);
-      setAuthRole(role);
-      setAuthKey(key);
       setScheduleData({
         teams: Array.isArray(data.teams) ? data.teams : [],
         reservations: Array.isArray(data.reservations) ? data.reservations : [],
@@ -1154,41 +1137,18 @@ export default function Scheduling() {
         },
       });
 
-      if (persist) {
-        saveSchedulingSession(role, key);
-      }
     } catch (e) {
       setError(e?.message || String(e));
       setIsAuthed(false);
-      setAuthKey("");
-      clearSchedulingSession();
     } finally {
       if (!silent) setLoading(false);
     }
   }
 
   useEffect(() => {
-    const savedRole = getSavedSchedulingRole();
-    const savedKey = getSavedSchedulingKey();
-    if (!savedKey) return;
-    refreshState(savedRole, savedKey, { persist: false, silent: false }).catch(() => {});
+    refreshState(authRole, authKey, {silent:false}).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function logout() {
-    clearSchedulingSession();
-    setIsAuthed(false);
-    setAuthKey("");
-    setLoginPassword("");
-    setSelectedItemKey("");
-    setExpandedCells({});
-    setError("");
-    setSuccess("");
-    setBoardNotificationEmail("");
-    setBoardNotificationUpdatedAt("");
-    setBoardNotificationStatus("");
-    setBoardNotificationError("");
-  }
+  }, [authRole, authKey]);
 
   function toggleExpandCell(cellKey) {
     setExpandedCells((current) => ({
@@ -1200,15 +1160,6 @@ export default function Scheduling() {
   function openPdfExportModal() {
     setPdfMonth(String(selectedDate || today).slice(0, 7));
     setShowPdfModal(true);
-  }
-
-  async function handleLogin() {
-    if (!loginPassword.trim()) {
-      setError("Enter the scheduling password for the role you selected.");
-      return;
-    }
-    await refreshState(loginRole, loginPassword.trim(), { persist: true, silent: false });
-    setLoginPassword("");
   }
 
   function updateCoachForm(field, value) {
@@ -1352,7 +1303,7 @@ export default function Scheduling() {
       if (!res.ok || data?.ok === false) {
         throw new Error(data?.error || data?.raw || "Failed to submit the request.");
       }
-      setSuccess("Coach request submitted for board review.");
+      setSuccess("Request submitted for admin approval.");
       await refreshState(authRole, authKey, { silent: true });
       setCoachForm((current) => ({ ...current, team: "", title: "" }));
     } catch (e) {
@@ -1379,7 +1330,7 @@ export default function Scheduling() {
       if (!res.ok || data?.ok === false) {
         throw new Error(data?.error || data?.raw || "Failed to add the reservation.");
       }
-      setSuccess("Board reservation added to the schedule.");
+      setSuccess("Admin reservation added to the schedule.");
       await refreshState(authRole, authKey, { silent: true });
       setBoardForm((current) => ({ ...current, team: "", title: "" }));
     } catch (e) {
@@ -1394,7 +1345,7 @@ export default function Scheduling() {
       openConflictModal({
         submitType: "coach-add",
         conflicts: coachConflictPreview,
-        title: coachForm.title || coachForm.team || "Coach request",
+        title: coachForm.title || coachForm.team || "Field request",
       });
       return;
     }
@@ -1406,7 +1357,7 @@ export default function Scheduling() {
       openConflictModal({
         submitType: "board-add",
         conflicts: boardConflictPreview,
-        title: boardForm.title || boardForm.team || "Board reservation",
+        title: boardForm.title || boardForm.team || "Admin reservation",
       });
       return;
     }
@@ -1445,7 +1396,7 @@ export default function Scheduling() {
       if (!res.ok || data?.ok === false) {
         throw new Error(data?.error || data?.raw || "Failed to submit the removal request.");
       }
-      setSuccess("Removal request submitted for board review.");
+      setSuccess("Removal request submitted for admin approval.");
       await refreshState(authRole, authKey, { silent: true });
     } catch (e) {
       setError(e?.message || String(e));
@@ -1555,13 +1506,13 @@ export default function Scheduling() {
       });
       const data = await safeJsonOrText(res);
       if (!res.ok || data?.ok === false) {
-        throw new Error(data?.error || data?.raw || "Failed to save the board notification email.");
+        throw new Error(data?.error || data?.raw || "Failed to save the admin notification email.");
       }
 
       setBoardNotificationEmail(String(data?.settings?.email || ""));
       setBoardNotificationUpdatedAt(String(data?.settings?.updatedAt || ""));
       setBoardNotificationMailgunConfigured(Boolean(data?.settings?.mailgunConfigured));
-      setBoardNotificationStatus(data?.message || "Board notification email saved.");
+      setBoardNotificationStatus(data?.message || "Admin notification email saved.");
     } catch (e) {
       setBoardNotificationError(e?.message || String(e));
     } finally {
@@ -1587,83 +1538,23 @@ export default function Scheduling() {
     }
   }
 
-  if (!isAuthed) {
-    return (
-      <div className="page">
-        <div className="card">
-          <div className="cardTitle">Barrington Little League</div>
-          <h1 style={{ marginTop: 10, marginBottom: 8 }}>Field Scheduling Access</h1>
-          <div style={{ opacity: 0.8 }}>
-            Sign in with the Little League coach or board scheduling password to view the field calendar and manage requests.
-          </div>
-
-          <div className="scheduling-role-toggle" style={{ marginTop: 18 }}>
-            <button
-              type="button"
-              className={`scheduling-role-button ${loginRole === "coach" ? "is-active" : ""}`}
-              onClick={() => setLoginRole("coach")}
-            >
-              Coach
-            </button>
-            <button
-              type="button"
-              className={`scheduling-role-button ${loginRole === "board" ? "is-active" : ""}`}
-              onClick={() => setLoginRole("board")}
-            >
-              Board Member
-            </button>
-          </div>
-
-          <div style={{ marginTop: 16 }}>
-            <label className="label">{loginRole === "coach" ? "Coach Scheduling Password" : "Board Scheduling Password"}</label>
-            <input
-              className="input"
-              type={showPassword ? "text" : "password"}
-              value={loginPassword}
-              onChange={(e) => setLoginPassword(e.target.value)}
-              onKeyDown={(e) => (e.key === "Enter" ? handleLogin() : null)}
-              placeholder="Enter scheduling password"
-            />
-            <label style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, opacity: 0.85 }}>
-              <input type="checkbox" checked={showPassword} onChange={() => setShowPassword((value) => !value)} />
-              Show password
-            </label>
-          </div>
-
-          <button className="btn" style={{ width: "100%", marginTop: 14 }} onClick={handleLogin} disabled={loading}>
-            {loading ? "Logging in..." : `Log in as ${loginRole === "coach" ? "Coach" : "Board Member"}`}
-          </button>
-
-          {error ? (
-            <div style={{ marginTop: 12, color: "crimson" }}>
-              <strong>Error:</strong> {error}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="scheduling-shell">
       <div className="scheduling-header-row">
         <div>
-          <div className="cardTitle" style={{ color: "rgba(255,255,255,0.75)" }}>League Operations</div>
+          <div className="cardTitle" style={{ color: "#173f7a" }}>League Operations</div>
           <h1 className="scheduling-page-title">Field Scheduling</h1>
           <div className="scheduling-page-subtitle">
-            Weekly field reservations on desktop, day timeline on mobile, and a shared approval queue for coach requests. Each reservation holds a fixed 2-hour block.
+            Weekly field reservations on desktop, day timeline on mobile, and a shared approval queue for field requests. Each reservation holds a fixed 2-hour block.
           </div>
         </div>
 
         <div className="scheduling-header-actions">
-          <span className={`scheduling-pill ${authRole === "board" ? "scheduling-pill-approved" : "scheduling-pill-pending"}`}>
-            {authRole === "board" ? "Board Member" : "Coach"}
+          <span className={`scheduling-pill ${authRole === "admin" ? "scheduling-pill-approved" : "scheduling-pill-pending"}`}>
+            {authRole === "admin" ? "Admin" : "Schedule & Requests"}
           </span>
           <button className="btn-secondary scheduling-header-button" onClick={() => refreshState(authRole, authKey, { silent: false })} disabled={loading}>
             {loading ? "Refreshing..." : "Refresh"}
-          </button>
-          <button className="btn-secondary scheduling-header-button" onClick={logout}>
-            Log out
           </button>
         </div>
       </div>
@@ -1685,7 +1576,7 @@ export default function Scheduling() {
       ) : null}
 
       <div className="scheduling-summary-grid">
-        <StatCard label="Signed In As" value={authRole === "board" ? "Board Member" : "Coach"} accent="gold" />
+        <StatCard label="View" value={authRole === "admin" ? "Admin" : "Schedule & Requests"} accent="gold" />
         <StatCard label="Approved Reservations" value={summary.approvedReservations} />
         <StatCard label="Pending Add Requests" value={summary.pendingAddRequests} accent="pending" />
         <StatCard label="Pending Removal Requests" value={summary.pendingRemovalRequests} accent="removal" />
@@ -1785,9 +1676,9 @@ export default function Scheduling() {
         </div>
       ) : null}
 
-      {authRole === "board" ? (
+      {authRole === "admin" ? (
         <div className="scheduling-board-mobile-stack">
-          <MobileAccordionCard title={`Board Action Queue (${pendingRequests.length})`}>
+          <MobileAccordionCard title={`Approval Queue (${pendingRequests.length})`}>
             <BoardActionQueueCard pendingRequests={pendingRequests} actionKey={actionKey} onReviewRequest={reviewRequest} hideTitle />
           </MobileAccordionCard>
 
@@ -1800,9 +1691,9 @@ export default function Scheduling() {
             />
           </MobileAccordionCard>
 
-          <MobileAccordionCard title="Add Approved Reservation (Board Only)">
+          <MobileAccordionCard title="Add Approved Reservation (Admin Only)">
             <ReservationFormCard
-              title="Add Approved Reservation (Board Only)"
+              title="Add Approved Reservation (Admin Only)"
               description="Place 2-hour reservations directly on the schedule without approval."
               form={boardForm}
               onChange={updateBoardForm}
@@ -1815,7 +1706,7 @@ export default function Scheduling() {
             />
           </MobileAccordionCard>
 
-          <MobileAccordionCard title="Board Email Alerts">
+          <MobileAccordionCard title="Admin Email Alerts">
             <BoardNotificationCard
               email={boardNotificationEmail}
               onEmailChange={setBoardNotificationEmail}
@@ -1832,25 +1723,25 @@ export default function Scheduling() {
         </div>
       ) : null}
 
-      <div className={`scheduling-panels ${authRole === "board" ? "is-board" : ""}`}>
+      <div className={`scheduling-panels ${authRole === "admin" ? "is-board" : ""}`}>
         <div className="scheduling-panel-stack">
-          {authRole === "coach" ? (
+          {authRole === "requester" ? (
             <>
               <ReservationFormCard
                 title="Request Field Time"
-                description="Coaches can submit a 2-hour field reservation request for board approval. Conflicts are warned, but still allowed."
+                description="Submit a 2-hour field reservation request for admin approval. Conflicts are warned, but still allowed."
                 form={coachForm}
                 onChange={updateCoachForm}
                 onSubmit={submitCoachAddRequest}
-                submitLabel="Submit Coach Request"
+                submitLabel="Submit Request"
                 submitting={actionKey === "coach-add"}
                 teams={teams}
                 includeLeagueOption={false}
               />
 
               <RequestHistoryCard
-                heading="Coach Requests"
-                emptyText="No active coach scheduling requests. Pending requests and requests reviewed in the last week will appear here."
+                heading="Field Requests"
+                emptyText="No active field requests. Pending requests and requests reviewed in the last week will appear here."
                 requests={coachRequestGroups.active}
                 archivedRequests={coachRequestGroups.archived}
                 visibleRequestCount={visibleCoachRequestCount}
@@ -1866,7 +1757,7 @@ export default function Scheduling() {
           ) : (
             <div className="scheduling-board-desktop-only">
               <ReservationFormCard
-                title="Add Approved Reservation (Board Only)"
+                title="Add Approved Reservation (Admin Only)"
                 description="Place 2-hour reservations directly on the schedule without approval."
                 form={boardForm}
                 onChange={updateBoardForm}
@@ -1907,7 +1798,7 @@ export default function Scheduling() {
             </div>
           ) : null}
 
-          {authRole === "board" ? (
+          {authRole === "admin" ? (
             <div className="scheduling-board-desktop-only scheduling-board-audit-stack">
               <BoardActionQueueCard pendingRequests={pendingRequests} actionKey={actionKey} onReviewRequest={reviewRequest} />
               <FieldRequestAuditTrailCard

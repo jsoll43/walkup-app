@@ -8,6 +8,9 @@ import { onRequestPost as submitRequest } from "../functions/api/baseball/schedu
 import { onRequestPost as reviewRequest } from "../functions/api/baseball/scheduling/review.js";
 import { onRequestPost as addReservation } from "../functions/api/baseball/scheduling/reservation.js";
 import { onRequestGet as getState } from "../functions/api/baseball/scheduling/state.js";
+import { onRequestPost as createTeam } from "../functions/api/baseball/admin/scheduling-teams.js";
+import { onRequestGet as adminSettings } from "../functions/api/baseball/admin/scheduling-settings.js";
+import { onRequestDelete as cancelRequest } from "../functions/api/baseball/scheduling/request.js";
 import { onRequestPost as setPassword } from "../functions/api/baseball/admin/scheduling-settings.js";
 
 function database() {
@@ -28,10 +31,10 @@ function database() {
   return {sqlite, statements, env:{DB, ADMIN_KEY:"local-test-admin"}};
 }
 
-function request(body, role = "coach", key = "baseball-coach", method = "POST") {
+function request(body, role = "requester", key = "", method = "POST", owner = "local-request-owner-00000001") {
   return new Request("https://example.test/api/baseball/scheduling", {
     method,
-    headers:{Authorization:`Bearer ${key}`, "x-scheduling-role":role, "Content-Type":"application/json"},
+    headers:{...(key ? {Authorization:`Bearer ${key}`} : {}), "x-scheduling-role":role, "x-baseball-requester":owner, "Content-Type":"application/json"},
     ...(method !== "GET" ? {body:JSON.stringify(body)} : {}),
   });
 }
@@ -71,14 +74,18 @@ test("baseball setup, requests, approvals, imports and passwords leave every BGS
 
   let response=await setPassword({env,request:request({role:"coach",password:"baseball-coach"},"", "wrong-admin")});
   assert.equal(response.status,401);
-  for (const [role,password] of [["coach","baseball-coach"],["board","baseball-board"]]) {
+  for (const [role,password] of [["admin","baseball-admin"]]) {
     response=await setPassword({env,request:request({role,password},"",env.ADMIN_KEY)});
     assert.equal(response.status,200);
   }
-  await baseball.createSchedulingTeam(env,"Little League Blue");
-  response=await getState({env,request:request(null,"coach","softball-only","GET")});
+  response = await createTeam({env,request:request({name:"Little League Blue"},"admin","baseball-admin")});
+  assert.equal(response.status,200);
+  response = await adminSettings({env,request:request(null,"admin","baseball-admin","GET")});
+  assert.equal(response.status,200);
+  assert.equal((await response.json()).settings.adminPasswordConfigured,true);
+  response=await getState({env,request:request(null,"requester","softball-only","GET")});
   assert.equal(response.status,401);
-  response=await getState({env,request:request(null,"coach","baseball-coach","GET")});
+  response=await getState({env,request:request(null,"requester","","GET")});
   let state=await response.json();
   assert.equal(response.status,200);
   assert.deepEqual(state.teams.map((team)=>team.name),["Little League Blue"]);
@@ -88,10 +95,19 @@ test("baseball setup, requests, approvals, imports and passwords leave every BGS
   response=await submitRequest({env,request:request(draft)});
   assert.equal(response.status,200);
   const pending=(await response.json()).request;
+  response=await getState({env,request:request(null,"requester","","GET")});
+  let ownState=await response.json();
+  assert.equal(ownState.requests.find(item => item.id === pending.id).canCancel,true);
+  response=await getState({env,request:request(null,"requester","","GET","other-request-owner-000002")});
+  ownState=await response.json();
+  assert.equal(ownState.requests.find(item => item.id === pending.id).canCancel,false);
+  assert.equal(JSON.stringify(ownState).includes("requester_key_hash"),false);
+  response=await cancelRequest({env,request:request({requestId:pending.id},"requester","","DELETE","other-request-owner-000002")});
+  assert.equal(response.status,403);
   assert.equal(pending.endTime,"19:00");
   response=await reviewRequest({env,request:request({requestId:pending.id,action:"approve"})});
-  assert.equal(response.status,403);
-  response=await reviewRequest({env,request:request({requestId:pending.id,action:"approve"},"board","baseball-board")});
+  assert.equal(response.status,401);
+  response=await reviewRequest({env,request:request({requestId:pending.id,action:"approve"},"admin","baseball-admin")});
   assert.equal(response.status,200);
   assert.equal((await response.json()).request.status,"approved");
 
@@ -99,14 +115,19 @@ test("baseball setup, requests, approvals, imports and passwords leave every BGS
   const conflicting=(await response.json()).request;
   assert.equal(conflicting.hasConflict,true);
   assert.match(conflicting.conflictDetails.join(" "),/Tee Ball Field/);
-  response=await reviewRequest({env,request:request({requestId:conflicting.id,action:"deny"},"board","baseball-board")});
+  response=await reviewRequest({env,request:request({requestId:conflicting.id,action:"deny"},"admin","baseball-admin")});
   assert.equal((await response.json()).request.status,"denied");
-  response=await addReservation({env,request:request({...draft,field:"major"},"board","baseball-board")});
+  response=await addReservation({env,request:request({...draft,field:"major"},"admin","baseball-admin")});
   assert.equal(response.status,200);
   const result=await baseball.importSchedulingCsv(env,"date,field,team,startTime\n2027-04-12,minor,Little League Blue,17:00\n2027-04-12,tee-ball,Little League Blue,17:00");
   assert.equal(result.importedCount,2);
   state=await baseball.loadSchedulingState(env);
   assert.equal(state.reservations.length,4);
+  response=await submitRequest({env,request:request({...draft,date:"2027-04-14"})});
+  const cancelable=(await response.json()).request;
+  response=await cancelRequest({env,request:request({requestId:cancelable.id},"requester","","DELETE")});
+  assert.equal(response.status,200);
+  assert.equal((await response.json()).request.status,"canceled");
   assert.ok(state.reservations.every((entry)=>entry.endTime==="19:00"));
   assert.equal((await baseball.getSchedulingNotificationSettings(env)).email,"");
   assert.deepEqual(snapshot(),before,"BGSL data, passwords, teams and history must not change");

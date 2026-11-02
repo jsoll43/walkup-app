@@ -1,20 +1,19 @@
 import {
   createSchedulingTeam,
   deleteSchedulingTeam,
-  getAdminKey,
+  verifyBaseballAdmin,
   json,
   listSchedulingTeams,
   updateSchedulingTeam,
 } from "../../../lib/baseballScheduling.js";
 
-function isAuthed(request, env) {
-  const key = getAdminKey(request);
-  return !!key && key === env.ADMIN_KEY;
+async function isAuthed(request, env) {
+  return (await verifyBaseballAdmin(request, env)).ok;
 }
 
 export const onRequestGet = async ({ request, env }) => {
   try {
-    if (!isAuthed(request, env)) {
+    if (!await isAuthed(request, env)) {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
 
@@ -27,7 +26,7 @@ export const onRequestGet = async ({ request, env }) => {
 
 export const onRequestPost = async ({ request, env }) => {
   try {
-    if (!isAuthed(request, env)) {
+    if (!await isAuthed(request, env)) {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
 
@@ -45,7 +44,7 @@ export const onRequestPost = async ({ request, env }) => {
 
 export const onRequestPut = async ({ request, env }) => {
   try {
-    if (!isAuthed(request, env)) {
+    if (!await isAuthed(request, env)) {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
 
@@ -63,7 +62,7 @@ export const onRequestPut = async ({ request, env }) => {
 
 export const onRequestDelete = async ({ request, env }) => {
   try {
-    if (!isAuthed(request, env)) {
+    if (!await isAuthed(request, env)) {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
 

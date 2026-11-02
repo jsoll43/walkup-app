@@ -1,9 +1,9 @@
-import { getAdminKey, json, getSchedulingSettingsSummary, setSchedulingPassword } from "../../../lib/baseballScheduling.js";
+import { verifyBaseballAdmin, json, getSchedulingSettingsSummary, setSchedulingPassword } from "../../../lib/baseballScheduling.js";
 
 export const onRequestGet = async ({ request, env }) => {
   try {
-    const key = getAdminKey(request);
-    if (!key || key !== env.ADMIN_KEY) {
+    const auth = await verifyBaseballAdmin(request, env);
+    if (!auth.ok) {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
 
@@ -16,20 +16,20 @@ export const onRequestGet = async ({ request, env }) => {
 
 export const onRequestPost = async ({ request, env }) => {
   try {
-    const key = getAdminKey(request);
-    if (!key || key !== env.ADMIN_KEY) {
+    const auth = await verifyBaseballAdmin(request, env);
+    if (!auth.ok) {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
 
     const body = await request.json().catch(() => ({}));
-    const role = String(body.role || "").trim().toLowerCase();
+    const role = "admin";
     const password = String(body.password || "");
 
     const settings = await setSchedulingPassword(env, role, password);
     return json({
       ok: true,
       settings,
-      message: `${role === "coach" ? "Coach" : "Board member"} scheduling password updated.`,
+      message: "Admin password updated.",
     });
   } catch (e) {
     return json({ ok: false, error: e?.message || String(e) }, 400);

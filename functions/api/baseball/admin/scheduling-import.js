@@ -1,13 +1,13 @@
 import {
-  getAdminKey,
+  verifyBaseballAdmin,
   importSchedulingCsv,
   json,
 } from "../../../lib/baseballScheduling.js";
 
 export const onRequestPost = async ({ request, env }) => {
   try {
-    const key = getAdminKey(request);
-    if (!key || key !== env.ADMIN_KEY) {
+    const auth = await verifyBaseballAdmin(request, env);
+    if (!auth.ok) {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
 

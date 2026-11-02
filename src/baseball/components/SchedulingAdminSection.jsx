@@ -33,24 +33,17 @@ function formatET(ts) {
 }
 
 const ROLE_META = {
-  coach: {
-    title: "Coach Scheduling Password",
-    button: "Set Coach Password",
-    updateButton: "Update Coach Password",
-    modalTitle: "Set Coach Scheduling Password",
-  },
-  board: {
-    title: "Board Scheduling Password",
-    button: "Set Board Password",
-    updateButton: "Update Board Password",
-    modalTitle: "Set Board Scheduling Password",
+  admin: {
+    title: "Admin Password",
+    button: "Set Admin Password",
+    updateButton: "Update Admin Password",
+    modalTitle: "Set Little League Admin Password",
   },
 };
 
-export default function SchedulingAdminSection({ isAuthed, adminHeaders, embedded = false }) {
+export default function SchedulingAdminSection({ isAuthed, adminHeaders, embedded = false, onAdminPasswordChange }) {
   const [settings, setSettings] = useState({
-    coachPasswordConfigured: false,
-    boardPasswordConfigured: false,
+    adminPasswordConfigured: false,
     updatedAt: "",
   });
   const [loading, setLoading] = useState(false);
@@ -187,6 +180,7 @@ export default function SchedulingAdminSection({ isAuthed, adminHeaders, embedde
       }
 
       setSettings(data.settings || {});
+      onAdminPasswordChange?.(cleanPassword);
       setStatus(data.message || "Scheduling password saved.");
       closeModal();
     } catch (e) {
@@ -365,7 +359,7 @@ export default function SchedulingAdminSection({ isAuthed, adminHeaders, embedde
         <div>
           {embedded ? null : <h2 style={{ margin: 0 }}>Scheduling Admin</h2>}
           <div style={{ marginTop: embedded ? 0 : 6, opacity: 0.8 }}>
-            Manage the shared scheduling passwords for coaches and board members.
+            Manage your Little League admin password, teams, and reservation imports. Schedule viewing and requests need no login.
           </div>
         </div>
 
@@ -383,7 +377,7 @@ export default function SchedulingAdminSection({ isAuthed, adminHeaders, embedde
         }}
       >
         {Object.entries(ROLE_META).map(([role, meta]) => {
-          const configured = role === "coach" ? settings.coachPasswordConfigured : settings.boardPasswordConfigured;
+          const configured = settings.adminPasswordConfigured;
           return (
             <div
               key={role}
@@ -422,7 +416,7 @@ export default function SchedulingAdminSection({ isAuthed, adminHeaders, embedde
       >
         <h3 style={{ marginTop: 0, marginBottom: 6 }}>Scheduling Teams</h3>
         <div style={{ opacity: 0.8 }}>
-          Manage the team names that appear in the field scheduling dropdowns. This list is separate from the walk-up song team setup.
+          Manage the team names that appear in the field scheduling dropdowns. These teams are used only for Little League scheduling.
         </div>
 
         <div

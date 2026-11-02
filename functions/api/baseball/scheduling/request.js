@@ -1,4 +1,7 @@
 import {
+  assignRequestOwner,
+  requesterKeyHash,
+  requestBelongsTo,
   cancelPendingFieldRequest,
   createFieldRequest,
   getFieldRequestById,
@@ -14,7 +17,7 @@ import {
 
 export const onRequestPost = async ({ request, env }) => {
   try {
-    const auth = await verifySchedulingAuth(request, env, ["coach"]);
+    const auth = await verifySchedulingAuth(request, env, ["requester"]);
     if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
 
     const body = await request.json().catch(() => ({}));
@@ -61,6 +64,7 @@ export const onRequestPost = async ({ request, env }) => {
       });
     }
 
+    await assignRequestOwner(env, requestId, await requesterKeyHash(request));
     await recalculateSchedulingRequestConflicts(env);
     const createdRequest = await getFieldRequestById(env, requestId);
     const notification = createdRequest
@@ -79,7 +83,7 @@ export const onRequestPost = async ({ request, env }) => {
 
 export const onRequestDelete = async ({ request, env }) => {
   try {
-    const auth = await verifySchedulingAuth(request, env, ["coach"]);
+    const auth = await verifySchedulingAuth(request, env, ["requester"]);
     if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
 
     const body = await request.json().catch(() => ({}));
@@ -91,8 +95,8 @@ export const onRequestDelete = async ({ request, env }) => {
     if (pendingRequest.status !== "pending") {
       return json({ ok: false, error: "Only pending requests can be canceled." }, 409);
     }
-    if (pendingRequest.requestedBy !== auth.requestedBy) {
-      return json({ ok: false, error: "You cannot cancel another coach's request." }, 403);
+    if (!await requestBelongsTo(env, requestId, await requesterKeyHash(request))) {
+      return json({ ok: false, error: "You cannot cancel another person's request." }, 403);
     }
 
     const canceledAt = new Date().toISOString();
@@ -119,6 +123,6 @@ export const onRequestOptions = async () =>
     headers: {
       "access-control-allow-origin": "*",
       "access-control-allow-methods": "POST,DELETE,OPTIONS",
-      "access-control-allow-headers": "authorization,x-scheduling-key,x-scheduling-role,content-type",
+      "access-control-allow-headers": "authorization,x-scheduling-key,x-scheduling-role,x-baseball-requester,content-type",
     },
   });

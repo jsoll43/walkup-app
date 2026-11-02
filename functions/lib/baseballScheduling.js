@@ -1,6 +1,6 @@
 const ROLE_LABELS = {
-  coach: "Coach",
-  board: "Board Member",
+  requester: "Schedule Requester",
+  admin: "Admin",
 };
 
 const FIELD_LABELS = {
@@ -73,7 +73,7 @@ export function getSchedulingSecret(req) {
 
 export function normalizeRole(value) {
   const role = String(value || "").trim().toLowerCase();
-  return role === "coach" || role === "board" ? role : "";
+  return role === "requester" || role === "admin" ? role : "";
 }
 
 export function roleLabel(role) {
@@ -782,6 +782,7 @@ export async function ensureSchedulingTables(env) {
     await env.DB.prepare(sql).run();
   }
 
+  await ensureColumn(env, "baseball_field_requests", "requester_key_hash", "TEXT NOT NULL DEFAULT ''");
   await ensureColumn(env, "baseball_scheduling_settings", "board_notification_email", "TEXT NOT NULL DEFAULT ''");
   await ensureColumn(env, "baseball_scheduling_settings", "bubble_schedule_json", "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn(env, "baseball_scheduling_settings", "bubble_comments_json", "TEXT NOT NULL DEFAULT '[]'");
@@ -805,12 +806,12 @@ export async function ensureSchedulingTables(env) {
        'approved',
        0,
        '[]',
-       'Board member shared login',
+       'Admin',
        created_at,
        'Auto-approved',
        created_at
      FROM baseball_field_reservations
-     WHERE created_by_role = 'board'`
+     WHERE created_by_role IN ('admin', 'board')`
   ).run();
 }
 
@@ -834,8 +835,7 @@ export async function getSchedulingSettings(env) {
 export async function getSchedulingSettingsSummary(env) {
   const settings = await getSchedulingSettings(env);
   return {
-    coachPasswordConfigured: !!settings.coachPasswordHash,
-    boardPasswordConfigured: !!settings.boardPasswordHash,
+    adminPasswordConfigured: !!settings.boardPasswordHash,
     updatedAt: settings.updatedAt,
   };
 }
@@ -1061,7 +1061,7 @@ export async function setSchedulingNotificationSettings(env, settings) {
 export async function sendSchedulingRequestNotification(env, requestItem) {
   const settings = await getSchedulingNotificationSettings(env);
   if (!settings.email) {
-    return { ok: false, skipped: true, reason: "No board notification email configured." };
+    return { ok: false, skipped: true, reason: "No admin notification email configured." };
   }
 
   const mgKey = env?.MAILGUN_API_KEY;
@@ -1080,7 +1080,7 @@ export async function sendSchedulingRequestNotification(env, requestItem) {
     `Field: ${fieldLabel(requestItem?.field)}`,
     `Date: ${requestItem?.date || ""}`,
     `Time: ${requestItem?.startTime || ""} - ${requestItem?.endTime || ""}`,
-    `Requested by: ${requestItem?.requestedBy || "Coach shared login"}`,
+    `Requested by: ${requestItem?.requestedBy || "Schedule requester"}`,
   ];
 
   if (requestItem?.title) details.push(`Title: ${requestItem.title}`);
@@ -1089,7 +1089,7 @@ export async function sendSchedulingRequestNotification(env, requestItem) {
     details.push("", "Conflict details:", ...requestItem.conflictDetails);
   }
 
-  details.push("", "Visit https://bgslwalkup.com/baseball and sign in as Board Member to review the request.");
+  details.push("", "Visit https://bgslwalkup.com/baseball and sign in as Admin to review the request.");
 
   const text = details.join("\n");
   const html = [
@@ -1100,7 +1100,7 @@ export async function sendSchedulingRequestNotification(env, requestItem) {
     Array.isArray(requestItem?.conflictDetails) && requestItem.conflictDetails.length > 0
       ? `<p><strong>Conflict details</strong><br />${escapeHtml(requestItem.conflictDetails.join("\n")).replace(/\n/g, "<br />")}</p>`
       : "",
-    `<p>Visit https://bgslwalkup.com/baseball and sign in as Board Member to review the request.</p>`,
+    `<p>Visit https://bgslwalkup.com/baseball and sign in as Admin to review the request.</p>`,
   ].join("");
 
   const response = await fetch(`https://api.mailgun.net/v3/${encodeURIComponent(mgDomain)}/messages`, {
@@ -1130,14 +1130,15 @@ export async function setSchedulingPassword(env, role, password) {
   const normalizedRole = normalizeRole(role);
   const cleanPassword = String(password || "").trim();
 
-  if (!normalizedRole) throw new Error("Invalid scheduling role.");
+  if (normalizedRole !== "admin") throw new Error("Only the admin has a scheduling password.");
   if (cleanPassword.length < 4) throw new Error("Password must be at least 4 characters.");
 
   await ensureSchedulingTables(env);
 
   const hash = await hashSchedulingPassword(cleanPassword);
   const updatedAt = nowIso();
-  const column = normalizedRole === "coach" ? "coach_password_hash" : "board_password_hash";
+  // Keep the existing baseball column so prior data and passwords remain valid.
+  const column = "board_password_hash";
 
   await run(
     env,
@@ -1152,43 +1153,47 @@ export async function setSchedulingPassword(env, role, password) {
   return getSchedulingSettingsSummary(env);
 }
 
-export async function verifySchedulingAuth(request, env, allowedRoles = []) {
-  await ensureSchedulingTables(env);
-
-  const role = getSchedulingRole(request);
-  const secret = getSchedulingSecret(request);
-  if (!role) {
-    return { ok: false, status: 401, error: "Missing scheduling role." };
-  }
-
-  if (allowedRoles.length > 0 && !allowedRoles.includes(role)) {
-    return { ok: false, status: 403, error: "You do not have access to that scheduling action." };
-  }
-
-  if (!secret) {
-    return { ok: false, status: 401, error: `${roleLabel(role)} scheduling password is required.` };
-  }
-
+export async function verifyBaseballAdmin(request, env) {
+  const secret = getAdminKey(request) || getSchedulingSecret(request);
+  if (!secret) return {ok:false,status:401,error:"Admin password is required."};
+  // The site owner can bootstrap baseball without sharing the BGSL administrator key.
+  if (env.ADMIN_KEY && secret === env.ADMIN_KEY) return {ok:true,role:"admin",requestedBy:"Admin"};
   const settings = await getSchedulingSettings(env);
-  const storedHash = role === "coach" ? settings.coachPasswordHash : settings.boardPasswordHash;
-  if (!storedHash) {
-    return {
-      ok: false,
-      status: 401,
-      error: `${roleLabel(role)} scheduling password is not configured yet. Ask an admin.`,
-    };
-  }
+  if (!settings.boardPasswordHash) return {ok:false,status:401,error:"Little League admin password is not configured yet. The site owner can sign in with the site administrator key to set it."};
+  if (!await verifySchedulingPassword(secret, settings.boardPasswordHash)) return {ok:false,status:401,error:"Unauthorized"};
+  return {ok:true,role:"admin",requestedBy:"Admin"};
+}
 
-  const valid = await verifySchedulingPassword(secret, storedHash);
-  if (!valid) {
-    return { ok: false, status: 401, error: "Unauthorized" };
+export async function verifySchedulingAuth(request, env, allowedRoles = []) {
+  const role = getSchedulingRole(request);
+  if ((!role || role === "requester") && !getSchedulingSecret(request) && allowedRoles.includes("requester")) {
+    return {ok:true,role:"requester",requestedBy:"Schedule requester"};
   }
+  if (!allowedRoles.includes("admin")) return {ok:false,status:403,error:"This action is for schedule requests."};
+  return verifyBaseballAdmin(request, env);
+}
 
-  return {
-    ok: true,
-    role,
-    requestedBy: role === "coach" ? "Coach shared login" : "Board member shared login",
-  };
+export async function requesterKeyHash(request) {
+  const key = String(request.headers.get("x-baseball-requester") || "");
+  if (!/^[a-zA-Z0-9_-]{20,128}$/.test(key)) return "";
+  const digest = await crypto.subtle.digest("SHA-256", textEncoder.encode(key));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2,"0")).join("");
+}
+
+export async function assignRequestOwner(env, requestId, keyHash) {
+  if (keyHash) await run(env, "UPDATE baseball_field_requests SET requester_key_hash = ? WHERE id = ?", [keyHash, requestId]);
+}
+
+export async function requestBelongsTo(env, requestId, keyHash) {
+  if (!keyHash) return false;
+  const row = await first(env, "SELECT id FROM baseball_field_requests WHERE id = ? AND requester_key_hash = ?", [requestId, keyHash]);
+  return !!row;
+}
+
+export async function ownedRequestIds(env, keyHash) {
+  if (!keyHash) return new Set();
+  const rows = await all(env, "SELECT id FROM baseball_field_requests WHERE requester_key_hash = ?", [keyHash]);
+  return new Set(rows.map(row => row.id));
 }
 
 export async function getReservationById(env, reservationId) {
@@ -1234,12 +1239,12 @@ export async function createReservation(env, payload) {
     ]
   );
 
-  if (payload.createdByRole === "board") {
+  if (["admin", "board"].includes(payload.createdByRole)) {
     await run(
       env,
       `INSERT OR IGNORE INTO baseball_field_requests
         (id, request_type, reservation_id, field, team, title, reservation_type, date, start_time, end_time, notes, status, has_conflict, conflict_details, requested_by, requested_at, reviewed_by, reviewed_at)
-       VALUES (?, 'add', ?, ?, ?, ?, ?, ?, ?, ?, '', 'approved', 0, '[]', 'Board member shared login', ?, 'Auto-approved', ?)`,
+       VALUES (?, 'add', ?, ?, ?, ?, ?, ?, ?, ?, '', 'approved', 0, '[]', 'Admin', ?, 'Auto-approved', ?)`,
       [
         `sched_req_board_reservation_${id}`,
         id,
@@ -1264,7 +1269,7 @@ export async function deleteReservation(env, reservationId) {
   return run(env, `DELETE FROM baseball_field_reservations WHERE id = ?`, [String(reservationId || "").trim()]);
 }
 
-export async function recordBoardReservationDeletion(env, reservation, actor = "Board member shared login") {
+export async function recordBoardReservationDeletion(env, reservation, actor = "Admin") {
   const deletedAt = nowIso();
   return createFieldRequest(env, {
     id: `sched_req_board_reservation_deleted_${reservation.id}`,
