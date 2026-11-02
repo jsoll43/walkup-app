@@ -1,6 +1,6 @@
 // One-time, clearly labeled demonstration schedule requested for Nov 2-Dec 1, 2026.
 // Everything is confined to baseball tables. No passwords, alerts, or BGSL rows change.
-export const BASEBALL_SAMPLE_VERSION = "bll-sample-20261102-30days-v1";
+export const BASEBALL_SAMPLE_VERSION = "bll-sample-20261102-refined-v2";
 export const BASEBALL_SAMPLE_START = "2026-11-02";
 export const BASEBALL_SAMPLE_TEAMS = [6, 8, 10, 12, 14].map(age => ({
   id: `bll_sample_team_${age}u`, name: `Barrington ${age}U`, slug: `barrington-${age}u`,
@@ -15,7 +15,7 @@ const ROTATION = {
   14: { field: "major", practices: [2, 3], start: "19:00", gameDay: 0, gameStart: "12:00" },
 };
 
-export function buildBaseballSampleReservations() {
+export function buildLegacyBaseballSampleReservations() {
   const output = [];
   for (let day = 0; day < 30; day++) {
     const date = new Date(`${BASEBALL_SAMPLE_START}T12:00:00Z`);
@@ -43,6 +43,41 @@ export function buildBaseballSampleReservations() {
   return output;
 }
 
+export function buildBaseballSampleReservations() {
+  const legacy = buildLegacyBaseballSampleReservations();
+  const output = [];
+  for (const age of [6, 8, 10, 12, 14]) {
+    const team = `Barrington ${age}U`;
+    const practices = legacy.filter(item => item.team === team && item.reservationType === "practice");
+    // Remove two practices per team, distributed across the month: 65 -> 55 field events.
+    const removed = new Set([practices[2].id, practices[6].id]);
+    const remainingPractices = practices.filter(item => !removed.has(item.id));
+    // Nine remaining practices become games: 29 games and 26 practices in total.
+    const converted = new Set((age === 14 ? [remainingPractices[3]] : [remainingPractices[1], remainingPractices[4]]).map(item => item.id));
+    for (const event of legacy.filter(item => item.team === team && !removed.has(item.id))) {
+      if (!converted.has(event.id)) { output.push(event); continue; }
+      const opponent = TOWNS[(age / 2 + Number(event.date.slice(-2))) % TOWNS.length];
+      output.push({...event, title:`[SAMPLE] ${age}U vs ${opponent}`, reservationType:"game"});
+    }
+  }
+  return output.sort((a,b) => `${a.date} ${a.startTime} ${a.field}`.localeCompare(`${b.date} ${b.startTime} ${b.field}`));
+}
+
+export function buildBubbleSampleReservations() {
+  return [
+    ["2026-11-02", "17:00", 10, "Indoor Practice", "practice"],
+    ["2026-11-04", "19:00", 14, "Batting Practice", "practice"],
+    ["2026-11-07", "10:00", 6, "Skills Clinic", "clinic"],
+    ["2026-11-09", "17:00", 8, "Indoor Practice", "practice"],
+    ["2026-11-12", "19:00", 12, "Hitting Session", "practice"],
+    ["2026-11-14", "12:00", 10, "Indoor Scrimmage", "game"],
+  ].map(([date,startTime,age,title,reservationType]) => ({
+    id:`bll_sample_20261102_bubble_${date}_${age}u`, field:"bubble", team:`Barrington ${age}U`,
+    title:`[SAMPLE] ${age}U ${title}`, reservationType, date, startTime,
+    endTime:`${String(Number(startTime.slice(0,2))+2).padStart(2,"0")}:${startTime.slice(3)}`,
+  }));
+}
+
 export async function ensureBaseballSampleData(env) {
   if (env.BASEBALL_SAMPLE_DATA === "off") return;
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS baseball_sample_seed_versions (
@@ -53,7 +88,8 @@ export async function ensureBaseballSampleData(env) {
   if (completed) return;
 
   const now = new Date().toISOString();
-  // Bulk JSON inserts keep initialization to three statements, even on the free D1 plan.
+  const eventsJson = JSON.stringify([...buildBaseballSampleReservations(), ...buildBubbleSampleReservations()]);
+  // Every mutation is gated by this version and limited to our sample rows.
   const statements = [
     env.DB.prepare(`INSERT OR IGNORE INTO baseball_scheduling_teams
       (id, name, slug, created_at, updated_at)
@@ -63,6 +99,23 @@ export async function ensureBaseballSampleData(env) {
         AND NOT EXISTS (SELECT 1 FROM baseball_scheduling_teams
           WHERE lower(name) = lower(json_extract(sample.value, '$.name')) OR slug = json_extract(sample.value, '$.slug'))`)
       .bind(now, now, JSON.stringify(BASEBALL_SAMPLE_TEAMS), BASEBALL_SAMPLE_VERSION),
+    env.DB.prepare(`DELETE FROM baseball_field_reservations
+      WHERE created_by_role = 'sample_data' AND id LIKE 'bll_sample_20261102_%'
+        AND id NOT IN (SELECT json_extract(value, '$.id') FROM json_each(?))
+        AND NOT EXISTS (SELECT 1 FROM baseball_sample_seed_versions WHERE id = ?)
+        AND NOT EXISTS (SELECT 1 FROM baseball_field_requests
+          WHERE reservation_id = baseball_field_reservations.id AND status = 'pending')`)
+      .bind(eventsJson, BASEBALL_SAMPLE_VERSION),
+    env.DB.prepare(`UPDATE baseball_field_reservations SET
+      title = (SELECT json_extract(sample.value, '$.title') FROM json_each(?) AS sample
+        WHERE json_extract(sample.value, '$.id') = baseball_field_reservations.id),
+      reservation_type = (SELECT json_extract(sample.value, '$.reservationType') FROM json_each(?) AS sample
+        WHERE json_extract(sample.value, '$.id') = baseball_field_reservations.id),
+      updated_at = ?
+      WHERE created_by_role = 'sample_data' AND id LIKE 'bll_sample_20261102_%'
+        AND id IN (SELECT json_extract(value, '$.id') FROM json_each(?))
+        AND NOT EXISTS (SELECT 1 FROM baseball_sample_seed_versions WHERE id = ?)`)
+      .bind(eventsJson, eventsJson, now, eventsJson, BASEBALL_SAMPLE_VERSION),
     // Existing reservations take priority. Demo events never replace or overlap them.
     env.DB.prepare(`INSERT OR IGNORE INTO baseball_field_reservations
       (id, field, team, title, reservation_type, date, start_time, end_time, status, notes, created_by_role, created_at, updated_at)
@@ -77,7 +130,7 @@ export async function ensureBaseballSampleData(env) {
           WHERE field = json_extract(sample.value, '$.field') AND date = json_extract(sample.value, '$.date')
             AND start_time < json_extract(sample.value, '$.endTime')
             AND end_time > json_extract(sample.value, '$.startTime'))`)
-      .bind(now, now, JSON.stringify(buildBaseballSampleReservations()), BASEBALL_SAMPLE_VERSION),
+      .bind(now, now, eventsJson, BASEBALL_SAMPLE_VERSION),
     env.DB.prepare("INSERT OR IGNORE INTO baseball_sample_seed_versions (id, completed_at) VALUES (?, ?)")
       .bind(BASEBALL_SAMPLE_VERSION, now),
   ];

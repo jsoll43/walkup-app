@@ -32,11 +32,15 @@ notification recipient is explicitly saved.
 
 ### Demonstration schedule
 
-The one-time `bll-sample-20261102-30days-v1` seed creates Barrington 6U, 8U, 10U,
-12U, and 14U teams and up to 65 clearly labeled sample reservations for
-November 2 through December 1, 2026: 45 practices and 20 fictional games against
-nearby towns. It runs transactionally when the baseball schedule is first read,
-skips occupied field times, sends no alerts, and never changes existing rows.
+The versioned `bll-sample-20261102-refined-v2` seed creates Barrington 6U, 8U, 10U,
+12U, and 14U teams and up to 55 field sample reservations for November 2 through
+December 1, 2026: 29 fictional games against nearby towns and 26 practices. Six
+additional bubble examples cover indoor practice, a skills clinic, a hitting
+session, and an indoor scrimmage. This is a 15.4% reduction from the original
+65 field samples. The atomic revision removes only obsolete sample rows and
+updates sample game titles/types, preserving actual bookings and samples with
+pending removal requests. Missing examples skip occupied field times. No alerts
+are sent and no BGSL data is touched.
 The completion marker prevents later page loads from duplicating events or
 recreating samples deleted by the admin. `BASEBALL_SAMPLE_DATA=off` skips seeding
 in test or other environments. The Field/Bubble switch selects either the three-field calendar or the single-column
