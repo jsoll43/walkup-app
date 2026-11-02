@@ -1,8 +1,43 @@
 export const FIELD_OPTIONS = [
-  { value: "major", label: "Majors Field" },
-  { value: "minor", label: "Minors Field" },
-  { value: "tee-ball", label: "Tee Ball Field" },
+  { value: "major", label: "Majors Field", shortLabel: "Majors" },
+  { value: "minor", label: "Minors Field", shortLabel: "Minors" },
+  { value: "tee-ball", label: "Tee Ball Field", shortLabel: "Tee Ball" },
 ];
+export const BUBBLE_FIELD_OPTIONS = [{ value: "bubble", label: "Bubble", shortLabel: "Bubble" }];
+export const ALL_FIELD_OPTIONS = [...FIELD_OPTIONS, ...BUBBLE_FIELD_OPTIONS];
+
+export function getSchedulingFields(mode) {
+  return mode === "bubble" ? BUBBLE_FIELD_OPTIONS : FIELD_OPTIONS;
+}
+
+export function scopeSchedulingData(data, mode) {
+  const fields = new Set(getSchedulingFields(mode).map((field) => field.value));
+  const reservations = (data.reservations || []).filter((item) => fields.has(item.field));
+  const requests = (data.requests || []).filter((item) => fields.has(item.field));
+  const pendingRequests = requests.filter((item) => item.status === "pending");
+  return {
+    ...data, reservations, requests, pendingRequests,
+    summary: {
+      approvedReservations: reservations.length,
+      pendingAddRequests: pendingRequests.filter((item) => item.requestType === "add").length,
+      pendingRemovalRequests: pendingRequests.filter((item) => item.requestType === "remove").length,
+      conflicts: reservations.filter((item) => item.hasConflict).length + pendingRequests.filter((item) => item.hasConflict).length,
+    },
+  };
+}
+
+export function compactEventTitle(item) {
+  const clean = (value) => String(value || "").replace(/\[SAMPLE\]\s*/gi, "").replace(/^Barrington\s+/i, "").trim();
+  const team = clean(item?.team);
+  const title = clean(item?.title);
+  if (!title) return team || "Reservation";
+  if (!team || title.toLowerCase().includes(team.toLowerCase())) return title;
+  return `${team} · ${title}`;
+}
+
+export function compactTimeLabel(value) {
+  return formatTimeLabel(value).replace(":00", "");
+}
 
 export const RESERVATION_DURATION_MINUTES = 120;
 
@@ -182,6 +217,6 @@ export function getConflictsForDraft(draft, calendarItems) {
           ? "blocked time"
           : "approved reservation";
 
-      return `${item.title || item.team} on ${FIELD_OPTIONS.find((field) => field.value === item.field)?.label || "Field"} from ${formatTimeLabel(item.startTime)} to ${formatTimeLabel(item.endTime)} (${statusLabel})`;
+      return `${item.title || item.team} on ${ALL_FIELD_OPTIONS.find((field) => field.value === item.field)?.label || "Field"} from ${formatTimeLabel(item.startTime)} to ${formatTimeLabel(item.endTime)} (${statusLabel})`;
     });
 }

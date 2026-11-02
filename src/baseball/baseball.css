@@ -3822,3 +3822,27 @@ body { background: #d7ba58; color: #173f7a; }
 .scheduling-stat-value.is-removal,
 .scheduling-stat-value.is-conflict,
 .scheduling-header-actions .scheduling-pill { color: #173f7a; }
+
+/* Resource switch and compact mobile calendar; status badges and actions are retained. */
+.baseball-mode-switch { display:inline-flex; padding:3px; border:1px solid rgba(21,63,135,.25); background:#fff9e6; border-radius:12px; gap:3px; }
+.baseball-mode-switch button { border:0; border-radius:9px; padding:8px 14px; background:transparent; color:#173f7a; font-weight:800; cursor:pointer; }
+.baseball-mode-switch button[aria-pressed="true"] { background:#173f7a; color:#fff9e6; }
+.baseball-mode-switch button:focus-visible { outline:2px solid #173f7a; outline-offset:2px; }
+.scheduling-shell.is-bubble .schedule-list-header,
+.scheduling-shell.is-bubble .schedule-list-row { grid-template-columns:130px minmax(0,1fr); }
+.scheduling-shell.is-bubble .schedule-day-body-group,
+.scheduling-shell.is-bubble .schedule-field-header-row { grid-template-columns:minmax(0,1fr); }
+@media(max-width:980px) {
+  .schedule-mobile-header { padding:6px 6px 0; }
+  .schedule-mobile-title { font-size:15px; line-height:1.2; margin-bottom:3px; }
+  .schedule-field-header { padding:5px 3px; font-size:10px; letter-spacing:0; }
+  .schedule-mobile-week-list { gap:6px; }
+  .schedule-mobile-view .schedule-field-cell { padding:6px 4px; min-height:0; gap:5px; }
+  .schedule-mobile-view .schedule-block { padding:7px 6px; gap:5px; border-radius:10px; }
+  .schedule-mobile-view .schedule-block-time { font-size:14px; line-height:1.1; white-space:nowrap; }
+  .schedule-mobile-view .schedule-block-title { font-size:12px; line-height:1.2; }
+  .schedule-mobile-empty-day { padding:7px 9px; }
+  .scheduling-shell.is-bubble .schedule-mobile-view .schedule-block-topline { flex-direction:row; align-items:center; }
+  .scheduling-header-actions { gap:6px; }
+  .baseball-mode-switch button { padding:8px 12px; }
+}

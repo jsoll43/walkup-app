@@ -9,6 +9,7 @@ const FIELD_LABELS = {
   major: "Majors Field",
   minor: "Minors Field",
   "tee-ball": "Tee Ball Field",
+  bubble: "Bubble",
 };
 
 const RESERVATION_TYPE_LABELS = {
@@ -84,7 +85,7 @@ export function roleLabel(role) {
 
 export function normalizeField(value) {
   const field = String(value || "").trim().toLowerCase();
-  return field === "major" || field === "minor" || field === "tee-ball" ? field : "";
+  return field === "major" || field === "minor" || field === "tee-ball" || field === "bubble" ? field : "";
 }
 
 export function fieldLabel(field) {

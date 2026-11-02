@@ -4,7 +4,7 @@ import Scheduling from "./pages/Scheduling.jsx";
 import SchedulingAdminSection from "./components/SchedulingAdminSection.jsx";
 import "./baseball.css";
 
-function Admin() {
+function Admin({ mode, onModeChange }) {
   const [key, setKey] = useState("");
   const [authenticatedKey, setAuthenticatedKey] = useState("");
   const [busy, setBusy] = useState(false);
@@ -33,7 +33,7 @@ function Admin() {
     <div className="page"><form className="card" onSubmit={login}>
       <div className="cardTitle">Barrington Little League</div>
       <h1>Admin Login</h1>
-      <p className="baseball-admin-note">Approve field requests, manage reservations and teams, and update scheduling settings.</p>
+      <p className="baseball-admin-note">Approve field and bubble requests, manage reservations and teams, and update scheduling settings.</p>
       <label className="label" htmlFor="baseball-admin-key">Admin Password</label>
       <input id="baseball-admin-key" className="input" type="password" autoComplete="off" required value={key} onChange={(event) => setKey(event.target.value)} />
       <p className="baseball-admin-note">For first-time setup, the site owner can use the existing site administrator key to create a separate Little League admin password.</p>
@@ -44,7 +44,7 @@ function Admin() {
 
   return <div className="baseball-admin-page">
     <div className="baseball-admin-top"><h1>Little League Admin</h1><button className="btn-secondary" onClick={() => setAuthenticatedKey("")}>Log out</button></div>
-    <Scheduling adminKey={authenticatedKey} />
+    <Scheduling adminKey={authenticatedKey} mode={mode} onModeChange={onModeChange} />
     <details className="card baseball-admin-settings">
       <summary>Admin Password, Teams &amp; Imports</summary>
       <SchedulingAdminSection isAuthed adminHeaders={{Authorization:`Bearer ${authenticatedKey}`}} onAdminPasswordChange={setAuthenticatedKey} embedded />
@@ -54,6 +54,7 @@ function Admin() {
 
 function App() {
   const [admin, setAdmin] = useState(() => window.location.hash === "#admin");
+  const [mode, setMode] = useState("field");
   const [hiddenHeader, setHiddenHeader] = useState(false);
   useEffect(() => {
     const route = () => { setAdmin(window.location.hash === "#admin"); window.scrollTo(0,0); };
@@ -68,7 +69,7 @@ function App() {
       <div className="bll-header-inner">
         <a className="bll-brand" href="#schedule" aria-label="Barrington Little League home">
           <img className="bll-logo" src="/baseball/hats-logo.png" alt="Three cartoon Barrington baseball hats: yellow, blue and red, white and blue" />
-          <div><div className="bll-title">Barrington Little League</div><div className="bll-brand-subtitle">Field scheduling</div></div>
+          <div><div className="bll-title">Barrington Little League</div><div className="bll-brand-subtitle">Scheduling</div></div>
         </a>
         <nav className="bll-nav" aria-label="Little League navigation">
           <a href="#schedule" className={`bll-link ${!admin ? "active" : ""}`} aria-current={!admin ? "page" : undefined}>Schedule &amp; Requests</a>
@@ -77,7 +78,7 @@ function App() {
       </div>
     </header>
     <main className="bll-main">
-      {admin ? <Admin /> : <Scheduling />}
+      {admin ? <Admin mode={mode} onModeChange={setMode} /> : <Scheduling mode={mode} onModeChange={setMode} />}
     </main>
   </div>;
 }

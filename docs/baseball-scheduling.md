@@ -1,7 +1,7 @@
 # Barrington Little League scheduling
 
 The standalone page at `/baseball` copies the BGSL scheduler with Majors, Minors,
-and Tee Ball fields and two-hour reservations. It has its own branding, session
+and Tee Ball fields, a separate single-bubble calendar, and two-hour reservations. It has its own branding, session
 storage keys, `/api/baseball/` routes, and `baseball_` database tables. The original
 BGSL source and tables are not modified. Only the former hello-world page is
 replaced.
@@ -19,7 +19,7 @@ that browser can cancel its own pending requests; the token is never published.
    admin password. It authorizes both approvals and setup, with no board or coach
    login. A previously configured baseball board password remains usable as the
    admin password; the legacy database column is retained to preserve data.
-3. Add baseball teams. CSV imports support `major`, `minor`, and `tee-ball` fields.
+3. Add baseball teams. CSV imports support `major`, `minor`, `tee-ball`, and `bubble`.
 4. The admin can optionally set their own email alert destination. No BGSL
    notification recipient, password, team, or reservation is copied.
 
@@ -39,8 +39,12 @@ nearby towns. It runs transactionally when the baseball schedule is first read,
 skips occupied field times, sends no alerts, and never changes existing rows.
 The completion marker prevents later page loads from duplicating events or
 recreating samples deleted by the admin. `BASEBALL_SAMPLE_DATA=off` skips seeding
-in test or other environments. The baseball Bubble Schedule UI is hidden; saved
-bubble data is retained for a possible later restoration.
+in test or other environments. The Field/Bubble switch selects either the three-field calendar or the single-column
+bubble calendar. Bubble bookings use the same dated reservations, approvals,
+cancellations, conflict checks, and PDF export; field and bubble entries are
+scoped separately. Legacy standing-bubble notes remain stored but are not used
+as calendar bookings. Compact cards abbreviate team/title and whole-hour times;
+tapping a card reveals complete details. Approved status badges remain visible.
 
 ### Build
 

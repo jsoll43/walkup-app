@@ -538,7 +538,7 @@ export default function SchedulingAdminSection({ isAuthed, adminHeaders, embedde
             Optional: <strong><code>title</code></strong>
           </div>
           <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>
-            <code>field</code> must be <code>major</code>, <code>minor</code>, or <code>tee-ball</code>. Every imported reservation automatically creates a 2-hour block from the chosen start time. Past dates are allowed. Use dates like <code>2026-06-01</code> or <code>6/1/2026</code>. Duplicate rows are skipped automatically.
+            <code>field</code> must be <code>major</code>, <code>minor</code>, <code>tee-ball</code>, or <code>bubble</code>. Every imported reservation automatically creates a 2-hour block from the chosen start time. Past dates are allowed. Use dates like <code>2026-06-01</code> or <code>6/1/2026</code>. Duplicate rows are skipped automatically.
           </div>
         </div>
 

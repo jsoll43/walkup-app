@@ -33,8 +33,8 @@ await writeFile(path.join(root, "public/baseball.html"), `<!doctype html>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#d7ba58" />
-    <meta name="description" content="Barrington Little League field scheduling for Majors, Minors, and Tee Ball. Request and manage two-hour field reservations." />
-    <title>Barrington Little League | Field Scheduling</title>
+    <meta name="description" content="Barrington Little League field and bubble scheduling. Request and manage two-hour field reservations." />
+    <title>Barrington Little League | Scheduling</title>
     <link rel="icon" type="image/svg+xml" href="/baseball/logo.svg" />
     <link rel="stylesheet" href="/baseball/${css}" />
     <script type="module" src="/baseball/${js}"></script>

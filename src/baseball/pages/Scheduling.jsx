@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 import {
   FIELD_OPTIONS,
+  ALL_FIELD_OPTIONS,
+  getSchedulingFields,
+  scopeSchedulingData,
+  compactEventTitle,
+  compactTimeLabel,
   RESERVATION_DURATION_MINUTES,
   STATUS_META,
   addDays,
@@ -15,6 +20,8 @@ import {
   getWeekDates,
 } from "../scheduling/utils.js";
 import { downloadSchedulingMonthPdf } from "../scheduling/pdf.js";
+
+const SchedulingFieldsContext = createContext(FIELD_OPTIONS);
 
 const REQUEST_ARCHIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 const INITIAL_COACH_REQUEST_COUNT = 3;
@@ -57,7 +64,7 @@ function schedulingHeaders(role, key) {
 }
 
 function fieldLabel(field) {
-  return FIELD_OPTIONS.find((option) => option.value === field)?.label || "Field";
+  return ALL_FIELD_OPTIONS.find((option) => option.value === field)?.label || "Field";
 }
 
 function formatET(ts) {
@@ -162,7 +169,6 @@ function getCellKey(date, field) {
 
 function ScheduleEventCard({ item, isSelected, onSelect }) {
   const status = getCalendarStatus(item);
-  const secondaryLabel = itemSecondaryLabel(item);
   return (
     <button
       type="button"
@@ -172,14 +178,14 @@ function ScheduleEventCard({ item, isSelected, onSelect }) {
         status ? `is-${status}` : "",
         isSelected ? "is-selected" : "",
       ].join(" ")}
+      aria-label={`${formatTimeRange(item.startTime, item.endTime)}; ${itemPrimaryLabel(item)}; ${itemSecondaryLabel(item)}; ${getStatusMeta(status).label}`}
       onClick={() => onSelect(item)}
     >
       <div className="schedule-block-topline">
-        <div className="schedule-block-time">{formatTimeLabel(item.startTime)}</div>
+        <div className="schedule-block-time">{compactTimeLabel(item.startTime)}</div>
         <StatusPill status={status} />
       </div>
-      <div className="schedule-block-title">{itemPrimaryLabel(item)}</div>
-      {secondaryLabel ? <div className="schedule-block-eyebrow">{secondaryLabel}</div> : null}
+      <div className="schedule-block-title">{compactEventTitle(item)}</div>
     </button>
   );
 }
@@ -216,11 +222,12 @@ function CompactFieldCell({ cellKey, items, selectedItemKey, onSelect, expanded,
 }
 
 function DesktopScheduleView({ weekDates, calendarItems, selectedItemKey, onSelect, expandedCells, onToggleExpand }) {
+  const fields = useContext(SchedulingFieldsContext);
   return (
     <div className="schedule-desktop-view schedule-list-view">
       <div className="schedule-list-header">
         <div className="schedule-list-date-header">Date</div>
-        {FIELD_OPTIONS.map((field) => <div key={field.value} className="schedule-list-field-header">{field.label}</div>)}
+        {fields.map((field) => <div key={field.value} className="schedule-list-field-header">{field.shortLabel || field.label}</div>)}
       </div>
 
       <div className="schedule-list-body">
@@ -228,7 +235,7 @@ function DesktopScheduleView({ weekDates, calendarItems, selectedItemKey, onSele
           <div key={`row-${date}`} className="schedule-list-row">
             <div className="schedule-list-date">{formatDayHeader(date)}</div>
 
-            {FIELD_OPTIONS.map((field) => (
+            {fields.map((field) => (
               <CompactFieldCell
                 key={`${date}-${field.value}`}
                 cellKey={getCellKey(date, field.value)}
@@ -248,6 +255,7 @@ function DesktopScheduleView({ weekDates, calendarItems, selectedItemKey, onSele
 }
 
 function MobileScheduleView({ weekDates, calendarItems, selectedItemKey, onSelect, expandedCells, onToggleExpand }) {
+  const fields = useContext(SchedulingFieldsContext);
   return (
     <div className="schedule-mobile-view schedule-mobile-week-view">
       <div className="schedule-mobile-week-list">
@@ -260,17 +268,17 @@ function MobileScheduleView({ weekDates, calendarItems, selectedItemKey, onSelec
                 <div className="schedule-mobile-title">{formatDayHeader(date)}</div>
                 {isEmptyDay ? null : (
                   <div className="schedule-field-header-row is-mobile">
-                    {FIELD_OPTIONS.map((field) => <div key={field.value} className="schedule-field-header">{field.label}</div>)}
+                    {fields.map((field) => <div key={field.value} className="schedule-field-header">{field.shortLabel || field.label}</div>)}
                   </div>
                 )}
               </div>
 
               {isEmptyDay ? (
-                <div className="schedule-mobile-empty-day">No events on any field.</div>
+                <div className="schedule-mobile-empty-day">No events scheduled.</div>
               ) : (
                 <div className="schedule-mobile-columns">
                   <div className="schedule-day-body-group is-mobile">
-                    {FIELD_OPTIONS.map((field) => (
+                    {fields.map((field) => (
                       <CompactFieldCell
                         key={`${date}-${field.value}`}
                         cellKey={getCellKey(date, field.value)}
@@ -305,6 +313,7 @@ function ReservationFormCard({
   includeLeagueOption,
   hideTitle = false,
 }) {
+  const fields = useContext(SchedulingFieldsContext);
   const sortedTeams = [...teams].sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
   return (
     <div className="card scheduling-panel-card">
@@ -326,9 +335,9 @@ function ReservationFormCard({
         </div>
 
         <div>
-          <label className="label">Field</label>
+          <label className="label">{fields.length === 1 ? "Space" : "Field"}</label>
           <select className="input" value={form.field} onChange={(e) => onChange("field", e.target.value)}>
-            {FIELD_OPTIONS.map((option) => (
+            {fields.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -527,7 +536,7 @@ function FieldRequestAuditTrailCard({ requests, visibleRequestCount, onShowMoreR
   return (
     <details className="card scheduling-panel-card scheduling-audit-details">
       <summary className="scheduling-audit-summary">
-        <span>Field Request Audit Trail ({requests.length})</span>
+        <span>Request Audit Trail ({requests.length})</span>
         <span className="scheduling-mobile-accordion-icon" aria-hidden="true" />
       </summary>
       <div className="scheduling-audit-body">
@@ -941,7 +950,9 @@ function SelectedScheduleItemCard({
   );
 }
 
-export default function Scheduling({ adminKey = "" }) {
+export default function Scheduling({ adminKey = "", mode = "field", onModeChange = () => {} }) {
+  const isBubble = mode === "bubble";
+  const defaultField = isBubble ? "bubble" : "major";
   const today = useMemo(() => getTodayInEt(), []);
   const [selectedDate, setSelectedDate] = useState(today);
   const authRole = adminKey ? "admin" : "requester";
@@ -984,14 +995,14 @@ export default function Scheduling({ adminKey = "" }) {
   const [coachForm, setCoachForm] = useState({
     team: "",
     title: "",
-    field: "major",
+    field: defaultField,
     date: today,
     startTime: "17:00",
   });
   const [boardForm, setBoardForm] = useState({
     team: "",
     title: "",
-    field: "major",
+    field: defaultField,
     date: today,
     startTime: "17:00",
   });
@@ -1010,7 +1021,16 @@ export default function Scheduling({ adminKey = "" }) {
   const [visibleCoachRequestCount, setVisibleCoachRequestCount] = useState(INITIAL_COACH_REQUEST_COUNT);
   const [visibleAuditRequestCount, setVisibleAuditRequestCount] = useState(INITIAL_AUDIT_REQUEST_COUNT);
 
-  const { teams, reservations, requests, pendingRequests, summary, bubbleScheduling } = scheduleData;
+  const { teams, reservations, requests, pendingRequests, summary, bubbleScheduling } = useMemo(() => scopeSchedulingData(scheduleData, mode), [scheduleData, mode]);
+
+  useEffect(() => {
+    setCoachForm((current) => ({...current, field: defaultField}));
+    setBoardForm((current) => ({...current, field: defaultField}));
+    setSelectedItemKey("");
+    setExpandedCells({});
+    setError("");
+    setSuccess("");
+  }, [defaultField]);
   const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
   const calendarItems = useMemo(() => buildCalendarItems(reservations, requests), [reservations, requests]);
   const weekItems = useMemo(
@@ -1115,7 +1135,7 @@ export default function Scheduling({ adminKey = "" }) {
       });
       const data = await safeJsonOrText(res);
       if (!res.ok || data?.ok === false) {
-        throw new Error(data?.error || data?.raw || "Failed to load field scheduling.");
+        throw new Error(data?.error || data?.raw || "Failed to load scheduling.");
       }
 
       setIsAuthed(true);
@@ -1528,6 +1548,7 @@ export default function Scheduling({ adminKey = "" }) {
       downloadSchedulingMonthPdf({
         month: pdfMonth,
         items: calendarItems,
+        resourceLabel: isBubble ? "Bubble" : "Fields",
       });
       setShowPdfModal(false);
       setSuccess("Calendar view PDF downloaded.");
@@ -1539,16 +1560,21 @@ export default function Scheduling({ adminKey = "" }) {
   }
 
   return (
-    <div className="scheduling-shell">
+    <SchedulingFieldsContext.Provider value={getSchedulingFields(mode)}>
+    <div className={`scheduling-shell ${isBubble ? "is-bubble" : "is-fields"}`}>
       <div className="scheduling-header-row">
         <div>
-          <h1 className="scheduling-page-title">Field Scheduling</h1>
+          <h1 className="scheduling-page-title">Scheduling</h1>
           <div className="scheduling-page-subtitle">
-            Weekly field reservations on desktop, day timeline on mobile, and a shared approval queue for field requests. Each reservation holds a fixed 2-hour block.
+            {isBubble ? "Reserve the bubble and request indoor time." : "View field reservations and request field time."} Each reservation holds a fixed 2-hour block.
           </div>
         </div>
 
         <div className="scheduling-header-actions">
+          <div className="baseball-mode-switch" role="group" aria-label="Scheduling type">
+            <button type="button" aria-pressed={!isBubble} onClick={() => onModeChange("field")}>Field</button>
+            <button type="button" aria-pressed={isBubble} onClick={() => onModeChange("bubble")}>Bubble</button>
+          </div>
           <button className="btn-secondary scheduling-header-button" onClick={() => refreshState(authRole, authKey, { silent: false })} disabled={loading}>
             {loading ? "Refreshing..." : "Refresh"}
           </button>
@@ -1678,7 +1704,7 @@ export default function Scheduling({ adminKey = "" }) {
             <BoardActionQueueCard pendingRequests={pendingRequests} actionKey={actionKey} onReviewRequest={reviewRequest} hideTitle />
           </MobileAccordionCard>
 
-          <MobileAccordionCard title={`Field Request Audit Trail (${requests.length})`}>
+          <MobileAccordionCard title={`Request Audit Trail (${requests.length})`}>
             <FieldRequestAuditTrailContent
               requests={requests}
               visibleRequestCount={visibleAuditRequestCount}
@@ -1724,8 +1750,8 @@ export default function Scheduling({ adminKey = "" }) {
           {authRole === "requester" ? (
             <>
               <ReservationFormCard
-                title="Request Field Time"
-                description="Submit a 2-hour field reservation request for admin approval. Conflicts are warned, but still allowed."
+                title={isBubble ? "Request Bubble Time" : "Request Field Time"}
+                description={`Submit a 2-hour ${isBubble ? "bubble" : "field"} reservation request for admin approval. Conflicts are warned, but still allowed.`}
                 form={coachForm}
                 onChange={updateCoachForm}
                 onSubmit={submitCoachAddRequest}
@@ -1736,7 +1762,7 @@ export default function Scheduling({ adminKey = "" }) {
               />
 
               <RequestHistoryCard
-                heading="Field Requests"
+                heading={isBubble ? "Bubble Requests" : "Field Requests"}
                 emptyText="No active field requests. Pending requests and requests reviewed in the last week will appear here."
                 requests={coachRequestGroups.active}
                 archivedRequests={coachRequestGroups.archived}
@@ -1861,8 +1887,8 @@ export default function Scheduling({ adminKey = "" }) {
             </h3>
             <div style={{ opacity: 0.78 }}>
               {conflictModal.title
-                ? `${conflictModal.title} overlaps existing field use or another pending request on the same field.`
-                : "This selection overlaps existing field use or another pending request on the same field."}
+                ? `${conflictModal.title} overlaps an existing reservation or another pending request for the same space.`
+                : "This selection overlaps an existing reservation or another pending request for the same space."}
             </div>
 
             {conflictModal.conflicts?.length ? (
@@ -1888,5 +1914,6 @@ export default function Scheduling({ adminKey = "" }) {
         </div>
       ) : null}
     </div>
+    </SchedulingFieldsContext.Provider>
   );
 }

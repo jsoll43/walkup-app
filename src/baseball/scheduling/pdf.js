@@ -137,7 +137,7 @@ function getStatusSuffix(status) {
 }
 
 function getFieldShortLabel(fieldValue) {
-  return ({ major: "Majors", minor: "Minors", "tee-ball": "Tee Ball" })[fieldValue] || "Field";
+  return ({ major: "Majors", minor: "Minors", "tee-ball": "Tee Ball", bubble: "Bubble" })[fieldValue] || "Field";
 }
 
 function getItemLabel(item) {
@@ -212,12 +212,12 @@ function drawText(operations, { x, y, text, size, color, bold = false }) {
   );
 }
 
-function buildCalendarOperations({ month, items, now }) {
+function buildCalendarOperations({ month, items, now, resourceLabel }) {
   const parsedMonth = parseMonth(month);
   if (!parsedMonth) throw new Error("Choose a valid month for the PDF export.");
 
   const { year, monthIndex } = parsedMonth;
-  const title = `Barrington Little League - Fields - ${formatMonthTitle(parsedMonth)}`;
+  const title = `Barrington Little League - ${resourceLabel} - ${formatMonthTitle(parsedMonth)}`;
   const generatedAt = `Up to date as of ${formatEtStamp(now)}`;
   const gridDates = getCalendarGridDates(parsedMonth);
   const monthPrefix = `${year}-${String(monthIndex + 1).padStart(2, "0")}-`;
@@ -384,13 +384,13 @@ function buildPdfBlobFromOperations(operations) {
   return new Blob([pdf], { type: "application/pdf" });
 }
 
-export function downloadSchedulingMonthPdf({ month, items, now = new Date() }) {
-  const operations = buildCalendarOperations({ month, items, now });
+export function downloadSchedulingMonthPdf({ month, items, now = new Date(), resourceLabel = "Fields" }) {
+  const operations = buildCalendarOperations({ month, items, now, resourceLabel });
   const blob = buildPdfBlobFromOperations(operations);
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `little-league-field-calendar-${month}.pdf`;
+  link.download = `little-league-${resourceLabel.toLowerCase()}-calendar-${month}.pdf`;
   document.body.appendChild(link);
   link.click();
   link.remove();

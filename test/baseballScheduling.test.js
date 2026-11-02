@@ -70,6 +70,55 @@ test("three baseball fields have two-hour slots in server and client, including 
   assert.match(client.getConflictsForDraft({...event,startTime:"18:45"},[event])[0],/Tee Ball Field/);
 });
 
+test("compact labels remove repeated text while complete details remain in the data", () => {
+  const event = {team:"Barrington 12U",title:"[SAMPLE] 12U Practice"};
+  assert.equal(client.compactEventTitle(event),"12U Practice");
+  assert.equal(event.title,"[SAMPLE] 12U Practice");
+  assert.equal(client.compactEventTitle({team:"Barrington 8U",title:"[SAMPLE] 8U vs Audubon"}),"8U vs Audubon");
+  assert.equal(client.compactEventTitle({team:"Barrington 10U",title:"Skills Clinic"}),"10U · Skills Clinic");
+  assert.equal(client.compactTimeLabel("17:00"),"5 PM");
+  assert.equal(client.compactTimeLabel("17:30"),"5:30 PM");
+  assert.equal(client.FIELD_OPTIONS.length,3);
+  assert.deepEqual(client.getSchedulingFields("bubble").map(item=>item.value),["bubble"]);
+});
+
+test("bubble bookings use the same approval flow but do not conflict with or enter the field calendar", async () => {
+  const {sqlite,env}=database();
+  await baseball.setSchedulingPassword(env,"admin","baseball-admin");
+  const draft={requestType:"add",field:"bubble",team:"Barrington 10U",title:"Indoor practice",date:"2027-04-10",startTime:"17:00"};
+  assert.equal(baseball.normalizeField("bubble"),"bubble");
+  assert.equal(baseball.fieldLabel("bubble"),"Bubble");
+  assert.equal(baseball.normalizeScheduleDraft(draft).value.endTime,"19:00");
+  let response=await addReservation({env,request:request({...draft,field:"major"},"admin","baseball-admin")});
+  assert.equal(response.status,200);
+  response=await submitRequest({env,request:request(draft)});
+  assert.equal(response.status,200);
+  const pending=(await response.json()).request;
+  assert.equal(pending.hasConflict,false);
+  let state=await baseball.loadSchedulingState(env);
+  assert.equal(client.scopeSchedulingData(state,"field").summary.approvedReservations,1);
+  assert.equal(client.scopeSchedulingData(state,"field").summary.pendingAddRequests,0);
+  assert.equal(client.scopeSchedulingData(state,"bubble").summary.approvedReservations,0);
+  assert.equal(client.scopeSchedulingData(state,"bubble").summary.pendingAddRequests,1);
+  response=await reviewRequest({env,request:request({requestId:pending.id,action:"approve"},"admin","baseball-admin")});
+  assert.equal(response.status,200);
+  response=await submitRequest({env,request:request({...draft,startTime:"18:00"})});
+  const conflict=(await response.json()).request;
+  assert.equal(conflict.hasConflict,true);
+  assert.match(conflict.conflictDetails.join(" "),/Bubble/);
+  state=await baseball.loadSchedulingState(env);
+  const fieldState=client.scopeSchedulingData(state,"field");
+  const bubbleState=client.scopeSchedulingData(state,"bubble");
+  assert.equal(fieldState.reservations.length,1);
+  assert.equal(bubbleState.reservations.length,1);
+  assert.ok(fieldState.requests.every(item=>item.field!=="bubble"));
+  assert.ok(bubbleState.requests.every(item=>item.field==="bubble"));
+  assert.equal(fieldState.summary.conflicts,0);
+  assert.ok(bubbleState.summary.conflicts>0);
+  assert.equal(client.getConflictsForDraft({...draft,startTime:"18:00"},bubbleState.reservations).length,1);
+  sqlite.close();
+});
+
 test("sample data fills the next 30 days once, respects existing reservations, and preserves sample deletions", async () => {
   const {sqlite,env} = database();
   env.BASEBALL_SAMPLE_DATA = "on";
