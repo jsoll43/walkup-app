@@ -1542,20 +1542,13 @@ export default function Scheduling({ adminKey = "" }) {
     <div className="scheduling-shell">
       <div className="scheduling-header-row">
         <div>
-          <div className="cardTitle" style={{ color: "#173f7a" }}>League Operations</div>
           <h1 className="scheduling-page-title">Field Scheduling</h1>
           <div className="scheduling-page-subtitle">
             Weekly field reservations on desktop, day timeline on mobile, and a shared approval queue for field requests. Each reservation holds a fixed 2-hour block.
           </div>
-          {reservations.some((item) => item.title?.startsWith("[SAMPLE]")) ? (
-            <p style={{fontSize: 13, marginBottom: 0}}>Games and practices marked [SAMPLE] are fictional examples, not confirmed bookings.</p>
-          ) : null}
         </div>
 
         <div className="scheduling-header-actions">
-          <span className={`scheduling-pill ${authRole === "admin" ? "scheduling-pill-approved" : "scheduling-pill-pending"}`}>
-            {authRole === "admin" ? "Admin" : "Schedule & Requests"}
-          </span>
           <button className="btn-secondary scheduling-header-button" onClick={() => refreshState(authRole, authKey, { silent: false })} disabled={loading}>
             {loading ? "Refreshing..." : "Refresh"}
           </button>

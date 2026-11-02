@@ -77,7 +77,6 @@ function App() {
       </div>
     </header>
     <main className="bll-main">
-      <div className="baseball-fields" aria-label="Fields and reservation duration"><span>Majors</span><span>Minors</span><span>Tee Ball</span><span>2-hour reservations</span></div>
       {admin ? <Admin /> : <Scheduling />}
     </main>
   </div>;
