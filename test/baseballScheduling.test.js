@@ -37,7 +37,7 @@ function database() {
       return results;
     } catch (error) { sqlite.exec("ROLLBACK"); throw error; }
   } };
-  return {sqlite, statements, env:{DB, ADMIN_KEY:"local-test-admin", BASEBALL_SAMPLE_DATA:"off"}};
+  return {sqlite, statements, env:{DB, ADMIN_KEY:"local-test-admin", BASEBALL_SAMPLE_DATA:"off", BASEBALL_SAMPLE_SHIFT:"off"}};
 }
 
 function request(body, role = "requester", key = "", method = "POST", owner = "local-request-owner-00000001") {
@@ -434,5 +434,70 @@ test("moving pending examples preserves reviewed requests, deletions, conflict e
   const after=sqlite.prepare("SELECT * FROM baseball_field_requests ORDER BY id").all();
   await ensureBaseballSampleData(env);
   assert.deepEqual(sqlite.prepare("SELECT * FROM baseball_field_requests ORDER BY id").all(),after);
+  sqlite.close();
+});
+
+
+test("sample dates move forward seven days exactly once while real schedules and decisions stay intact", async () => {
+  const {sqlite,env}=database();
+  env.BASEBALL_SAMPLE_DATA="on";
+  await baseball.ensureSchedulingTables(env);
+  await ensureBaseballSampleData(env);
+  await softball.ensureSchedulingTables(env);
+  await softball.createReservation(env,{id:"bgsl-original",field:"major",team:"BGSL",title:"Softball",date:"2026-11-10",startTime:"17:00",endTime:"18:30",reservationType:"practice",status:"approved",createdByRole:"board"});
+  await baseball.createReservation(env,{id:"real-original",field:"major",team:"Real Team",title:"Real booking",date:"2026-11-10",startTime:"17:00",endTime:"19:00",reservationType:"practice",status:"approved",createdByRole:"admin"});
+  const sampleId="bll_sample_request_2026-11-08_pending";
+  const sample=sqlite.prepare("SELECT * FROM baseball_field_requests WHERE id=?").get(sampleId);
+  await baseball.createReservation(env,{id:"approved-demo",field:sample.field,team:sample.team,title:sample.title,date:sample.date,startTime:sample.start_time,endTime:sample.end_time,reservationType:"practice",status:"approved",createdByRole:"coach_request_approved"});
+  sqlite.prepare("UPDATE baseball_field_requests SET status='approved', reservation_id='approved-demo', reviewed_by='Admin' WHERE id=?").run(sampleId);
+  const deleted="bll_sample_20261102_2026-11-02_12u";
+  sqlite.prepare("DELETE FROM baseball_field_reservations WHERE id=?").run(deleted);
+  const before=sqlite.prepare("SELECT * FROM baseball_field_reservations ORDER BY id").all();
+  const requests=sqlite.prepare("SELECT * FROM baseball_field_requests ORDER BY id").all();
+  const bgsl=sqlite.prepare("SELECT * FROM field_reservations ORDER BY id").all();
+  delete env.BASEBALL_SAMPLE_SHIFT; // Production default: enable the one-time move.
+  const state=await baseball.loadSchedulingState(env);
+  const after=sqlite.prepare("SELECT * FROM baseball_field_reservations ORDER BY id").all();
+  const advance=date=>{const d=new Date(`${date}T12:00:00Z`);d.setUTCDate(d.getUTCDate()+7);return d.toISOString().slice(0,10);};
+  assert.equal(after.length,before.length);
+  for (const row of before) {
+    const moved=after.find(item=>item.id===row.id);
+    if (row.created_by_role==="sample_data" || row.id==="approved-demo") {
+      assert.equal(moved.date,advance(row.date));
+      assert.deepEqual({...moved,date:row.date,updated_at:row.updated_at},{...row});
+    } else assert.deepEqual(moved,row);
+  }
+  const afterRequests=sqlite.prepare("SELECT * FROM baseball_field_requests ORDER BY id").all();
+  for (const row of requests) {
+    const moved=afterRequests.find(item=>item.id===row.id);
+    assert.deepEqual({...moved},row.id.startsWith("bll_sample_request_")?{...row,date:advance(row.date)}:{...row});
+  }
+  assert.deepEqual(sqlite.prepare("SELECT * FROM field_reservations ORDER BY id").all(),bgsl);
+  assert.equal(sqlite.prepare("SELECT id FROM baseball_field_reservations WHERE id=?").get(deleted),undefined);
+  const demo=state.reservations.filter(item=>item.createdByRole==="sample_data");
+  assert.ok(demo.every(item=>item.date>="2026-11-09" && item.date<="2026-12-08"));
+  assert.ok(demo.filter(item=>item.field==="bubble").every(item=>!client.bubbleBookingError("bubble",item.date)));
+  const snapshot=JSON.stringify([after,afterRequests]);
+  await baseball.loadSchedulingState(env);
+  assert.equal(JSON.stringify([sqlite.prepare("SELECT * FROM baseball_field_reservations ORDER BY id").all(),sqlite.prepare("SELECT * FROM baseball_field_requests ORDER BY id").all()]),snapshot);
+  sqlite.close();
+});
+
+test("fresh setup shifts the entire sample window and keeps weekly pending/conflict examples on separate days", async () => {
+  const {sqlite,env}=database();
+  env.BASEBALL_SAMPLE_DATA="on";
+  delete env.BASEBALL_SAMPLE_SHIFT;
+  const state=await baseball.loadSchedulingState(env);
+  assert.equal(state.reservations.length,72);
+  assert.equal(state.pendingRequests.length,10);
+  assert.equal(state.reservations.map(item=>item.date).sort()[0],"2026-11-09");
+  assert.equal(state.reservations.map(item=>item.date).sort().at(-1),"2026-12-08");
+  for (const week of ["2026-11-08","2026-11-15","2026-11-22","2026-11-29","2026-12-06"]) {
+    const requests=state.pendingRequests.filter(item=>client.getWeekStart(item.date)===week);
+    assert.equal(requests.length,2);
+    assert.equal(new Set(requests.map(item=>item.date)).size,2);
+    assert.equal(requests.filter(item=>item.displayStatus==="conflict").length,1);
+    assert.equal(requests.filter(item=>item.displayStatus==="pending").length,1);
+  }
   sqlite.close();
 });

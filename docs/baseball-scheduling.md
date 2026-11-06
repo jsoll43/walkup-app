@@ -32,6 +32,17 @@ notification recipient is explicitly saved.
 
 ### Demonstration schedule
 
+The November 6 revision shifts all existing demonstration reservations and
+sample requests seven days forward: the current window is **November 9 through
+December 8, 2026**. The original seeds below retain their historical dates; the
+transactional `bll-samples-forward-seven-days-20261106-v1` migration runs after
+them exactly once. It preserves IDs, decisions, deleted examples and audit times,
+and also moves reservations linked to approved sample requests. Actual bookings
+and BGSL records are not modified. Tuesday/Thursday softball closures remain
+recurring on those weekdays. `BASEBALL_SAMPLE_SHIFT=off` is a test-only opt-out
+for exercising historical migration fixtures.
+
+
 The versioned `bll-sample-20261102-refined-v2` seed creates Barrington 6U, 8U, 10U,
 12U, and 14U teams and up to 55 field sample reservations for November 2 through
 December 1, 2026: 29 fictional games against nearby towns and 26 practices. This

@@ -4,6 +4,7 @@ export const BASEBALL_SAMPLE_VERSION = "bll-sample-20261102-refined-v2";
 export const BUBBLE_SAMPLE_VERSION = "bll-bubble-20261102-30days-v3";
 export const FIELD_REQUEST_SAMPLE_VERSION = "bll-field-requests-20261102-v1";
 export const FIELD_REQUEST_LAYOUT_VERSION = "bll-field-request-days-20261102-v2";
+export const SAMPLE_WEEK_SHIFT_VERSION = "bll-samples-forward-seven-days-20261106-v1";
 export const BASEBALL_SAMPLE_START = "2026-11-02";
 export const BASEBALL_SAMPLE_TEAMS = [6, 8, 10, 12, 14].map(age => ({
   id: `bll_sample_team_${age}u`, name: `Barrington ${age}U`, slug: `barrington-${age}u`,
@@ -192,6 +193,30 @@ async function movePendingSampleDays(env) {
   ]);
 }
 
+// Move existing demonstrations exactly once, including a reservation created by
+// approving one of our sample requests. IDs, decisions and audit timestamps stay
+// intact; real bookings and original BGSL records are outside this migration.
+async function shiftSampleDatesOneWeek(env) {
+  if (env.BASEBALL_SAMPLE_SHIFT === "off") return;
+  const version = SAMPLE_WEEK_SHIFT_VERSION;
+  if (await env.DB.prepare("SELECT id FROM baseball_sample_seed_versions WHERE id = ?").bind(version).first()) return;
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE baseball_field_reservations
+      SET date = date(date, '+7 days'), updated_at = ?
+      WHERE ((created_by_role = 'sample_data' AND id LIKE 'bll_sample_20261102_%')
+        OR id IN (SELECT reservation_id FROM baseball_field_requests
+          WHERE id LIKE 'bll_sample_request_%' AND requested_by = 'Sample requester'))
+        AND NOT EXISTS (SELECT 1 FROM baseball_sample_seed_versions WHERE id = ?)`)
+      .bind(new Date().toISOString(), version),
+    env.DB.prepare(`UPDATE baseball_field_requests SET date = date(date, '+7 days')
+      WHERE id LIKE 'bll_sample_request_%' AND requested_by = 'Sample requester'
+        AND NOT EXISTS (SELECT 1 FROM baseball_sample_seed_versions WHERE id = ?)`)
+      .bind(version),
+    env.DB.prepare("INSERT OR IGNORE INTO baseball_sample_seed_versions (id, completed_at) VALUES (?, ?)")
+      .bind(version, new Date().toISOString()),
+  ]);
+}
+
 export async function ensureBaseballSampleData(env) {
   if (env.BASEBALL_SAMPLE_DATA === "off") return;
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS baseball_sample_seed_versions (
@@ -203,6 +228,7 @@ export async function ensureBaseballSampleData(env) {
   await seedSampleVersion(env, BUBBLE_SAMPLE_VERSION, buildBubbleSampleReservations(), "field = 'bubble'");
   await seedFieldSampleRequests(env);
   await movePendingSampleDays(env);
+  await shiftSampleDatesOneWeek(env);
 }
 
 async function seedSampleVersion(env, version, events, scope) {
