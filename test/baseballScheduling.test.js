@@ -37,7 +37,7 @@ function database() {
       return results;
     } catch (error) { sqlite.exec("ROLLBACK"); throw error; }
   } };
-  return {sqlite, statements, env:{DB, ADMIN_KEY:"local-test-admin", BASEBALL_SAMPLE_DATA:"off", BASEBALL_SAMPLE_SHIFT:"off"}};
+  return {sqlite, statements, env:{DB, ADMIN_KEY:"local-test-admin", BASEBALL_SAMPLE_DATA:"off", BASEBALL_SAMPLE_SHIFT:"off", BASEBALL_EXTRA_WEEK:"off"}};
 }
 
 function request(body, role = "requester", key = "", method = "POST", owner = "local-request-owner-00000001") {
@@ -499,5 +499,40 @@ test("fresh setup shifts the entire sample window and keeps weekly pending/confl
     assert.equal(requests.filter(item=>item.displayStatus==="conflict").length,1);
     assert.equal(requests.filter(item=>item.displayStatus==="pending").length,1);
   }
+  sqlite.close();
+});
+
+
+test("November 1–7 examples add new objects without moving future samples, restore nothing and respect Bubble closures", async () => {
+  const {sqlite,env}=database();
+  env.BASEBALL_SAMPLE_DATA="on";
+  delete env.BASEBALL_SAMPLE_SHIFT;
+  const future=await baseball.loadSchedulingState(env);
+  const before=sqlite.prepare("SELECT * FROM baseball_field_reservations ORDER BY id").all();
+  const requests=sqlite.prepare("SELECT * FROM baseball_field_requests ORDER BY id").all();
+  delete env.BASEBALL_EXTRA_WEEK;
+  const state=await baseball.loadSchedulingState(env);
+  for (const item of before) assert.deepEqual(sqlite.prepare("SELECT * FROM baseball_field_reservations WHERE id=?").get(item.id),item);
+  for (const item of requests) assert.deepEqual(sqlite.prepare("SELECT * FROM baseball_field_requests WHERE id=?").get(item.id),item);
+  const added=state.reservations.filter(item=>item.id.startsWith("bll_extra_20261101_"));
+  assert.equal(added.length,19);
+  assert.equal(added.filter(item=>item.field==="bubble").length,4);
+  assert.equal(added.filter(item=>item.field!=="bubble").length,15);
+  assert.ok(added.every(item=>item.date>="2026-11-01" && item.date<="2026-11-07" && item.title.startsWith("[SAMPLE]")));
+  assert.ok(added.filter(item=>item.field==="bubble").every(item=>!client.bubbleBookingError(item.field,item.date)));
+  assert.deepEqual([...new Set(added.map(item=>item.date))].sort(),["2026-11-01","2026-11-02","2026-11-03","2026-11-04","2026-11-05","2026-11-06","2026-11-07"]);
+  const pending=state.pendingRequests.filter(item=>item.id.startsWith("bll_extra_request_"));
+  assert.equal(pending.length,2);
+  assert.equal(pending.filter(item=>item.displayStatus==="conflict").length,1);
+  assert.equal(pending.filter(item=>item.displayStatus==="pending").length,1);
+  assert.equal(new Set(pending.map(item=>item.date)).size,2);
+  assert.equal(state.reservations.length,future.reservations.length+19);
+  const removed=added[0].id,denied=pending[0].id;
+  sqlite.prepare("DELETE FROM baseball_field_reservations WHERE id=?").run(removed);
+  sqlite.prepare("UPDATE baseball_field_requests SET status='denied',reviewed_by='Admin' WHERE id=?").run(denied);
+  await baseball.loadSchedulingState(env);
+  assert.equal(sqlite.prepare("SELECT id FROM baseball_field_reservations WHERE id=?").get(removed),undefined);
+  assert.equal(sqlite.prepare("SELECT status FROM baseball_field_requests WHERE id=?").get(denied).status,"denied");
+  assert.equal(sqlite.prepare("SELECT count(*) count FROM baseball_field_reservations WHERE id LIKE 'bll_extra_20261101_%'").get().count,18);
   sqlite.close();
 });

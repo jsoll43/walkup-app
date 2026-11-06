@@ -66,6 +66,17 @@ scoped separately. Legacy standing-bubble notes remain stored but are not used
 as calendar bookings. Compact cards abbreviate team/title and whole-hour times;
 tapping a card reveals complete details. Approved status badges remain visible.
 
+### Additional November 1–7 examples
+
+The additive `bll-extra-november-1-7-2026-v1` seed creates 15 field events,
+four Bubble sessions, and two pending field requests for November 1–7. Monday’s
+request conflicts with a new sample booking; Tuesday’s ordinary request uses a
+free slot. Distinct `bll_extra_` IDs keep these separate from the shifted future
+examples. This atomic seed does not update existing objects, skips occupied
+times, sends no emails, and preserves later deletions/reviews. Bubble examples
+avoid Tuesday/Thursday softball closures. `BASEBALL_EXTRA_WEEK=off` disables this
+set in historical test fixtures.
+
 ### Field request examples
 
 The one-time `bll-field-requests-20261102-v1` seed adds two pending field

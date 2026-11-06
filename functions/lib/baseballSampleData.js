@@ -1,3 +1,4 @@
+import { ensureNovemberWeekSamples } from "./baseballNovemberWeek.js";
 // One-time, clearly labeled demonstration schedule requested for Nov 2-Dec 1, 2026.
 // Everything is confined to baseball tables. No passwords, alerts, or BGSL rows change.
 export const BASEBALL_SAMPLE_VERSION = "bll-sample-20261102-refined-v2";
@@ -229,6 +230,7 @@ export async function ensureBaseballSampleData(env) {
   await seedFieldSampleRequests(env);
   await movePendingSampleDays(env);
   await shiftSampleDatesOneWeek(env);
+  await ensureNovemberWeekSamples(env, buildBaseballSampleReservations(), buildBubbleSampleReservations());
 }
 
 async function seedSampleVersion(env, version, events, scope) {
