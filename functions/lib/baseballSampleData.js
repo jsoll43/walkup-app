@@ -110,7 +110,7 @@ export function buildBaseballSampleRequests(sampleReservations = buildBaseballSa
   }
   const output = [];
   for (const [week, target] of weeks) {
-    const team = target.field === "major" ? "Barrington 14U" : target.field === "minor" ? "Barrington 8U" : "Barrington 6U";
+    const team = ({"Barrington 6U":"Barrington 8U","Barrington 8U":"Barrington 10U","Barrington 10U":"Barrington 8U","Barrington 12U":"Barrington 14U","Barrington 14U":"Barrington 12U"})[target.team];
     output.push({
       id: `bll_sample_request_${week}_conflict`, field: target.field, date: target.date,
       startTime: target.startTime, endTime: target.endTime, team,
@@ -218,6 +218,27 @@ async function shiftSampleDatesOneWeek(env) {
   ]);
 }
 
+async function clarifySampleConflictTeams(env) {
+  const version = "bll-distinct-conflict-ages-20261107-v1";
+  if (await env.DB.prepare("SELECT id FROM baseball_sample_seed_versions WHERE id=?").bind(version).first()) return;
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE baseball_field_requests SET
+      team = CASE team WHEN 'Barrington 6U' THEN 'Barrington 8U' WHEN 'Barrington 8U' THEN 'Barrington 10U'
+        WHEN 'Barrington 10U' THEN 'Barrington 8U' WHEN 'Barrington 12U' THEN 'Barrington 14U' WHEN 'Barrington 14U' THEN 'Barrington 12U' END,
+      title = '[SAMPLE] ' || CASE team WHEN 'Barrington 6U' THEN '8U' WHEN 'Barrington 8U' THEN '10U'
+        WHEN 'Barrington 10U' THEN '8U' WHEN 'Barrington 12U' THEN '14U' WHEN 'Barrington 14U' THEN '12U' END || ' Practice Request'
+      WHERE status='pending' AND request_type='add' AND requested_by='Sample requester'
+        AND (id GLOB 'bll_sample_request_*_conflict' OR id='bll_extra_request_20261101_conflict')
+        AND team IN ('Barrington 6U','Barrington 8U','Barrington 10U','Barrington 12U','Barrington 14U')
+        AND EXISTS (SELECT 1 FROM baseball_field_reservations r WHERE r.created_by_role='sample_data'
+          AND r.field=baseball_field_requests.field AND r.date=baseball_field_requests.date
+          AND r.start_time<baseball_field_requests.end_time AND r.end_time>baseball_field_requests.start_time
+          AND r.team=baseball_field_requests.team)
+        AND NOT EXISTS (SELECT 1 FROM baseball_sample_seed_versions WHERE id=?)`).bind(version),
+    env.DB.prepare("INSERT OR IGNORE INTO baseball_sample_seed_versions (id,completed_at) VALUES (?,?)").bind(version,new Date().toISOString()),
+  ]);
+}
+
 export async function ensureBaseballSampleData(env) {
   if (env.BASEBALL_SAMPLE_DATA === "off") return;
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS baseball_sample_seed_versions (
@@ -231,6 +252,7 @@ export async function ensureBaseballSampleData(env) {
   await movePendingSampleDays(env);
   await shiftSampleDatesOneWeek(env);
   await ensureNovemberWeekSamples(env, buildBaseballSampleReservations(), buildBubbleSampleReservations());
+  await clarifySampleConflictTeams(env);
 }
 
 async function seedSampleVersion(env, version, events, scope) {

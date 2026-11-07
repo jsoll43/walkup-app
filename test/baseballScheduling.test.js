@@ -536,3 +536,27 @@ test("November 1–7 examples add new objects without moving future samples, res
   assert.equal(sqlite.prepare("SELECT count(*) count FROM baseball_field_reservations WHERE id LIKE 'bll_extra_20261101_%'").get().count,18);
   sqlite.close();
 });
+
+
+test("existing same-age sample conflicts become different-age requests without changing reservations", async () => {
+  const {sqlite,env}=database(); env.BASEBALL_SAMPLE_DATA="on";
+  delete env.BASEBALL_SAMPLE_SHIFT; delete env.BASEBALL_EXTRA_WEEK;
+  await baseball.loadSchedulingState(env);
+  sqlite.prepare("DELETE FROM baseball_sample_seed_versions WHERE id=?").run("bll-distinct-conflict-ages-20261107-v1");
+  const id="bll_sample_request_2026-11-01_conflict";
+  sqlite.prepare("UPDATE baseball_field_requests SET team='Barrington 6U',title='[SAMPLE] 6U Practice Request' WHERE id=?").run(id);
+  const before=sqlite.prepare("SELECT * FROM baseball_field_reservations ORDER BY id").all();
+  const state=await baseball.loadSchedulingState(env);
+  const fixed=state.requests.find(item=>item.id===id);
+  assert.equal(fixed.team,"Barrington 8U"); assert.equal(fixed.title,"[SAMPLE] 8U Practice Request");
+  assert.equal(fixed.displayStatus,"conflict");
+  for (const req of state.pendingRequests.filter(item=>item.id.endsWith("_conflict"))) {
+    const overlapping=state.reservations.filter(item=>item.field===req.field && item.date===req.date && item.startTime<req.endTime && item.endTime>req.startTime);
+    assert.ok(overlapping.length>0); assert.ok(overlapping.every(item=>item.team!==req.team));
+  }
+  assert.deepEqual(sqlite.prepare("SELECT * FROM baseball_field_reservations ORDER BY id").all(),before);
+  const snapshot=sqlite.prepare("SELECT * FROM baseball_field_requests ORDER BY id").all();
+  await baseball.loadSchedulingState(env);
+  assert.deepEqual(sqlite.prepare("SELECT * FROM baseball_field_requests ORDER BY id").all(),snapshot);
+  sqlite.close();
+});

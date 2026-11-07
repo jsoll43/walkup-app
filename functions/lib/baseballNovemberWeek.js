@@ -30,8 +30,8 @@ export async function ensureNovemberWeekSamples(env, fieldSamples, bubbleSamples
     // The conflict belongs to a newly inserted example, never a real booking.
     env.DB.prepare(`INSERT OR IGNORE INTO baseball_field_requests
       (id,request_type,field,team,title,reservation_type,date,start_time,end_time,notes,status,has_conflict,conflict_details,requested_by,requested_at)
-      SELECT 'bll_extra_request_20261101_conflict','add',field,team,
-        '[SAMPLE] ' || replace(team,'Barrington ','') || ' Practice Request','practice',date,start_time,end_time,
+      SELECT 'bll_extra_request_20261101_conflict','add',field,CASE team WHEN 'Barrington 12U' THEN 'Barrington 14U' WHEN 'Barrington 14U' THEN 'Barrington 12U' WHEN 'Barrington 10U' THEN 'Barrington 8U' WHEN 'Barrington 8U' THEN 'Barrington 10U' ELSE 'Barrington 8U' END,
+        '[SAMPLE] ' || CASE team WHEN 'Barrington 12U' THEN '14U' WHEN 'Barrington 14U' THEN '12U' WHEN 'Barrington 10U' THEN '8U' WHEN 'Barrington 8U' THEN '10U' ELSE '8U' END || ' Practice Request','practice',date,start_time,end_time,
         'Fictional sample request intentionally overlapping a November 1–7 sample reservation.',
         'pending',0,'[]','Sample requester',?
       FROM baseball_field_reservations
